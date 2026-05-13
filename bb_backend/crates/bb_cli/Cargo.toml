@@ -1,0 +1,36 @@
+[package]
+name = "bb_cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "bb"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+async-stream = "0.3"
+axum = { version = "0.8", features = ["multipart"] }
+bb_core = { path = "../bb_core" }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap = { version = "4", features = ["derive"] }
+notify = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rmcp = { version = "1.6", features = ["server", "transport-io", "transport-streamable-http-server"] }
+tokio = { version = "1", features = ["io-std", "io-util", "macros", "net", "rt-multi-thread"] }
+toml = "0.8"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

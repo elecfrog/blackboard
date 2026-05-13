@@ -1,0 +1,20 @@
+{
+  "projects": {
+    "blackboard": {
+      "uuid": "00000000-0000-0000-0000-000000000000",
+      "locations": {
+        "CURRENT": {
+          "absolute_path": "",
+          "relative_path": "./blackboard"
+        }
+      }
+    }
+  },
+  "machines": {
+    "CURRENT": "USER-20251102XC",
+    "USER-20251102XC": {
+      "OS": "Windows",
+      "OS_VERSION": "10"
+    }
+  }
+}

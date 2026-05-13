@@ -1,0 +1,899 @@
+{
+  "current_counter": "000052",
+  "tickets": [
+    {
+      "name": "000001-产品基线-多agent工具管理dashboard.md",
+      "path": "tickets/000001-产品基线-多agent工具管理dashboard.md",
+      "id": "000001",
+      "lane": "bbp",
+      "title": "Blackboard 产品基线：本地多 Agent 工具管理 Dashboard",
+      "status": "archived",
+      "created_at": "2026-05-06",
+      "updated_at": "2026-05-07",
+      "extra": {
+        "doc_type": "product-baseline"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000002-bb-server-agents-config模块.md",
+      "path": "tickets/000002-bb-server-agents-config模块.md",
+      "id": "000002",
+      "lane": "bbt",
+      "title": "bb-server agents_config 模块：Agent 配置连接器后端",
+      "status": "archived",
+      "created_at": "2026-05-06",
+      "updated_at": "2026-05-07",
+      "extra": {
+        "depends_on": "000001",
+        "parent": "000001"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000003-web-settings-agent连接器.md",
+      "path": "tickets/000003-web-settings-agent连接器.md",
+      "id": "000003",
+      "lane": "bbd",
+      "title": "web Settings：Agent 连接器区块（状态灯 + Connect/Disconnect/Sync All）",
+      "status": "archived",
+      "created_at": "2026-05-06",
+      "updated_at": "2026-05-07",
+      "extra": {
+        "depends_on": "000001",
+        "parent": "000001"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000004-cs-runtime-data-path.md",
+      "path": "tickets/000004-cs-runtime-data-path.md",
+      "id": "000004",
+      "lane": "bbp",
+      "title": "Blackboard 转为正常 C/S 数据路径，移除离线快照语义",
+      "status": "archived",
+      "created_at": "2026-05-06",
+      "updated_at": "2026-05-08",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000001",
+        "parent": "000001"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000005-productization-polish-remote-mcp.md",
+      "path": "tickets/000005-productization-polish-remote-mcp.md",
+      "id": "000005",
+      "lane": "bbp",
+      "title": "Blackboard 产品优化：UI/i18n/assignee/remote MCP/Agent 规范",
+      "status": "archived",
+      "created_at": "2026-05-06",
+      "updated_at": "2026-05-07",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000002 000003 000004",
+        "parent": "000001"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000006-mcp-tooling-and-connectors.md",
+      "path": "tickets/000006-mcp-tooling-and-connectors.md",
+      "id": "000006",
+      "lane": "bbt",
+      "title": "MCP 重构与增强：工具 Schema 模块化 + 三家 Agent MCP 注入",
+      "status": "archived",
+      "created_at": "2026-05-06",
+      "updated_at": "2026-05-07",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000005",
+        "parent": "000005"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000007-multi-project-mcp-workflow-tools.md",
+      "path": "tickets/000007-multi-project-mcp-workflow-tools.md",
+      "id": "000007",
+      "lane": "bbt",
+      "title": "多 Project MCP 工作流工具",
+      "status": "archived",
+      "created_at": "2026-05-06",
+      "updated_at": "2026-05-10",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000006",
+        "parent": "000005"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000008-agent-registry-write-api.md",
+      "path": "tickets/000008-agent-registry-write-api.md",
+      "id": "000008",
+      "lane": "bbt",
+      "title": "Agent Registry 写入 API",
+      "status": "archived",
+      "created_at": "2026-05-06",
+      "updated_at": "2026-05-07",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000006",
+        "parent": "000005"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000009-assignee-dropdown-project-agents.md",
+      "path": "tickets/000009-assignee-dropdown-project-agents.md",
+      "id": "000009",
+      "lane": "bbd",
+      "title": "Assignee 下拉与项目成员过滤",
+      "status": "archived",
+      "created_at": "2026-05-06",
+      "updated_at": "2026-05-07",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000016",
+        "parent": "000005"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000010-agent-workbench-view.md",
+      "path": "tickets/000010-agent-workbench-view.md",
+      "id": "000010",
+      "lane": "bbd",
+      "title": "Agent 工作台视图",
+      "status": "archived",
+      "created_at": "2026-05-06",
+      "updated_at": "2026-05-12",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000018,000048",
+        "parent": "000005"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000011-ticket-dependency-graph-rendering.md",
+      "path": "tickets/000011-ticket-dependency-graph-rendering.md",
+      "id": "000011",
+      "lane": "bbd",
+      "title": "Ticket 依赖 Graph 渲染",
+      "status": "archived",
+      "created_at": "2026-05-06",
+      "updated_at": "2026-05-07",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000016",
+        "parent": "000005"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000012-toml-到-json-与目录结构迁移收口.md",
+      "path": "tickets/000012-toml-到-json-与目录结构迁移收口.md",
+      "id": "000012",
+      "lane": "bbt",
+      "title": "TOML 到 JSON 与目录结构迁移收口",
+      "status": "archived",
+      "created_at": "2026-05-07",
+      "updated_at": "2026-05-07",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000004",
+        "parent": "000004"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000013-bb-service-standalone-deploy.md",
+      "path": "tickets/000013-bb-service-standalone-deploy.md",
+      "id": "000013",
+      "lane": "bbt",
+      "title": "BB 服务独立部署与独立 repo 运行收口",
+      "status": "archived",
+      "created_at": "2026-05-07",
+      "updated_at": "2026-05-08",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000005"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000014-unified-ticket-status-model.md",
+      "path": "tickets/000014-unified-ticket-status-model.md",
+      "id": "000014",
+      "lane": "bbt",
+      "title": "统一 Ticket 状态模型：移除 bucket 双轨状态",
+      "status": "archived",
+      "created_at": "2026-05-07",
+      "updated_at": "2026-05-08",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000013"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000015-board-ui-lane-color-polish.md",
+      "path": "tickets/000015-board-ui-lane-color-polish.md",
+      "id": "000015",
+      "lane": "bbd",
+      "title": "BoardView 专项优化单",
+      "status": "archived",
+      "created_at": "2026-05-07",
+      "updated_at": "2026-05-08",
+      "extra": {
+        "area": "BoardView",
+        "assignee": "codex",
+        "depends_on": "000016",
+        "source": "browser-diff-comments"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000016-bb-frontend-umbrella-modern-ui.md",
+      "path": "tickets/000016-bb-frontend-umbrella-modern-ui.md",
+      "id": "000016",
+      "lane": "bbd",
+      "title": "前端美化专项",
+      "status": "archived",
+      "created_at": "2026-05-07",
+      "updated_at": "2026-05-08",
+      "extra": {
+        "area": "bb_web",
+        "assignee": "codex",
+        "kind": "umbrella",
+        "scope": "frontend-ui-ux"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000017-graph-view-ue-wire-polish.md",
+      "path": "tickets/000017-graph-view-ue-wire-polish.md",
+      "id": "000017",
+      "lane": "bbd",
+      "title": "Graph View 专项优化：UE 风格连线与交互打磨",
+      "status": "archived",
+      "created_at": "2026-05-07",
+      "updated_at": "2026-05-08",
+      "extra": {
+        "area": "TicketDependencyGraph",
+        "assignee": "codex",
+        "depends_on": "000011",
+        "kind": "专项优化",
+        "parent": "000016"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000018-local-agent-runtime-manager.md",
+      "path": "tickets/000018-local-agent-runtime-manager.md",
+      "id": "000018",
+      "lane": "bbt",
+      "title": "本地 Agent Runtime Manager 能力底座",
+      "status": "archived",
+      "created_at": "2026-05-07",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "assignee": "codex"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000019-project-wiki-system.md",
+      "path": "tickets/000019-project-wiki-system.md",
+      "id": "000019",
+      "lane": "bbp",
+      "title": "项目级 Wiki 系统：文件布局、上传与前端渲染",
+      "status": "archived",
+      "created_at": "2026-05-08",
+      "updated_at": "2026-05-08",
+      "extra": {
+        "assignee": "opencode"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000020-wiki-readonly-backend.md",
+      "path": "tickets/000020-wiki-readonly-backend.md",
+      "id": "000020",
+      "lane": "bbt",
+      "title": "Wiki 只读后端：目录树与文件内容 REST 接口（bb_core + bb_server）",
+      "status": "archived",
+      "created_at": "2026-05-08",
+      "updated_at": "2026-05-08",
+      "extra": {
+        "depends_on": "000019"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000021-wiki-frontend-view.md",
+      "path": "tickets/000021-wiki-frontend-view.md",
+      "id": "000021",
+      "lane": "bbd",
+      "title": "Wiki 前端视图：一级导航 + 三栏浏览（文件树 / 正文 / TOC）",
+      "status": "archived",
+      "created_at": "2026-05-08",
+      "updated_at": "2026-05-12",
+      "extra": {
+        "assignee": "opencode",
+        "depends_on": "000019"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000022-wiki-upload-ui.md",
+      "path": "tickets/000022-wiki-upload-ui.md",
+      "id": "000022",
+      "lane": "bbd",
+      "title": "Wiki 上传 UI：文件/文件夹 Web 上传，支持目录结构重建",
+      "status": "archived",
+      "created_at": "2026-05-08",
+      "updated_at": "2026-05-12",
+      "extra": {
+        "assignee": "opencode",
+        "depends_on": "000019"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000023-wiki-system-rework.md",
+      "path": "tickets/000023-wiki-system-rework.md",
+      "id": "000023",
+      "lane": "bbt",
+      "title": "Wiki 系统收尾：修复 #000019/#000020/#000021/#000022 的实现缺陷并端到端打通",
+      "status": "archived",
+      "created_at": "2026-05-08",
+      "updated_at": "2026-05-12",
+      "extra": {
+        "assignee": "opencode",
+        "depends_on": "000020 000021 000022"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000024-external-project-data-root.md",
+      "path": "tickets/000024-external-project-data-root.md",
+      "id": "000024",
+      "lane": "bbt",
+      "title": "Project 数据目录外置：支持用户指定项目根路径",
+      "status": "archived",
+      "created_at": "2026-05-08",
+      "updated_at": "2026-05-08",
+      "extra": {
+        "assignee": "codex",
+        "depends_on": "000013",
+        "parent": "000005"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000025-tickets-entry-kanban-graph-list-views.md",
+      "path": "tickets/000025-tickets-entry-kanban-graph-list-views.md",
+      "id": "000025",
+      "lane": "bbd",
+      "title": "Tickets 入口整合：Kanban / Graph / List 三视图",
+      "status": "archived",
+      "created_at": "2026-05-08",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "Tickets",
+        "assignee": "codex",
+        "depends_on": "000016",
+        "kind": "product-ui",
+        "parent": "000016"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000026-idea-pool-freeform-brainstorm-nodes.md",
+      "path": "tickets/000026-idea-pool-freeform-brainstorm-nodes.md",
+      "id": "000026",
+      "lane": "bbp",
+      "title": "Idea Pool：自由脑暴节点池",
+      "status": "todo",
+      "created_at": "2026-05-08",
+      "updated_at": "2026-05-08",
+      "extra": {
+        "area": "IdeaPool",
+        "kind": "product"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000027-codex-runtime-backend.md",
+      "path": "tickets/000027-codex-runtime-backend.md",
+      "id": "000027",
+      "lane": "bbt",
+      "title": "Codex Runtime Backend：实现 app-server JSON-RPC 2.0 通信层",
+      "status": "archived",
+      "created_at": "2026-05-08",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "depends_on": "000018",
+        "parent": "000018"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000028-task-graph-agent-workflow-umbrella.md",
+      "path": "tickets/000028-task-graph-agent-workflow-umbrella.md",
+      "id": "000028",
+      "lane": "bbp",
+      "title": "Task Graph：可编排 Agent 工作流总单",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000018",
+        "kind": "umbrella",
+        "parent": "000018"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000029-task-graph-frontend-backend-contract.md",
+      "path": "tickets/000029-task-graph-frontend-backend-contract.md",
+      "id": "000029",
+      "lane": "bbp",
+      "title": "Task Graph 前后端契约：模型、API 与运行态协议",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codex",
+        "deliverable": "wiki/architecture/task-graph-mvp-contract.md",
+        "depends_on": "000028",
+        "kind": "contract",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000030-task-graph-backend-store-validation.md",
+      "path": "tickets/000030-task-graph-backend-store-validation.md",
+      "id": "000030",
+      "lane": "bbt",
+      "title": "Task Graph 后端：System/Project Graph 存储与校验",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000029",
+        "kind": "backend",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000031-task-graph-backend-catalog-crud-fork-api.md",
+      "path": "tickets/000031-task-graph-backend-catalog-crud-fork-api.md",
+      "id": "000031",
+      "lane": "bbt",
+      "title": "Task Graph 后端：Merged Catalog、CRUD 与 Fork API",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000030",
+        "kind": "backend",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000032-task-graph-backend-run-state.md",
+      "path": "tickets/000032-task-graph-backend-run-state.md",
+      "id": "000032",
+      "lane": "bbt",
+      "title": "Task Graph 后端：Run Snapshot、Context 与运行态存储",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000029",
+        "kind": "backend",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000033-task-graph-backend-workflow-interpreter-daemon.md",
+      "path": "tickets/000033-task-graph-backend-workflow-interpreter-daemon.md",
+      "id": "000033",
+      "lane": "bbt",
+      "title": "Task Graph 后端：Workflow Interpreter 与 daemon 执行器",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000031 000032",
+        "kind": "backend",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000034-task-graph-frontend-graph-canvas-foundation.md",
+      "path": "tickets/000034-task-graph-frontend-graph-canvas-foundation.md",
+      "id": "000034",
+      "lane": "bbd",
+      "title": "Task Graph 前端：抽取通用 Graph Canvas 基底",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "TaskGraph",
+        "deliverable": "bb_web/src/components/GraphCanvas.vue; bb_web/src/components/TaskGraphCanvasFixture.vue",
+        "depends_on": "000029",
+        "kind": "frontend",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000035-task-graph-frontend-catalog-system-project-customize.md",
+      "path": "tickets/000035-task-graph-frontend-catalog-system-project-customize.md",
+      "id": "000035",
+      "lane": "bbd",
+      "title": "Task Graph 前端：Catalog、System/Project 分层与 Customize 入口",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "TaskGraph",
+        "deliverable": "bb_web/src/components/TaskGraphCatalogPanel.vue; bb_web/src/data/taskGraphs.ts",
+        "depends_on": "000029",
+        "kind": "frontend",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000036-task-graph-frontend-editor-node-inspector-control-flow.md",
+      "path": "tickets/000036-task-graph-frontend-editor-node-inspector-control-flow.md",
+      "id": "000036",
+      "lane": "bbd",
+      "title": "Task Graph 前端：Editor、节点面板与控制流配置",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "TaskGraph",
+        "deliverable": "bb_web/src/components/TaskGraphEditorPanel.vue; bb_web/src/data/taskGraphs.ts; bb_web/src/components/GraphCanvas.vue",
+        "depends_on": "000034 000035",
+        "kind": "frontend",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000037-task-graph-frontend-run-ui-logs-artifacts.md",
+      "path": "tickets/000037-task-graph-frontend-run-ui-logs-artifacts.md",
+      "id": "000037",
+      "lane": "bbd",
+      "title": "Task Graph 前端：Run UI、分支决策、循环轮次与日志查看",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000035 000032",
+        "kind": "frontend",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000038-task-graph-mvp-integration-e2e-sample-workflow.md",
+      "path": "tickets/000038-task-graph-mvp-integration-e2e-sample-workflow.md",
+      "id": "000038",
+      "lane": "bbq",
+      "title": "Task Graph MVP 集成验收：内置样例工作流端到端跑通",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-09",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codebuddy",
+        "depends_on": "000033 000036 000037",
+        "kind": "quality",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000039-task-graph-mvp-polish-real-cleanup-workflow.md",
+      "path": "tickets/000039-task-graph-mvp-polish-real-cleanup-workflow.md",
+      "id": "000039",
+      "lane": "bbq",
+      "title": "Task Graph MVP 打磨：真实清理工作流与验收体验 polish",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-10",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codebuddy",
+        "depends_on": "000038",
+        "kind": "quality",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000040-task-graph-typed-in-out-pins.md",
+      "path": "tickets/000040-task-graph-typed-in-out-pins.md",
+      "id": "000040",
+      "lane": "bbq",
+      "title": "Task Graph：引入类型化 In/Out Pin，替代四向自由连接",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-10",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codex",
+        "depends_on": "000039",
+        "kind": "feature",
+        "parent": "000028"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000041-task-graph-frontend-light-dark-fix-polish.md",
+      "path": "tickets/000041-task-graph-frontend-light-dark-fix-polish.md",
+      "id": "000041",
+      "lane": "bbd",
+      "title": "Task Graph 前端：frontend-light-dark-fix 编辑页视觉优化与错误修复",
+      "status": "archived",
+      "created_at": "2026-05-09",
+      "updated_at": "2026-05-10",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codex",
+        "depends_on": "000039",
+        "kind": "frontend-polish",
+        "parent": "000028",
+        "scope": "bb_web-task-graph-editor"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000042-rust-module-split-review-implementation.md",
+      "path": "tickets/000042-rust-module-split-review-implementation.md",
+      "id": "000042",
+      "lane": "bbq",
+      "title": "Rust 文件模块拆分 review 与实施验证",
+      "status": "archived",
+      "created_at": "2026-05-10",
+      "updated_at": "2026-05-10",
+      "extra": {
+        "assignee": "codex",
+        "bb_tools_used": "list_projects:pass; search_tickets:pass; board_summary:pass; create_ticket:pass; append_ticket_sections:pass; update_ticket:pass; create_inbox_note:pass",
+        "handoff_note": "2026-05-10-codex-rust-http-module-split-review-implementation.md",
+        "requested_by": "user",
+        "scope": "rust-code-module-splitting",
+        "validation_required": "cargo build/check; cargo test",
+        "validation_result": "cargo fmt:pass; cargo check workspace:pass; cargo test workspace:pass; git diff --check code paths:pass"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000043-rust-core-module-split-phase-2.md",
+      "path": "tickets/000043-rust-core-module-split-phase-2.md",
+      "id": "000043",
+      "lane": "bbq",
+      "title": "Rust 核心模块拆分 review 与第二阶段实施",
+      "status": "archived",
+      "created_at": "2026-05-10",
+      "updated_at": "2026-05-10",
+      "extra": {
+        "assignee": "codex",
+        "bb_tools_used": "list_projects:pass; find_work_context:pass; create_ticket:pass; append_ticket_sections:pass; complete_handoff:pass; update_ticket:pass",
+        "handoff_note": "2026-05-10-codex-rust-core-module-split-phase-2.md",
+        "parent_ticket": "000042",
+        "requested_by": "user",
+        "scope": "rust-core-module-splitting-phase-2",
+        "validation_required": "cargo fmt; cargo check --workspace; cargo test --workspace",
+        "validation_result": "cargo fmt:pass; cargo check workspace:pass; cargo test workspace:pass (bb_cli 63, bb_core 189, doc-tests 0); git diff --check code paths:pass"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000044-rust-core-agent-mcp-connector-cleanup.md",
+      "path": "tickets/000044-rust-core-agent-mcp-connector-cleanup.md",
+      "id": "000044",
+      "lane": "bbq",
+      "title": "Rust core 模块清理：Agent MCP connector 归位",
+      "status": "archived",
+      "created_at": "2026-05-10",
+      "updated_at": "2026-05-10",
+      "extra": {
+        "assignee": "codex"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000045-rust-wiki-module-self-contained-cleanup.md",
+      "path": "tickets/000045-rust-wiki-module-self-contained-cleanup.md",
+      "id": "000045",
+      "lane": "bbq",
+      "title": "Rust 模块文件夹自包含清理",
+      "status": "archived",
+      "created_at": "2026-05-10",
+      "updated_at": "2026-05-10",
+      "extra": {
+        "assignee": "codex"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000046-workspace-dotbb-data-root-desktop-seed.md",
+      "path": "tickets/000046-workspace-dotbb-data-root-desktop-seed.md",
+      "id": "000046",
+      "lane": "bbt",
+      "title": "Workspace 数据根迁移到 .bb 并为 Desktop sidecar 初始化铺路",
+      "status": "archived",
+      "created_at": "2026-05-11",
+      "updated_at": "2026-05-12",
+      "extra": {
+        "area": "bb_core bb_cli scripts",
+        "assignee": "codex",
+        "scope": "dotbb-workspace-root-desktop-seed"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000047-tauri-v2-rust-sidecar-desktop.md",
+      "path": "tickets/000047-tauri-v2-rust-sidecar-desktop.md",
+      "id": "000047",
+      "lane": "bbt",
+      "title": "Tauri v2 Desktop：Rust sidecar 打包与本地工作台",
+      "status": "archived",
+      "created_at": "2026-05-11",
+      "updated_at": "2026-05-12",
+      "extra": {
+        "area": "bb_desktop bb_cli static-serving scripts",
+        "assignee": "codex",
+        "depends_on": "000046"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000048-agent-profile-identity-card.md",
+      "path": "tickets/000048-agent-profile-identity-card.md",
+      "id": "000048",
+      "lane": "bbt",
+      "title": "Agent Profile 数字身份牌：显式注册完整 Agent 运行时配置",
+      "status": "done",
+      "created_at": "2026-05-11",
+      "updated_at": "2026-05-13",
+      "extra": {
+        "assignee": "codebuddy",
+        "blocks": "000010",
+        "parent": "000005"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000049-agent-profile-mcp-servers.md",
+      "path": "tickets/000049-agent-profile-mcp-servers.md",
+      "id": "000049",
+      "lane": "bbt",
+      "title": "Agent Profile — MCP Servers：per-agent MCP 服务器声明与注入",
+      "status": "done",
+      "created_at": "2026-05-12",
+      "updated_at": "2026-05-13",
+      "extra": {
+        "area": "AgentProfile",
+        "depends_on": "000048",
+        "parent": "000048"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000050-agent-profile-skills.md",
+      "path": "tickets/000050-agent-profile-skills.md",
+      "id": "000050",
+      "lane": "bbt",
+      "title": "Agent Profile — Skills：per-agent 技能列表声明与注入",
+      "status": "done",
+      "created_at": "2026-05-12",
+      "updated_at": "2026-05-13",
+      "extra": {
+        "area": "AgentProfile",
+        "depends_on": "000048",
+        "parent": "000048"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000051-roadmap-runtime-session-connectors.md",
+      "path": "tickets/000051-roadmap-runtime-session-connectors.md",
+      "id": "000051",
+      "lane": "bbt",
+      "title": "Roadmap：Runtime 连接与 AgentSession 维护",
+      "status": "done",
+      "created_at": "2026-05-13",
+      "updated_at": "2026-05-13",
+      "extra": {},
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000052-roadmap-agent-chat-task-dispatch.md",
+      "path": "tickets/000052-roadmap-agent-chat-task-dispatch.md",
+      "id": "000052",
+      "lane": "bbt",
+      "title": "Roadmap：内置 Agent Chat 与任务下发",
+      "status": "in_progress",
+      "created_at": "2026-05-13",
+      "updated_at": "2026-05-13",
+      "extra": {},
+      "metadata_error": null,
+      "metadata_warnings": []
+    }
+  ]
+}

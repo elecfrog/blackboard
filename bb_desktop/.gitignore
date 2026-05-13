@@ -1,0 +1,10 @@
+node_modules/
+resources/seed/
+resources/web/
+portable/*.bbpack
+portable-launcher/target/
+src-tauri/binaries/
+src-tauri/portable-target/
+src-tauri/sidecar-target/
+src-tauri/target/
+dist/

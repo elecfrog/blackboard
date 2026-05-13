@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 140" width="320" height="140">
+  <rect x="1" y="1" width="318" height="138" fill="#f8fafc" stroke="#94a3b8" stroke-width="1" rx="6"/>
+  <text x="160" y="30" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#0f172a">Context Management</text>
+  <rect x="20" y="50" width="80" height="40" fill="#e0e7ff" stroke="#6366f1" rx="4"/>
+  <text x="60" y="74" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#1e1b4b">Collector</text>
+  <rect x="120" y="50" width="80" height="40" fill="#dcfce7" stroke="#22c55e" rx="4"/>
+  <text x="160" y="74" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#14532d">Builder</text>
+  <rect x="220" y="50" width="80" height="40" fill="#fef3c7" stroke="#d97706" rx="4"/>
+  <text x="260" y="74" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#78350f">Agent</text>
+  <line x1="100" y1="70" x2="120" y2="70" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="200" y1="70" x2="220" y2="70" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <text x="160" y="120" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#475569">Collector → Builder → Agent</text>
+</svg>

@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "id": "bbpm-maintain",
+  "scope": "system",
+  "title": "BBPM项目维护",
+  "description": "BB-PM 项目维护",
+  "version": 8,
+  "readonly": false,
+  "metadata": {
+    "created_by": "web"
+  },
+  "inputs": [
+    {
+      "id": "inbox-batch-count",
+      "label": "Inbox 单次整理数量",
+      "type": "number",
+      "default": 3,
+      "min": 1.0
+    },
+    {
+      "id": "inbox-max-iterations",
+      "label": "最大循环次数",
+      "type": "number",
+      "default": 5,
+      "min": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -266.7375394698204,
+        "y": -106.66033336813648
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 704.0,
+        "y": -106.66033336813648
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "5a920d04-7f32-4d31-8bae-ea88e291efe1",
+      "type": "sub_pipeline",
+      "label": "Inbox 批量清理",
+      "position": {
+        "x": 64.0,
+        "y": -106.66033336813648
+      },
+      "config": {
+        "input_bindings": {
+          "batch-count": "{{inputs.inbox-batch-count}}",
+          "max-iterations": "{{inputs.inbox-max-iterations}}"
+        },
+        "pipeline_id": "inbox-batch-cleanup",
+        "pipeline_scope": "system"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "ba0905e1-7323-4697-8d8f-afb81f7b3ee1",
+      "type": "sub_pipeline",
+      "label": "Ticket 检查",
+      "position": {
+        "x": 375.61003496102165,
+        "y": -106.66033336813648
+      },
+      "config": {
+        "input_bindings": {},
+        "pipeline_id": "task-ticket-audit",
+        "pipeline_scope": "system"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "eef1f182-024c-4324-8846-7222fc719eeb",
+      "from": "start",
+      "to": "5a920d04-7f32-4d31-8bae-ea88e291efe1",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e8fb4959-0564-4d28-9d24-82be1a4afbfc",
+      "from": "5a920d04-7f32-4d31-8bae-ea88e291efe1",
+      "to": "ba0905e1-7323-4697-8d8f-afb81f7b3ee1",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "bf2818fc-1e4e-4401-9bcb-32727e6dbc18",
+      "from": "ba0905e1-7323-4697-8d8f-afb81f7b3ee1",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ]
+}

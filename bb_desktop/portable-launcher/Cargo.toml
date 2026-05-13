@@ -1,0 +1,10 @@
+[package]
+name = "blackboard-portable"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+
+[build-dependencies]
+winres = "0.1"

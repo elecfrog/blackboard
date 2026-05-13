@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "id": "inbox-batch-cleanup",
+  "scope": "system",
+  "title": "Inbox 批量清理",
+  "description": "运行 bb-pm 执行 Inbox 清理任务，按批量参数判断并真实沉淀/删除 note。",
+  "version": 6,
+  "readonly": true,
+  "metadata": {
+    "tags": [
+      "bb-pm",
+      "inbox"
+    ],
+    "related_tickets": [],
+    "owner": "blackboard"
+  },
+  "inputs": [
+    {
+      "id": "batch-count",
+      "label": "一次处理几条",
+      "type": "number",
+      "default": 2,
+      "description": "每轮 cleanup task 最多沉淀并删除的 inbox note 数量。",
+      "min": 1.0,
+      "max": 10.0
+    },
+    {
+      "id": "max-iterations",
+      "label": "循环次数",
+      "type": "number",
+      "default": 3,
+      "description": "Loop 最多执行多少轮；例如 3 轮 × 每轮 2 条可覆盖 0-5。",
+      "min": 1.0,
+      "max": 50.0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "42f3c8ee-9923-4359-95ed-f4fafdfe7292",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -50.03982667116018,
+        "y": 219.9586397058824
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "3db02982-0728-4a77-8763-c73eec9658b7",
+      "type": "loop",
+      "label": "Batch Inbox Cleanup Loop",
+      "description": "循环次数来自全局输入 max-iterations；每轮按 batch-count 处理一批 inbox note。",
+      "position": {
+        "x": 256.0,
+        "y": 219.9586397058824
+      },
+      "config": {
+        "body_entry": "3d0b8ead-4ec2-43be-a087-b1221159694a",
+        "body_exit": "3d0b8ead-4ec2-43be-a087-b1221159694a",
+        "condition": {
+          "input_ref": "$.nodes.3d0b8ead-4ec2-43be-a087-b1221159694a.output",
+          "op": "equals",
+          "path": "$.continue",
+          "value": true
+        },
+        "max_iterations": 3,
+        "max_iterations_ref": "{{inputs.max-iterations}}",
+        "on_max_iterations": "succeed"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "exit",
+          "label": "Exit",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "index",
+          "label": "Index",
+          "direction": "out",
+          "category": "data",
+          "value_type": "int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "392d9322-0809-468e-9794-8e56575fddfa",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 576.0,
+        "y": 335.9586397058824
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "b7ffec9f-2a60-4e25-9832-baba8485fecc",
+      "type": "llm",
+      "label": "Batch Inbox Cleanup",
+      "position": {
+        "x": 576.0,
+        "y": 127.95863970588238
+      },
+      "config": {
+        "agent": "bb-pm",
+        "inputs": {
+          "batch-count": "{{inputs.batch-count}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "file",
+          "template": "agents/prompts/task-graph-inbox-cleanup.md"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "f1aa8dee-5b93-4c2e-9ff9-48c44474541b",
+      "from": "42f3c8ee-9923-4359-95ed-f4fafdfe7292",
+      "to": "3db02982-0728-4a77-8763-c73eec9658b7",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in",
+      "source_handle": "pin:right",
+      "target_handle": "pin:left"
+    },
+    {
+      "id": "aaba72ee-3c5a-412d-b50a-f6ebcc98ce1a",
+      "from": "3db02982-0728-4a77-8763-c73eec9658b7",
+      "to": "392d9322-0809-468e-9794-8e56575fddfa",
+      "kind": "exec",
+      "label": "Completed",
+      "from_pin": "exit",
+      "to_pin": "exec_in",
+      "source_handle": "exit",
+      "target_handle": "pin:left"
+    },
+    {
+      "id": "1f18b2f5-2ace-4d13-8325-a94b54366321",
+      "from": "3db02982-0728-4a77-8763-c73eec9658b7",
+      "to": "b7ffec9f-2a60-4e25-9832-baba8485fecc",
+      "kind": "exec",
+      "from_pin": "body",
+      "to_pin": "exec_in",
+      "source_handle": "body"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0.0,
+      "y": 0.0,
+      "scale": 1.0
+    }
+  }
+}

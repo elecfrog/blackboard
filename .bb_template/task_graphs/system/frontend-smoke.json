@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "id": "frontend-smoke",
+  "scope": "system",
+  "title": "前端冒烟（Computer Use）",
+  "description": "前端冒烟（Computer Use）",
+  "version": 4,
+  "readonly": true,
+  "metadata": {
+    "tags": [
+      "task-wrapper",
+      "frontend",
+      "smoke"
+    ],
+    "owner": "blackboard"
+  },
+  "inputs": [],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -128.0,
+        "y": 101.84020348923563
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "llm-exec",
+      "type": "llm",
+      "label": "前端交互式冒烟（实验，Computer Use）",
+      "position": {
+        "x": 480.0,
+        "y": 101.84020348923563
+      },
+      "config": {
+        "agent": "codex",
+        "model": null,
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "file",
+          "template": "agents/prompts/frontend-smoke-interactive.md"
+        },
+        "runtime": "codex"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 818.6455921743578,
+        "y": 101.84020348923563
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "a5565339-6aca-4828-8075-f39c6780c57a",
+      "type": "sub_graph",
+      "label": "明暗模式+i18n",
+      "position": {
+        "x": 169.08304859010246,
+        "y": 101.84020348923563
+      },
+      "config": {
+        "input_bindings": {},
+        "pipeline_id": "frontend-light-dark-fix",
+        "pipeline_scope": "system"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-llm-end",
+      "from": "llm-exec",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "c6fba6f8-ff2d-4a08-9419-334fad56c6d3",
+      "from": "start",
+      "to": "a5565339-6aca-4828-8075-f39c6780c57a",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "d6625b7e-0dc8-46f1-9b1c-afad5bada470",
+      "from": "a5565339-6aca-4828-8075-f39c6780c57a",
+      "to": "llm-exec",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ]
+}

@@ -1,0 +1,141 @@
+version = 1
+
+# Blackboard Agent registry.
+# - platform_agent: a central workbench agent (Codex / CodeBuddy)
+# - opencode_agent: an OpenCode agent profile that can be distributed to
+#   ~/.config/opencode/agents through the Settings connector
+# - human: a human owner/operator
+
+[[agents]]
+id = "owner"
+display_name = "Project Owner"
+kind = "human"
+scope = "global"
+roles = ["owner"]
+description = "Blackboard owner and product decision maker."
+
+[[agents]]
+id = "codex"
+display_name = "Codex"
+kind = "platform_agent"
+runtime = "codex"
+scope = "global"
+roles = ["generalist", "engineering"]
+description = "Central Codex agent for implementation, debugging, and multimodal product work."
+org_role = "worker"
+
+[[agents]]
+id = "codebuddy"
+display_name = "CodeBuddy"
+kind = "platform_agent"
+runtime = "codebuddy"
+scope = "global"
+roles = ["engineering"]
+description = "Central CodeBuddy agent for codebase work."
+org_role = "worker"
+
+[[agents]]
+id = "opencode"
+display_name = "OpenCode"
+kind = "platform_agent"
+runtime = "opencode"
+scope = "global"
+roles = ["engineering", "research"]
+description = "OpenCode runtime agent for backend work, research workflows, and automated pipelines."
+org_role = "worker"
+
+[[agents]]
+id = "claude"
+display_name = "Claude Code"
+kind = "platform_agent"
+runtime = "claude"
+scope = "global"
+roles = ["engineering"]
+description = "Claude Code runtime agent for implementation and debugging."
+
+[[agents]]
+id = "bb-pm"
+display_name = "BB PM"
+kind = "opencode_agent"
+runtime = "opencode"
+scope = "global"
+source_path = "<bb-root>/agents/opencode/bb-pm.md"
+distribute = true
+roles = ["pm", "inbox-triage", "ticket-maintenance"]
+description = "Blackboard PM agent: condenses inbox notes into existing tickets and keeps handoffs slim."
+model = "minimax-cn-coding-plan/MiniMax-M2.7-highspeed"
+instructions_path = "agents/prompts/task-graph-inbox-cleanup.md"
+org_role = "worker"
+max_concurrent_tasks = 3
+custom_env = { BB_DAEMON = "1" }
+skills = ["triage"]
+
+[[agents.mcp_servers]]
+name = "bb"
+transport = "stdio"
+command = "bb"
+args = ["--root", "<bb-root>", "stdio"]
+
+[[agents.mcp_servers]]
+name = "qmd"
+transport = "stdio"
+command = "qmd"
+args = ["serve"]
+
+[[agents]]
+id = "spec-coordinator"
+display_name = "Spec Coordinator"
+kind = "opencode_agent"
+runtime = "opencode"
+scope = "global"
+source_path = "<bb-root>/agents/opencode/spec-coordinator.md"
+distribute = true
+roles = ["spec", "coordination"]
+description = "Open Spec coordinator."
+
+# OpenCode support subagents. Registered for distribution and visibility, but
+# not assignable by default because they are usually invoked by a primary agent.
+
+[[agents]]
+id = "spec-dispatch-adapter"
+display_name = "Spec Dispatch Adapter"
+kind = "sub_agent"
+runtime = "opencode"
+scope = "global"
+assignable = false
+source_path = "<bb-root>/agents/opencode/spec-dispatch-adapter.md"
+distribute = true
+roles = ["spec"]
+
+[[agents]]
+id = "spec-reviewer"
+display_name = "Spec Reviewer"
+kind = "sub_agent"
+runtime = "opencode"
+scope = "global"
+assignable = false
+source_path = "<bb-root>/agents/opencode/spec-reviewer.md"
+distribute = true
+roles = ["spec", "review"]
+
+[[agents]]
+id = "spec-scout"
+display_name = "Spec Scout"
+kind = "sub_agent"
+runtime = "opencode"
+scope = "global"
+assignable = false
+source_path = "<bb-root>/agents/opencode/spec-scout.md"
+distribute = true
+roles = ["spec", "exploration"]
+
+[[agents]]
+id = "spec-writer"
+display_name = "Spec Writer"
+kind = "sub_agent"
+runtime = "opencode"
+scope = "global"
+assignable = false
+source_path = "<bb-root>/agents/opencode/spec-writer.md"
+distribute = true
+roles = ["spec", "writing"]

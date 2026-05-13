@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "id": "frontend-light-dark-fix",
+  "scope": "system",
+  "title": "明暗与i18n 优化",
+  "description": "明暗与i18n 优化",
+  "version": 5,
+  "readonly": true,
+  "metadata": {
+    "tags": [
+      "frontend",
+      "smoke"
+    ],
+    "owner": "blackboard"
+  },
+  "inputs": [],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -428.8308351965254,
+        "y": 69.7517407153709
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 225.30557341377775,
+        "y": 64.75748520066499
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "c3d96d5f-c4da-4d24-8ca5-657c8b96fd10",
+      "type": "sub_pipeline",
+      "label": "i8n检查",
+      "position": {
+        "x": -106.74834033959743,
+        "y": 0.0
+      },
+      "config": {
+        "input_bindings": {},
+        "pipeline_id": "task-frontend-i18n",
+        "pipeline_scope": "project"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "7138480f-c272-4838-9d8b-935f5b458b95",
+      "type": "llm",
+      "label": "暗色模式检查",
+      "position": {
+        "x": -106.74834033959743,
+        "y": 137.7517407153709
+      },
+      "config": {
+        "agent": "native",
+        "model": "",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "file",
+          "template": "agents/prompts/frontend-dark-mode.md"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "b74c1ebc-a3ac-496f-8c67-72d9b298e976",
+      "from": "start",
+      "to": "c3d96d5f-c4da-4d24-8ca5-657c8b96fd10",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "bd4eb50a-7e61-4c5e-a245-078ca178cadc",
+      "from": "c3d96d5f-c4da-4d24-8ca5-657c8b96fd10",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "9263858c-e063-4c6d-9c7f-91c23d399a7d",
+      "from": "start",
+      "to": "7138480f-c272-4838-9d8b-935f5b458b95",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "c6ae1fff-195e-4f5d-adb3-a2463c653b18",
+      "from": "7138480f-c272-4838-9d8b-935f5b458b95",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ]
+}

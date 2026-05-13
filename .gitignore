@@ -1,0 +1,8 @@
+.idea
+.vscode
+.codebuddy
+.opencode
+__pycache__/
+*.py[cod]
+.bb/
+.bb_template/runtime/

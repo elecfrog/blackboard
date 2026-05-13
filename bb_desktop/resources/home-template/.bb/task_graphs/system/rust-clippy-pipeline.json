@@ -1,0 +1,406 @@
+{
+  "schema_version": 1,
+  "id": "rust-clippy-pipeline",
+  "scope": "system",
+  "title": "Rust Clippy 健康检查与修复流水线",
+  "description": "运行 cargo clippy 检测 Rust 代码警告，执行修复，并验证编译通过。",
+  "version": 1,
+  "readonly": false,
+  "metadata": {
+    "tags": [
+      "rust",
+      "clippy",
+      "code-health"
+    ],
+    "related_tickets": [],
+    "owner": "blackboard"
+  },
+  "inputs": [
+    {
+      "id": "workspace",
+      "label": "工作区路径",
+      "type": "string",
+      "default": "bb_backend",
+      "description": "Rust 项目路径，如 bb_backend 或 bb_desktop/src-tauri"
+    },
+    {
+      "id": "package",
+      "label": "包名（可选）",
+      "type": "string",
+      "default": "",
+      "description": "指定包名，如 bb_cli。空则检查所有包"
+    },
+    {
+      "id": "max-iterations",
+      "label": "最大修复轮次",
+      "type": "number",
+      "default": 5,
+      "description": "修复循环最多执行多少轮",
+      "min": 1.0,
+      "max": 20.0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start-node",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -262.0638164627638,
+        "y": 156.0
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "loop-node",
+      "type": "loop",
+      "label": "Clippy 修复循环",
+      "description": "循环执行 clippy 检查和修复，直到无警告或达到最大轮次",
+      "position": {
+        "x": 44.132906082652354,
+        "y": 156.0
+      },
+      "config": {
+        "body_entry": "scan-node",
+        "body_exit": "check-node",
+        "condition": {
+          "input_ref": "$.nodes.check-node.output",
+          "op": "equals",
+          "path": "$.has_warnings",
+          "value": true
+        },
+        "max_iterations": 5,
+        "max_iterations_ref": "{{inputs.max-iterations}}",
+        "on_max_iterations": "succeed"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "exit",
+          "label": "Exit",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "index",
+          "label": "Index",
+          "direction": "out",
+          "category": "data",
+          "value_type": "int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scan-node",
+      "type": "llm",
+      "label": "Cargo Clippy 扫描",
+      "position": {
+        "x": 384.0,
+        "y": 64.0
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "package": "{{inputs.package}}",
+          "workspace": "{{inputs.workspace}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "执行 cargo clippy 扫描，报告所有警告详情（文件路径、行号、警告类型），不执行修复"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "fix-node",
+      "type": "llm",
+      "label": "自动修复警告",
+      "position": {
+        "x": 681.2511126606205,
+        "y": 64.0
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "package": "{{inputs.package}}",
+          "workspace": "{{inputs.workspace}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "根据 clippy 扫描结果，使用 cargo clippy --fix 或手动修改代码修复所有警告。修复后运行 cargo check 验证编译通过。报告修复了哪些警告。"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "check-node",
+      "type": "llm",
+      "label": "验证修复结果",
+      "position": {
+        "x": 1005.8751725791122,
+        "y": 64.0
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "package": "{{inputs.package}}",
+          "workspace": "{{inputs.workspace}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "运行 cargo clippy --all-targets 检查是否还有警告。输出 JSON: {\"has_warnings\": true/false, \"count\": 数字, \"details\": \"简要描述\"}"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "success-node",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 681.2511126606205,
+        "y": 244.0
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "report-node",
+      "type": "llm",
+      "label": "生成健康报告",
+      "position": {
+        "x": 384.0,
+        "y": 244.0
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {},
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "汇总本次 Rust 代码健康检查结果，生成报告：检查范围、发现警告数、修复数、剩余警告、编译状态。最终结论：代码是否健康。"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "markdown",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-start-loop",
+      "from": "start-node",
+      "to": "loop-node",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in",
+      "source_handle": "pin:right",
+      "target_handle": "pin:left"
+    },
+    {
+      "id": "edge-loop-body",
+      "from": "loop-node",
+      "to": "scan-node",
+      "kind": "exec",
+      "label": "Body",
+      "from_pin": "body",
+      "to_pin": "exec_in",
+      "source_handle": "body"
+    },
+    {
+      "id": "edge-scan-fix",
+      "from": "scan-node",
+      "to": "fix-node",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in",
+      "source_handle": "pin:right",
+      "target_handle": "pin:left"
+    },
+    {
+      "id": "edge-fix-check",
+      "from": "fix-node",
+      "to": "check-node",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in",
+      "source_handle": "pin:right",
+      "target_handle": "pin:left"
+    },
+    {
+      "id": "edge-loop-exit",
+      "from": "loop-node",
+      "to": "report-node",
+      "kind": "exec",
+      "label": "Exit",
+      "from_pin": "exit",
+      "to_pin": "exec_in",
+      "source_handle": "exit",
+      "target_handle": "pin:left"
+    },
+    {
+      "id": "edge-report-success",
+      "from": "report-node",
+      "to": "success-node",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in",
+      "source_handle": "pin:right",
+      "target_handle": "pin:left"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0.0,
+      "y": 0.0,
+      "scale": 1.0
+    }
+  }
+}

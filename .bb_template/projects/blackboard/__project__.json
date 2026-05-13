@@ -1,0 +1,42 @@
+{
+  "name": "blackboard",
+  "type": "tool",
+  "repos": [],
+  "description": "Blackboard 自身的产品化 project：把 bb-server（stdio MCP + REST）、web 看板、scripts 脚本作为一个本地多 Agent 工具管理 dashboard 来演进，用工单系统串联不同 Agent 的工作进度。",
+  "lanes": [
+    {
+      "id": "bbp",
+      "label": "产品",
+      "color": "#7c3aed",
+      "description": "产品基线、信息架构、交互规范、发布门槛",
+      "status": "active"
+    },
+    {
+      "id": "bbt",
+      "label": "后端",
+      "color": "#0f766e",
+      "description": "bb-server（stdio MCP + REST）、数据模型、脚本、工程基建",
+      "status": "active"
+    },
+    {
+      "id": "bbd",
+      "label": "前端",
+      "color": "#2563eb",
+      "description": "web 看板、多 Agent 视图、lane 管理 UI、视觉基线",
+      "status": "active"
+    },
+    {
+      "id": "bbq",
+      "label": "质量",
+      "color": "#ea580c",
+      "description": "测试工程、数据一致性校验、多 Agent 冒烟、人工冒烟",
+      "status": "active"
+    }
+  ],
+  "board_view": {
+    "hidden_statuses": [
+      "blocked",
+      "archived"
+    ]
+  }
+}
