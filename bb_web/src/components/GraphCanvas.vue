@@ -79,6 +79,9 @@ interface NodePin {
   handle?: string
   label?: string
   role?: GraphCanvasPinRole
+  category?: 'exec' | 'data'
+  valueType?: string
+  color?: string
 }
 
 interface ConnectionDrag {
@@ -404,6 +407,9 @@ function explicitPinOffset(_node: GraphCanvasNode, pin: GraphCanvasPin): NodePin
     handle: pin.handle,
     label: pin.label,
     role: pin.role ?? 'both',
+    category: pin.category,
+    valueType: pin.valueType,
+    color: pin.color,
   }
 }
 
@@ -423,6 +429,18 @@ function nodePins(node: GraphCanvasNode, role?: GraphCanvasPinRole) {
 
 function semanticPins(node: GraphCanvasNode) {
   return node.pins?.map((pin) => explicitPinOffset(node, pin)) ?? []
+}
+
+function isDataPin(pin: NodePin) {
+  return pin.category === 'data'
+}
+
+function visiblePinLabel(pin: NodePin) {
+  const label = pin.label ?? ''
+  if (pin.category === 'exec' && (pin.handle === 'exec_in' || pin.handle === 'exec_out' || label === 'In' || label === 'Out')) {
+    return ''
+  }
+  return label
 }
 
 function pinTransform(pin: NodePin) {
@@ -889,28 +907,29 @@ defineExpose({
                 v-for="pin in semanticPins(node)"
                 :key="pinKey(pin)"
                 class="graph-semantic-pin"
-                :class="[`pin-${pin.role ?? 'both'}`, `pin-side-${pin.side}`, pin.handle ? `pin-category-${(node.pins?.find(p => p.handle === pin.handle)?.category) ?? 'exec'}` : '']" 
+                :class="[`pin-${pin.role ?? 'both'}`, `pin-side-${pin.side}`, pin.category ? `pin-category-${pin.category}` : 'pin-category-exec']" 
                 :transform="pinTransform(pin)"
               >
                 <!-- Exec Pin -->
                 <polygon
-                  v-if="!(node.pins?.find(p => p.handle === pin.handle)?.category === 'data')"
-                  points="-5,-5 6,0 -5,5"
-                  :fill="'var(--pin-exec-fill)'"
+                  v-if="!isDataPin(pin)"
+                  class="graph-exec-pin-glyph"
+                  points="-8,-8 9,0 -8,8"
                 />
                 <!-- Data Pin -->
                 <circle
                   v-else
+                  class="graph-data-pin-glyph"
                   r="5"
-                  :fill="(node.pins?.find(p => p.handle === pin.handle)?.color) ?? 'var(--pin-data-fill)'"
+                  :fill="pin.color ?? 'var(--pin-data-fill)'"
                 />
                 <text
-                  v-if="pin.label"
+                  v-if="visiblePinLabel(pin)"
                   :x="pinLabelX(pin)"
                   :y="pinLabelY(pin)"
                   :text-anchor="pinLabelAnchor(pin)"
                 >
-                  {{ pin.label }}
+                  {{ visiblePinLabel(pin) }}
                 </text>
               </g>
             </g>
@@ -948,7 +967,22 @@ defineExpose({
 
 <style scoped>
 .graph-semantic-pin {
-  --pin-exec-fill: var(--bb-text-faint);
+  --pin-exec-fill: var(--bb-surface);
+  --pin-exec-stroke: color-mix(in srgb, var(--graph-status-color, var(--bb-text-muted)) 58%, var(--bb-text-muted));
   --pin-data-fill: var(--bb-text-muted);
+}
+
+.graph-exec-pin-glyph {
+  fill: var(--pin-exec-fill);
+  stroke: var(--pin-exec-stroke);
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+  filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--pin-exec-stroke) 24%, transparent));
+}
+
+.graph-data-pin-glyph {
+  stroke: var(--bb-surface);
+  stroke-width: 1.8;
+  filter: drop-shadow(0 2px 5px rgba(15, 23, 42, 0.16));
 }
 </style>

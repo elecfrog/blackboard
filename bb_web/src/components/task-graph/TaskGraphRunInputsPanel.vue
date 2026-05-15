@@ -5,6 +5,7 @@ import { t } from '@/i18n'
 defineProps<{
   inputs: TaskGraphInputParam[]
   values: Record<string, unknown>
+  layout?: 'wide' | 'drawer'
 }>()
 
 const emit = defineEmits<{
@@ -41,7 +42,7 @@ function inputReference(inputId: string) {
 </script>
 
 <template>
-  <section v-if="inputs.length" class="task-graph-run-inputs">
+  <section v-if="inputs.length" :class="['task-graph-run-inputs', `task-graph-run-inputs-${layout ?? 'wide'}`]">
     <div
       v-for="input in inputs"
       :key="input.id"
@@ -107,6 +108,26 @@ function inputReference(inputId: string) {
   border: 1px solid var(--bb-border-warm);
   border-radius: 8px;
   background: var(--bb-surface);
+}
+
+.task-graph-run-inputs-drawer {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.task-graph-run-inputs-drawer .task-graph-run-input-row {
+  grid-template-columns: 1fr;
+  padding: 8px;
+}
+
+.task-graph-run-inputs-drawer .task-graph-run-input-reference {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.task-graph-run-inputs-drawer .task-graph-run-input-reference > span {
+  line-height: 1.2;
 }
 
 .task-graph-run-input-control,

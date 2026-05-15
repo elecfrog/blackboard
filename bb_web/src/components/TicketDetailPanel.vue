@@ -2,11 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { MarkdownRenderer, TableOfContents } from '@/ui/markdown'
-import { GitFork, X } from 'lucide-vue-next'
+import { ExternalLink, GitFork, Plus, Trash2, X } from 'lucide-vue-next'
 import UnifiedPopupSelect from '@/components/UnifiedPopupSelect.vue'
 import type { ProjectAgentProfile } from '@/data/agents'
-import type { BlackboardTicket, LaneDef } from '@/data/tickets'
+import type { BlackboardTicket, LaneDef, TicketAttachment } from '@/data/tickets'
 import {
+  attachmentsFromExtra,
   extractProgressText,
   loadTicketContent,
   resolveLaneMeta,
@@ -23,12 +24,14 @@ const props = defineProps<{
   agents: ProjectAgentProfile[]
   assigneeSaving?: boolean
   statusSaving?: boolean
+  attachmentsSaving?: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
   assigneeChange: [value: string]
   statusChange: [value: string]
+  attachmentsChange: [value: TicketAttachment[]]
 }>()
 
 const router = useRouter()
@@ -100,6 +103,26 @@ const relatedTickets = computed(() =>
     .map((id) => props.tickets.find((item) => item.id === id))
     .filter((item): item is BlackboardTicket => Boolean(item)),
 )
+const attachmentKindOptions = ['wiki', 'ticket', 'file', 'url', 'artifact', 'run', 'external']
+const currentAttachments = computed(() =>
+  normalizeAttachmentList(props.ticket.attachments ?? attachmentsFromExtra(props.ticket.extra)),
+)
+const attachmentDrafts = ref<TicketAttachment[]>([])
+const attachmentError = ref('')
+const attachmentsDirty = computed(
+  () =>
+    JSON.stringify(normalizeAttachmentList(attachmentDrafts.value)) !==
+    JSON.stringify(currentAttachments.value),
+)
+
+watch(
+  () => [props.ticket.id, props.ticket.attachments, props.ticket.extra.attachments],
+  () => {
+    attachmentDrafts.value = currentAttachments.value.map(cloneAttachment)
+    attachmentError.value = ''
+  },
+  { immediate: true, deep: true },
+)
 
 function openRelated(id: string) {
   router.push(ticketRoute(props.project, id))
@@ -117,6 +140,92 @@ function onStatusChange(next: string) {
 function onAssigneeChange(next: string) {
   if (next === currentAssignee.value) return
   emit('assigneeChange', next)
+}
+
+function cloneAttachment(attachment: TicketAttachment): TicketAttachment {
+  return {
+    kind: attachment.kind,
+    target: attachment.target,
+    ...(attachment.label ? { label: attachment.label } : {}),
+    ...(attachment.description ? { description: attachment.description } : {}),
+  }
+}
+
+function normalizeAttachmentList(attachments: TicketAttachment[]): TicketAttachment[] {
+  return attachments
+    .map((attachment) => {
+      const kind = attachment.kind.trim().toLowerCase()
+      const target = attachment.target.trim()
+      const label = attachment.label?.trim()
+      const description = attachment.description?.trim()
+      if (!kind || !target) return null
+      return {
+        kind,
+        target,
+        ...(label ? { label } : {}),
+        ...(description ? { description } : {}),
+      }
+    })
+    .filter((attachment): attachment is TicketAttachment => Boolean(attachment))
+}
+
+function addAttachment() {
+  attachmentError.value = ''
+  attachmentDrafts.value = [
+    ...attachmentDrafts.value,
+    { kind: 'wiki', target: '', label: '' },
+  ]
+}
+
+function removeAttachment(index: number) {
+  attachmentError.value = ''
+  attachmentDrafts.value = attachmentDrafts.value.filter((_, itemIndex) => itemIndex !== index)
+}
+
+function saveAttachments() {
+  const hasPartialRow = attachmentDrafts.value.some((attachment) => {
+    const hasAnyValue = Boolean(
+      attachment.kind.trim() ||
+        attachment.target.trim() ||
+        attachment.label?.trim() ||
+        attachment.description?.trim(),
+    )
+    return hasAnyValue && (!attachment.kind.trim() || !attachment.target.trim())
+  })
+  if (hasPartialRow) {
+    attachmentError.value = t('attachmentIncomplete')
+    return
+  }
+  attachmentError.value = ''
+  emit('attachmentsChange', normalizeAttachmentList(attachmentDrafts.value))
+}
+
+function wikiAttachmentPath(target: string): string {
+  return target
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+    .replace(/^wiki\//, '')
+}
+
+function attachmentHref(attachment: TicketAttachment): string {
+  const kind = attachment.kind.trim().toLowerCase()
+  const target = attachment.target.trim()
+  if (!target) return ''
+  if (kind === 'wiki') return `/projects/${props.project}/wiki/${wikiAttachmentPath(target)}`
+  if (kind === 'ticket' && /^\d{6}$/.test(target)) return ticketRoute(props.project, target)
+  if (kind === 'url' || /^https?:\/\//i.test(target)) return target
+  return ''
+}
+
+function openAttachment(attachment: TicketAttachment) {
+  const href = attachmentHref(attachment)
+  if (!href) return
+  if (/^https?:\/\//i.test(href)) {
+    window.open(href, '_blank', 'noopener,noreferrer')
+    return
+  }
+  router.push(href)
 }
 </script>
 
@@ -193,6 +302,74 @@ function onAssigneeChange(next: string) {
         >
           {{ item.id }} · {{ item.title }}
         </button>
+      </section>
+
+      <section class="ticket-detail-attachments">
+        <div class="ticket-detail-section-head">
+          <h3>{{ t('attachments') }}</h3>
+          <button class="ticket-detail-small-action" type="button" @click="addAttachment">
+            <Plus class="bb-top-action-svg" aria-hidden="true" />
+            {{ t('add') }}
+          </button>
+        </div>
+
+        <div v-if="attachmentDrafts.length > 0" class="ticket-attachment-list">
+          <div
+            v-for="(attachment, index) in attachmentDrafts"
+            :key="`${index}-${attachment.kind}-${attachment.target}`"
+            class="ticket-attachment-row"
+          >
+            <select v-model="attachment.kind" class="ticket-attachment-kind" :aria-label="t('attachmentKind')">
+              <option v-for="kind in attachmentKindOptions" :key="kind" :value="kind">
+                {{ kind }}
+              </option>
+            </select>
+            <input
+              v-model.trim="attachment.target"
+              class="ticket-attachment-target"
+              type="text"
+              :placeholder="t('attachmentTarget')"
+            />
+            <input
+              v-model.trim="attachment.label"
+              class="ticket-attachment-label"
+              type="text"
+              :placeholder="t('attachmentLabel')"
+            />
+            <button
+              class="bb-icon-button ticket-attachment-icon"
+              type="button"
+              :aria-label="t('open')"
+              :disabled="!attachmentHref(attachment)"
+              @click="openAttachment(attachment)"
+            >
+              <ExternalLink class="bb-icon-glyph" aria-hidden="true" />
+            </button>
+            <button
+              class="bb-icon-button ticket-attachment-icon"
+              type="button"
+              :aria-label="t('removeAttachment')"
+              @click="removeAttachment(index)"
+            >
+              <Trash2 class="bb-icon-glyph" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        <p v-else class="ticket-attachment-empty">{{ t('noAttachments') }}</p>
+
+        <div class="ticket-detail-attachment-actions">
+          <span v-if="attachmentError" class="ticket-detail-attachment-error">
+            {{ attachmentError }}
+          </span>
+          <button
+            class="ticket-detail-save-attachments"
+            type="button"
+            :disabled="attachmentsSaving || !attachmentsDirty"
+            @click="saveAttachments"
+          >
+            {{ attachmentsSaving ? t('saving') : t('save') }}
+          </button>
+        </div>
       </section>
 
       <div class="ticket-detail-content-grid">

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use super::super::types::*;
+use crate::task_graph::definition::types::*;
 
 // ─── Cycle detection ─────────────────────────────────────────────────────────
 

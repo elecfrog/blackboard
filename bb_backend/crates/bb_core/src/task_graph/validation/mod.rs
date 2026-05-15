@@ -6,13 +6,18 @@
 
 mod config;
 mod cycles;
+mod decode;
 mod pins;
 mod pre_run;
 
 use std::collections::{HashMap, HashSet};
 
-use super::types::*;
+use crate::task_graph::definition::types::*;
 
+pub use decode::{
+    decode_graph_value_at, parse_json_source, prefix_validation_errors, validate_graph_source,
+    validate_graph_value, validate_graph_value_at,
+};
 pub use pre_run::validate_pre_run;
 
 /// Validate a task graph definition against the MVP contract rules.

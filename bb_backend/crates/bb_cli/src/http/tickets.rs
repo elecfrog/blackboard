@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{ApiError, AppState};
 
+const ATTACHMENTS_EXTRA_KEY: &str = "attachments";
+
 #[derive(Debug, Serialize)]
 pub(super) struct TicketsResponse {
     generated_at: String,
@@ -32,7 +34,18 @@ struct HttpTicket {
     file_name: String,
     file_path: String,
     dependencies: Vec<String>,
+    attachments: Vec<HttpTicketAttachment>,
     extra: bb_core::FrontmatterExtra,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct HttpTicketAttachment {
+    kind: String,
+    target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
 }
 
 /// Runtime ticket payload for the web Dashboard. The web app now treats
@@ -75,6 +88,8 @@ pub(super) struct PatchTicketInput {
     assignee: Option<String>,
     #[serde(default)]
     depends_on: Option<Vec<String>>,
+    #[serde(default)]
+    attachments: Option<Vec<HttpTicketAttachment>>,
 }
 
 /// Narrow ticket mutation endpoint used by the kanban UI.
@@ -97,9 +112,10 @@ pub(super) async fn patch_ticket(
         && input.lane.is_none()
         && input.assignee.is_none()
         && input.depends_on.is_none()
+        && input.attachments.is_none()
     {
         return Err(ApiError(InboxError::InvalidInput(
-            "patch ticket requires status, lane, assignee, or depends_on".to_string(),
+            "patch ticket requires status, lane, assignee, depends_on, or attachments".to_string(),
         )));
     }
 
@@ -109,11 +125,16 @@ pub(super) async fn patch_ticket(
         Some(deps) => Some(validate_dependency_patch(&board, &id, deps)?),
         None => None,
     };
+    let attachment_patch = match input.attachments {
+        Some(attachments) => Some(validate_attachment_patch(attachments)?),
+        None => None,
+    };
 
     let frontmatter = if input.status.is_some()
         || input.lane.is_some()
         || input.assignee.is_some()
         || dependency_patch.is_some()
+        || attachment_patch.is_some()
     {
         let mut patch = TicketFrontmatterPatch {
             status: input.status,
@@ -139,6 +160,20 @@ pub(super) async fn patch_ticket(
                 patch.remove.push("depends_on".to_string());
             } else {
                 patch.extra.insert("depends_on".to_string(), deps.join(" "));
+            }
+        }
+        if let Some(attachments) = attachment_patch {
+            if attachments.is_empty() {
+                patch.remove.push(ATTACHMENTS_EXTRA_KEY.to_string());
+            } else {
+                let serialized = serde_json::to_string(&attachments).map_err(|err| {
+                    ApiError(InboxError::InvalidInput(format!(
+                        "attachments could not be serialized: {err}"
+                    )))
+                })?;
+                patch
+                    .extra
+                    .insert(ATTACHMENTS_EXTRA_KEY.to_string(), serialized);
             }
         }
         Some(patch)
@@ -207,6 +242,95 @@ fn validate_dependency_patch(
     Ok(normalized)
 }
 
+fn validate_attachment_patch(
+    attachments: Vec<HttpTicketAttachment>,
+) -> Result<Vec<HttpTicketAttachment>, InboxError> {
+    let mut normalized = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    for attachment in attachments {
+        let kind = normalize_attachment_kind(&attachment.kind)?;
+        let target = normalize_attachment_target(&kind, &attachment.target)?;
+        let label = normalize_optional_attachment_text("attachment label", attachment.label, 160)?;
+        let description = normalize_optional_attachment_text(
+            "attachment description",
+            attachment.description,
+            500,
+        )?;
+        let key = format!("{kind}\u{0}{target}");
+        if !seen.insert(key) {
+            continue;
+        }
+        normalized.push(HttpTicketAttachment {
+            kind,
+            target,
+            label,
+            description,
+        });
+    }
+
+    Ok(normalized)
+}
+
+fn normalize_attachment_kind(kind: &str) -> Result<String, InboxError> {
+    let normalized = kind.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Err(InboxError::InvalidInput(
+            "attachment kind cannot be empty".to_string(),
+        ));
+    }
+    if normalized.len() > 48
+        || !normalized
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
+    {
+        return Err(InboxError::InvalidInput(
+            "attachment kind must be ascii lower-case, digits, hyphen, or underscore".to_string(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn normalize_attachment_target(kind: &str, target: &str) -> Result<String, InboxError> {
+    let normalized = target.trim().replace('\\', "/");
+    if normalized.is_empty() {
+        return Err(InboxError::InvalidInput(
+            "attachment target cannot be empty".to_string(),
+        ));
+    }
+    if normalized.len() > 1024 || normalized.chars().any(|ch| ch == '\0' || ch.is_control()) {
+        return Err(InboxError::InvalidInput(
+            "attachment target is too long or contains control characters".to_string(),
+        ));
+    }
+    if matches!(kind, "wiki" | "file" | "artifact") {
+        if normalized.starts_with('/') || normalized.split('/').any(|part| part == "..") {
+            return Err(InboxError::InvalidInput(format!(
+                "{kind} attachment target must stay relative"
+            )));
+        }
+    }
+    Ok(normalized)
+}
+
+fn normalize_optional_attachment_text(
+    field: &str,
+    value: Option<String>,
+    max_len: usize,
+) -> Result<Option<String>, InboxError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let normalized = value.trim().to_string();
+    if normalized.is_empty() {
+        return Ok(None);
+    }
+    if normalized.len() > max_len || normalized.chars().any(|ch| ch == '\0') {
+        return Err(InboxError::InvalidInput(format!("{field} is invalid")));
+    }
+    Ok(Some(normalized))
+}
+
 fn find_dependency_cycle(dependencies: &BTreeMap<String, Vec<String>>) -> Option<Vec<String>> {
     fn visit(
         id: &str,
@@ -259,6 +383,7 @@ fn build_tickets_response(board: &ProjectBoard) -> Result<TicketsResponse, Inbox
     for entry in index.tickets {
         let id = entry.id.unwrap_or_default();
         let dependencies = extract_dependencies(&entry.extra, &id);
+        let attachments = extract_attachments(&entry.extra);
 
         tickets.push(HttpTicket {
             id,
@@ -274,6 +399,7 @@ fn build_tickets_response(board: &ProjectBoard) -> Result<TicketsResponse, Inbox
             file_name: entry.name,
             file_path: entry.path,
             dependencies,
+            attachments,
             extra: entry.extra,
         });
     }
@@ -315,4 +441,11 @@ fn extract_dependencies(extra: &bb_core::FrontmatterExtra, self_id: &str) -> Vec
         }
     }
     ids.into_iter().collect()
+}
+
+fn extract_attachments(extra: &bb_core::FrontmatterExtra) -> Vec<HttpTicketAttachment> {
+    let Some(value) = extra.get(ATTACHMENTS_EXTRA_KEY) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<Vec<HttpTicketAttachment>>(value).unwrap_or_default()
 }

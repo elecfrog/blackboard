@@ -10,6 +10,11 @@ import {
   X,
 } from 'lucide-vue-next'
 import GraphCanvas, { type GraphCanvasEdge, type GraphCanvasNode } from '@/components/GraphCanvas.vue'
+import TaskGraphNodeShape from '@/components/task-graph/TaskGraphNodeShape.vue'
+import {
+  taskGraphNodeMetaLabel,
+  taskGraphNodeVisualForNode,
+} from '@/components/task-graph/taskGraphNodeVisuals'
 import {
   readAgentSessionEvents,
   watchAgentSessionEvents,
@@ -24,7 +29,6 @@ import {
   nodeHeightForPins,
   type TaskGraphEdge,
   type TaskGraphNode,
-  type TaskGraphNodeRunStatus,
   type TaskGraphOutputArtifact,
   type TaskGraphRunDetail,
   type TaskGraphRunNode,
@@ -50,16 +54,7 @@ const agentSessionEvents = ref<AgentEvent[]>([])
 const agentSessionError = ref('')
 let stopRunEvents: (() => void) | null = null
 let stopAgentSessionEvents: (() => void) | null = null
-
-const nodeStatusColors: Record<TaskGraphNodeRunStatus, string> = {
-  idle: '#94a3b8',
-  queued: '#6366f1',
-  running: '#2563eb',
-  succeeded: '#059669',
-  failed: '#dc2626',
-  skipped: '#78716c',
-  paused: '#d97706',
-}
+const runNodeFooterHeight = 26
 
 const nodeById = computed(() =>
   new Map((run.value?.graph_snapshot.nodes ?? []).map((node) => [node.id, node])),
@@ -85,13 +80,13 @@ const canvasNodes = computed<GraphCanvasNode[]>(() =>
       id: node.id,
       x: node.position?.x ?? 80,
       y: node.position?.y ?? 120,
-      width: 238,
-      height: nodeHeightForPins(node),
+      width: 230,
+      height: Math.max(nodeHeightForPins(node) + runNodeFooterHeight, 64),
       status,
       kind: node.type,
-      color: nodeStatusColors[status],
+      color: taskGraphNodeVisualForNode(node).color,
       label: node.label,
-      meta: node.type === 'loop' ? loopMeta(node) : node.type,
+      meta: taskGraphNodeMetaLabel(node, run.value?.graph_snapshot.inputs ?? []),
       title: node.label,
       pins: nodeToCanvasPins(node),
       classes: [
@@ -127,7 +122,7 @@ const canvasSize = computed(() => {
   const nodes = canvasNodes.value
   if (nodes.length === 0) return { width: 1100, height: 620 }
   return {
-    width: Math.max(1100, Math.max(...nodes.map((node) => node.x + (node.width ?? 238))) + 140),
+    width: Math.max(1100, Math.max(...nodes.map((node) => node.x + (node.width ?? 230))) + 140),
     height: Math.max(620, Math.max(...nodes.map((node) => node.y + (node.height ?? 92))) + 140),
   }
 })
@@ -143,15 +138,6 @@ function semanticHandleLabel(handle?: string) {
 
 function edgeDisplayLabel(edge: TaskGraphEdge) {
   return edge.label || semanticHandleLabel(edge.source_handle) || semanticHandleLabel(edge.target_handle)
-}
-
-function loopMeta(node: TaskGraphNode) {
-  const config = node.config ?? {}
-  const ref = typeof config.max_iterations_ref === 'string' ? config.max_iterations_ref : ''
-  const inputId = ref.match(/^\{\{inputs\.([^}]+)\}\}$/)?.[1]
-  const inputDefault = inputId ? run.value?.graph_snapshot.inputs?.find((input) => input.id === inputId)?.default : undefined
-  const value = inputDefault ?? config.max_iterations ?? ref
-  return value === undefined || value === '' ? t('taskGraphLoopsEmpty') : t('taskGraphLoops', { count: String(value) })
 }
 
 const selectedGraphNode = computed<TaskGraphNode | null>(() =>
@@ -409,7 +395,7 @@ function artifactLabel(artifact?: TaskGraphOutputArtifact) {
 }
 
 function nodeTypeLabel(node?: TaskGraphNode | null) {
-  return node?.type.replace('_', ' ') ?? '-'
+  return node ? taskGraphNodeVisualForNode(node).label : '-'
 }
 </script>
 
@@ -421,6 +407,8 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
           <span>{{ t('taskGraphStarted') }} {{ formatDate(run.started_at ?? run.created_at) }}</span>
           <span>{{ t('update') }} {{ formatDate(run.updated_at) }}</span>
           <span>{{ t('taskGraphDuration') }} {{ elapsedLabel }}</span>
+          <span>{{ t('taskGraphSuperstep') }} {{ run.current_superstep ?? 0 }}</span>
+          <span v-if="run.last_checkpoint_id">{{ t('taskGraphCheckpoint') }} {{ run.last_checkpoint_id }}</span>
           <span v-if="currentNodeSummary" class="task-graph-run-current-node">
             {{ t('taskGraphCurrentNode') }} {{ currentNodeSummary }}
           </span>
@@ -488,21 +476,14 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
             :nodes="canvasNodes"
             :edges="canvasEdges"
             :canvas-size="canvasSize"
-            :default-node-width="238"
-            :default-node-height="48"
+            :default-node-width="230"
+            :default-node-height="64"
             :focus-id="selectedNodeId"
             @node-select="openNode"
             @node-open="openNode"
           >
             <template #node="{ node, width, height }">
-              <g class="task-graph-ue-node" :class="[`task-graph-ue-${node.kind}`]">
-                <rect :width="width" :height="height" rx="6" />
-                <rect class="graph-node-header" :width="width" height="32" rx="6" />
-                <rect class="graph-node-header-bottom" :width="width" y="24" height="8" />
-                <line class="graph-node-divider" x1="0" y1="32" :x2="width" y2="32" />
-                <circle cx="16" cy="16" r="5" :fill="node.color ?? '#64748b'" />
-                <text x="28" y="21" class="graph-node-title">{{ node.label }}</text>
-              </g>
+              <TaskGraphNodeShape :node="node" :width="width" :height="height" />
             </template>
             <template #edge-label="{ edge, midpoint }">
               <text

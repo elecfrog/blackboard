@@ -92,6 +92,9 @@ enum Commands {
         /// Enable watch mode: poll inbox for new notes and trigger graph runs.
         #[arg(long)]
         watch: bool,
+        /// Enable stateless schedule dispatcher mode.
+        #[arg(long)]
+        schedules: bool,
         /// Retry entries whose current content hash already failed once (watch mode).
         #[arg(long)]
         retry_failed: bool,
@@ -184,6 +187,7 @@ async fn main() -> anyhow::Result<()> {
             once,
             dry_run,
             watch,
+            schedules,
             retry_failed,
         } => daemon::run(
             workspace,
@@ -201,6 +205,7 @@ async fn main() -> anyhow::Result<()> {
                 once,
                 dry_run,
                 watch,
+                schedules,
                 retry_failed,
             },
         ),

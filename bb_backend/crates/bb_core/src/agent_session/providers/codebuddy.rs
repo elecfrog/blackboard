@@ -77,12 +77,9 @@ pub(crate) fn read_codebuddy_json_pipe_to_end(
 
         match serde_json::from_str::<Value>(line) {
             Ok(event) => {
-                if let Err(err) = handle_codebuddy_event(
-                    &observer,
-                    &event,
-                    &mut capture,
-                    &mut call_id_to_tool,
-                ) {
+                if let Err(err) =
+                    handle_codebuddy_event(&observer, &event, &mut capture, &mut call_id_to_tool)
+                {
                     log_lines.push(format!("AgentSession persist error: {err}"));
                 }
             }
@@ -260,8 +257,7 @@ fn handle_message_event(
         match string_field(item, "type").as_deref() {
             Some("text") => {
                 if role.as_deref() == Some("assistant") {
-                    if let Some(text) = string_field(item, "text").filter(|text| !text.is_empty())
-                    {
+                    if let Some(text) = string_field(item, "text").filter(|text| !text.is_empty()) {
                         append_text_event(observer, capture, text)?;
                     }
                 }
@@ -589,6 +585,7 @@ mod tests {
                 runtime: "codebuddy".to_string(),
                 agent: "native".to_string(),
                 model: Some("gpt-5".to_string()),
+                variant: None,
                 parent: Some(AgentSessionParent::TaskGraphNode {
                     run_id: "run-1".to_string(),
                     node_id: "node-1".to_string(),

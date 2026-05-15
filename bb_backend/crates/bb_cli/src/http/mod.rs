@@ -206,6 +206,10 @@ pub fn app_with_options(workspace: Workspace, options: HttpServeOptions) -> Rout
         // AgentSession: shared LLM execution/session runtime used by Task Graph
         // LLM nodes first, and later by direct project chat.
         .route(
+            "/api/projects/{project}/agent-sessions",
+            post(agent_sessions::create_agent_session),
+        )
+        .route(
             "/api/projects/{project}/agent-sessions/{session_id}",
             get(agent_sessions::read_agent_session),
         )
@@ -236,6 +240,19 @@ pub fn app_with_options(workspace: Workspace, options: HttpServeOptions) -> Rout
                 .patch(task_graph::tg_patch_graph)
                 .delete(task_graph::tg_delete_graph),
         )
+        // Task Graph Schedules: local stateless schedule triggers
+        .route(
+            "/api/projects/{project}/task-graph-schedules",
+            get(task_graph::tg_list_schedules).post(task_graph::tg_create_schedule),
+        )
+        .route(
+            "/api/projects/{project}/task-graph-schedules/{schedule_id}",
+            patch(task_graph::tg_patch_schedule).delete(task_graph::tg_delete_schedule),
+        )
+        .route(
+            "/api/projects/{project}/task-graph-schedules/{schedule_id}/run-now",
+            post(task_graph::tg_run_schedule_now),
+        )
         // Task Graph Runs: create, read, resume gate, cancel
         .route(
             "/api/projects/{project}/task-graph-runs",
@@ -248,6 +265,14 @@ pub fn app_with_options(workspace: Workspace, options: HttpServeOptions) -> Rout
         .route(
             "/api/projects/{project}/task-graph-runs/{run_id}/events",
             get(task_graph::tg_run_events),
+        )
+        .route(
+            "/api/projects/{project}/task-graph-runs/{run_id}/event-log",
+            get(task_graph::tg_run_event_log),
+        )
+        .route(
+            "/api/projects/{project}/task-graph-runs/{run_id}/checkpoints",
+            get(task_graph::tg_run_checkpoints),
         )
         .route(
             "/api/projects/{project}/task-graph-runs/{run_id}/gates/{node_id}/resume",
@@ -309,6 +334,7 @@ pub async fn serve(
             bb_core::path_to_string(static_dir)
         );
     }
+    task_graph::spawn_schedule_dispatcher(workspace.clone());
     let router = app_with_options(
         workspace,
         HttpServeOptions {

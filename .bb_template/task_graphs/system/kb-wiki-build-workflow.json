@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "id": "kb-wiki-build-workflow",
+  "scope": "system",
+  "title": "KB Wiki Build Workflow",
+  "description": "调用 OpenCode kb-wiki agent 从代码模块构建完整 Wiki，动态 scout / manifest / writer fan-out 由既有 orchestrator 执行。",
+  "version": 1,
+  "readonly": true,
+  "metadata": {
+    "tags": [
+      "kb",
+      "wiki",
+      "distill"
+    ],
+    "owner": "blackboard",
+    "created_by": "codex"
+  },
+  "inputs": [
+    {
+      "id": "request",
+      "label": "Wiki 需求",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "module-name",
+      "label": "模块名",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "module-root",
+      "label": "模块根目录",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "kb-output-dir",
+      "label": "KB 输出目录",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "extra-source-dirs",
+      "label": "额外源码目录",
+      "type": "array<string>",
+      "default": []
+    },
+    {
+      "id": "language",
+      "label": "文档语言",
+      "type": "string",
+      "default": "zh-CN"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -260.0,
+        "y": 120.0
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "run-wiki-build",
+      "type": "llm",
+      "label": "kb-wiki",
+      "description": "从零构建 Wiki：intake、scout、manifest、writer batches、review。",
+      "position": {
+        "x": 64.0,
+        "y": 120.0
+      },
+      "config": {
+        "runtime": "opencode",
+        "agent": "kb-wiki",
+        "inputs": {
+          "request": "{{inputs.request}}",
+          "module-name": "{{inputs.module-name}}",
+          "module-root": "{{inputs.module-root}}",
+          "kb-output-dir": "{{inputs.kb-output-dir}}",
+          "extra-source-dirs": "{{inputs.extra-source-dirs}}",
+          "language": "{{inputs.language}}"
+        },
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "请按 Wiki Workflow 从零构建完整代码 Wiki。\n\n用户需求：\n{{inputs.request}}\n\nmodule_name: {{inputs.module-name}}\nmodule_root: {{inputs.module-root}}\nkb_output_dir: {{inputs.kb-output-dir}}\nextra_source_dirs: {{inputs.extra-source-dirs}}\nlanguage: {{inputs.language}}\n\n要求：加载 wiki-workflow skill，执行 intake、structure/interfaces/internals/infra scouts、merge-scans、wiki-planner、writer batches、wiki-reviewer；遵守 source anchor 和 9 个模块 H2 契约；最后返回 build status、index.md、写入计数、review WARN/FAIL、QMD 状态。"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "markdown",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 432.0,
+        "y": 120.0
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-start-wiki",
+      "from": "start",
+      "to": "run-wiki-build",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-wiki-end",
+      "from": "run-wiki-build",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0.0,
+      "y": 0.0,
+      "scale": 1.0
+    }
+  }
+}

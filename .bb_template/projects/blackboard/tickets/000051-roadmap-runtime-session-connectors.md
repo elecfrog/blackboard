@@ -3,8 +3,9 @@ id = "000051"
 lane = "bbt"
 title = "Roadmap：Runtime 连接与 AgentSession 维护"
 created_at = "2026-05-13"
-updated_at = "2026-05-13"
+updated_at = "2026-05-15"
 status = "done"
+assignee = "codex"
 +++
 
 # 当前进展
@@ -15,6 +16,12 @@ status = "done"
 - agent 开始执行：Implement CodeBuddy CLI TaskGraph AgentSession runtime path.
 
 - codex 完成阶段工作，handoff 写入 `2026-05-13-codex-codebuddy-cli-taskgraph-agentsession-runtime.md`。
+
+- 2026-05-13：新增 CodeBuddy 作为 TaskGraph AgentSession runtime，支持 CLI path overrides 和 AgentTurnRequest 字段
+- 2026-05-13：实现 CodeBuddy stream-json provider 规范化（status/text/thinking/tool_use/tool_result/usage_update/error/log 事件）
+- 2026-05-13：生成 session-local CodeBuddy MCP config/settings 工件，含 bb MCP 注入、reasoningEffort variant 设置、Windows codebuddy.cmd 解析和 <bb-root> 扩展
+- 2026-05-13：更新 TaskGraph LLM 执行/测试和前端 runtime 下拉验证以支持 codebuddy
+- 2026-05-13：运行 project smoke graph codebuddy-agent-session-smoke-20260513-162752，AgentSession as-20260513-084724-33be1a1a 创建成功，状态 CODEBUDDY_GRAPH_OK
 
 # 记录
 
@@ -34,6 +41,11 @@ status = "done"
 - 验证：git diff --check on touched CodeBuddy/TaskGraph/frontend files: passed; only CRLF normalization warnings.
 - 验证：Real CodeBuddy direct captures: pure text, PowerShell tool call, and bb MCP list_projects all succeeded before TaskGraph smoke.
 - 验证：cargo build -p bb_cli default target was blocked by running bb.exe lock; rebuilt with --target-dir bb_backend/target-codebuddy-smoke and removed that temporary target after smoke.
+
+- 来源：inbox/2026-05-13-codex-codebuddy-cli-taskgraph-agentsession-runtime.md
+- 相关位置：bb_backend/crates/bb_core/src/agent_session/providers/codebuddy.rs
+- 相关位置：bb_backend/crates/bb_core/src/task_graph/llm.rs
+- 相关位置：bb_backend/crates/bb_core/src/task_graph/node_exec/runtime_nodes/llm_node.rs
 
 # 下一步
 

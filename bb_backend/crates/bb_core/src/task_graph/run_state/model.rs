@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::agent_session::AgentSessionSummary;
 
+use super::super::pregel::{PregelCheckpoint, PregelCheckpointConfig, PregelCheckpointMetadata};
 use super::super::types::{TaskGraphDefinition, TaskGraphScope};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -22,6 +24,17 @@ pub enum RunStatus {
     Running,
     Paused,
     Succeeded,
+    Failed,
+    Cancelled,
+}
+
+/// Superstep-level checkpoint status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SuperstepStatus {
+    Running,
+    Succeeded,
+    Paused,
     Failed,
     Cancelled,
 }
@@ -68,7 +81,65 @@ pub struct RunContext {
     pub completed_branches: std::collections::HashMap<String, Vec<String>>,
 }
 
-/// Interpreter-private continuation frame for a running loop body.
+/// A pending write produced by a node during a superstep.
+///
+/// MVP stores node outputs separately today; this type is the execution-kernel
+/// bridge for #000061 to promote outputs into typed channel writes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingWrite {
+    pub source_node_id: String,
+    pub target: String,
+    pub value: serde_json::Value,
+}
+
+/// Checkpoint saved at a superstep barrier.
+///
+/// It captures the graph-visible state after all node outcomes in a superstep
+/// have been reduced, but before UI/notification events are emitted.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SuperstepCheckpoint {
+    pub id: String,
+    pub run_id: String,
+    pub superstep: u64,
+    pub status: SuperstepStatus,
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<String>,
+    pub cursor_before: Vec<String>,
+    pub cursor_after: Vec<String>,
+    pub ready_nodes: Vec<String>,
+    pub waiting_nodes: Vec<String>,
+    pub node_statuses: BTreeMap<String, NodeRunStatus>,
+    pub context: RunContext,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending_writes: Vec<PendingWrite>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pregel_checkpoint: Option<PregelCheckpoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pregel_parent_config: Option<PregelCheckpointConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pregel_checkpoint_metadata: Option<PregelCheckpointMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// Durable run event emitted after the checkpoint for the same superstep.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunEvent {
+    pub id: String,
+    pub seq: u64,
+    pub run_id: String,
+    pub superstep: u64,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub payload: serde_json::Value,
+    pub created_at: String,
+}
+
+/// Runner-private continuation frame for a running loop body.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoopFrame {
     pub loop_node_id: String,
@@ -190,6 +261,12 @@ pub struct TaskGraphRun {
     pub updated_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<String>,
+    #[serde(default)]
+    pub current_superstep: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_checkpoint_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pregel_checkpoint: Option<PregelCheckpoint>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paused: Option<RunPaused>,
     pub cursor: Vec<String>,
@@ -197,6 +274,9 @@ pub struct TaskGraphRun {
     /// If this run is a child run invoked by a sub_graph node, this is the parent run ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_run_id: Option<String>,
+    /// LangGraph-style checkpoint namespace for nested subgraph runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_ns: Option<String>,
 }
 
 /// Aggregated run detail (run.json + graph.snapshot.json + nodes/*).
@@ -221,4 +301,10 @@ pub struct TaskGraphRunSummary {
     pub updated_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<String>,
+    #[serde(default)]
+    pub current_superstep: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_checkpoint_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_ns: Option<String>,
 }

@@ -4,8 +4,10 @@ import { NotifyPlugin, type NotificationInstance } from 'tdesign-vue-next/es/not
 import {
   AlertTriangle,
   CheckCircle2,
+  ListChecks,
   Play,
   Save,
+  Settings2,
   X,
 } from 'lucide-vue-next'
 import GraphCanvas, {
@@ -17,7 +19,14 @@ import GraphCanvas, {
 } from '@/components/GraphCanvas.vue'
 import TaskGraphNodeInspector from '@/components/task-graph/TaskGraphNodeInspector.vue'
 import TaskGraphNodePalette from '@/components/task-graph/TaskGraphNodePalette.vue'
+import TaskGraphNodeShape from '@/components/task-graph/TaskGraphNodeShape.vue'
 import TaskGraphInputsPanel from '@/components/task-graph/TaskGraphInputsPanel.vue'
+import {
+  taskGraphNodeMetaLabel,
+  taskGraphNodeTypes,
+  taskGraphNodeVisualForNode,
+  type TaskGraphNodeVisual,
+} from '@/components/task-graph/taskGraphNodeVisuals'
 import {
   saveProjectTaskGraph,
   validateTaskGraph,
@@ -34,6 +43,8 @@ import { loadProjectAgents, type ProjectAgentProfile, type McpServerConfig } fro
 import { t } from '@/i18n'
 
 type NodeType = TaskGraphNode['type']
+type EditorConfigPanel = 'inputs' | 'settings' | ''
+type PaletteNodeType = TaskGraphNodeVisual
 
 const props = defineProps<{
   project: string
@@ -47,17 +58,7 @@ const emit = defineEmits<{
   'navigate-graph': [graphId: string]
 }>()
 
-const nodeTypes: Array<{ type: TaskGraphNode['type']; label: string; color: string }> = [
-  { type: 'start', label: t('taskGraphNodeTypeStart'), color: '#64748b' },
-  { type: 'llm', label: t('taskGraphNodeTypeLlm'), color: '#2563eb' },
-  { type: 'sub_graph', label: t('taskGraphNodeTypeSubPipeline'), color: '#7c3aed' },
-  { type: 'branch', label: t('taskGraphNodeTypeBranch'), color: '#9333ea' },
-  { type: 'loop', label: t('taskGraphNodeTypeLoop'), color: '#0891b2' },
-  { type: 'human_gate', label: t('taskGraphNodeTypeHumanGate'), color: '#d97706' },
-  { type: 'end', label: t('taskGraphNodeTypeEnd'), color: '#059669' },
-]
-
-const nodeColors = Object.fromEntries(nodeTypes.map((item) => [item.type, item.color]))
+const nodeTypes = taskGraphNodeTypes()
 
 interface BranchRule {
   id: string
@@ -85,6 +86,7 @@ const localGraph = ref<TaskGraphDefinition>(cloneGraph(props.graph))
 const originalVersion = ref(props.graph.version)
 const selectedNodeId = ref('')
 const selectedEdgeId = ref('')
+const activeConfigPanel = ref<EditorConfigPanel>('')
 const saving = ref(false)
 let saveNotification: Promise<NotificationInstance> | null = null
 
@@ -134,12 +136,12 @@ const canvasNodes = computed<GraphCanvasNode[]>(() =>
     x: node.position?.x ?? 80,
     y: node.position?.y ?? 120,
     width: 230,
-    height: nodeHeightForPins(node),
+    height: Math.max(nodeHeightForPins(node), 64),
     status: node.type,
     kind: node.type,
-    color: nodeColors[node.type] ?? '#64748b',
+    color: taskGraphNodeVisualForNode(node).color,
     label: node.label,
-    meta: node.type === 'loop' ? loopMeta(node) : node.type,
+    meta: taskGraphNodeMetaLabel(node, graphInputs.value),
     title: node.label,
     connectable: !isReadonly.value,
     pins: nodeToCanvasPins(node),
@@ -186,6 +188,16 @@ const selectedNode = computed(() =>
 
 const graphInputs = computed(() => localGraph.value.inputs ?? [])
 const graphInputIds = computed(() => graphInputs.value.map((input) => input.id))
+const graphInputSummary = computed(() =>
+  graphInputs.value.length === 0
+    ? t('taskGraphEditorNoInputs')
+    : t('taskGraphEditorInputsCount', { count: graphInputs.value.length }),
+)
+const graphSettingsSummary = computed(() =>
+  (localGraph.value.title || localGraph.value.description)
+    ? t('taskGraphEditorSettingsConfigured')
+    : t('taskGraphEditorSettingsMissing'),
+)
 
 const selectedEdge = computed(() =>
   localGraph.value.edges.find((edge) => edge.id === selectedEdgeId.value) ?? null,
@@ -215,6 +227,7 @@ watch(
     originalVersion.value = graph.version
     selectedNodeId.value = ''
     selectedEdgeId.value = ''
+    activeConfigPanel.value = ''
     if (!previousGraph || graph.scope !== previousGraph.scope || graph.id !== previousGraph.id) {
       closeSaveNotification()
     }
@@ -276,13 +289,13 @@ function edgeDisplayLabel(edge: TaskGraphEdge) {
   return edge.label || semanticHandleLabel(edge.source_handle) || semanticHandleLabel(edge.target_handle)
 }
 
-function loopMeta(node: TaskGraphNode) {
-  const config = node.config ?? {}
-  const ref = typeof config.max_iterations_ref === 'string' ? config.max_iterations_ref : ''
-  const inputId = ref.match(/^\{\{inputs\.([^}]+)\}\}$/)?.[1]
-  const inputDefault = inputId ? graphInputs.value.find((input) => input.id === inputId)?.default : undefined
-  const value = inputDefault ?? config.max_iterations ?? ref
-  return value === undefined || value === '' ? t('taskGraphLoopsEmpty') : t('taskGraphLoops', { count: String(value) })
+function toggleConfigPanel(panel: EditorConfigPanel) {
+  const nextPanel = activeConfigPanel.value === panel ? '' : panel
+  activeConfigPanel.value = nextPanel
+  if (nextPanel) {
+    selectedNodeId.value = ''
+    selectedEdgeId.value = ''
+  }
 }
 
 function inputValue(event: Event) {
@@ -323,18 +336,31 @@ function snapEditorPosition(position: { x: number; y: number }) {
   }
 }
 
-function defaultNode(type: NodeType, position?: { x: number; y: number }): TaskGraphNode {
+function withPalettePreset(node: TaskGraphNode, item?: PaletteNodeType): TaskGraphNode {
+  if (!item) return node
+  return {
+    ...node,
+    label: item.label,
+    config: {
+      ...node.config,
+      ...(item.defaultConfig ?? {}),
+    },
+  }
+}
+
+function defaultNode(type: NodeType, position?: { x: number; y: number }, item?: PaletteNodeType): TaskGraphNode {
   const id = uniqueNodeId(type)
+  const visual = item ?? nodeTypes.find((nodeType) => nodeType.type === type)
   const base = {
     id,
     type,
-    label: nodeTypes.find((nodeType) => nodeType.type === type)?.label ?? type,
+    label: visual?.label ?? type,
     position: snapEditorPosition(position ?? { x: 120 + localGraph.value.nodes.length * 42, y: 130 + localGraph.value.nodes.length * 26 }),
   }
-  if (type === 'start') return { ...base, config: {} }
-  if (type === 'end') return { ...base, config: { result: 'succeeded' } }
+  if (type === 'start') return withPalettePreset({ ...base, config: {} }, item)
+  if (type === 'end') return withPalettePreset({ ...base, config: { result: 'succeeded' } }, item)
   if (type === 'llm') {
-    return {
+    return withPalettePreset({
       ...base,
       config: {
         run_as: 'llm',
@@ -348,19 +374,35 @@ function defaultNode(type: NodeType, position?: { x: number; y: number }): TaskG
         custom_args: [],
         output: { artifact_type: 'markdown', required: true },
       },
-    }
+    }, item)
+  }
+  if (type === 'shell') {
+    return withPalettePreset({
+      ...base,
+      label: item?.label ?? t('taskGraphNodeTypeShell'),
+      config: {
+        cwd: '.',
+        command: 'git',
+        args: ['status', '--short'],
+        env: {},
+        timeout_ms: 600000,
+        permission: 'read_only',
+        expected_exit_codes: [0],
+        capture: { max_bytes: 1048576, strip_ansi: true },
+      },
+    }, item)
   }
   if (type === 'sub_graph') {
-    return {
+    return withPalettePreset({
       ...base,
-      label: t('taskGraphNodeTypeSubPipeline'),
+      label: item?.label ?? t('taskGraphNodeTypeSubPipeline'),
       config: { graph_id: '', graph_scope: 'project', input_bindings: {} },
-    }
+    }, item)
   }
   if (type === 'human_gate') {
-    return {
+    return withPalettePreset({
       ...base,
-      label: t('taskGraphNodeTypeHumanGate'),
+      label: item?.label ?? t('taskGraphNodeTypeHumanGate'),
       config: {
         title: t('taskGraphNodeTypeHumanGate'),
         instructions: '',
@@ -369,12 +411,12 @@ function defaultNode(type: NodeType, position?: { x: number; y: number }): TaskG
           { id: 'reject', label: t('taskGraphHumanGateReject'), result: 'cancel' },
         ],
       },
-    }
+    }, item)
   }
   if (type === 'branch') {
-    return {
+    return withPalettePreset({
       ...base,
-      label: t('taskGraphNodeTypeBranch'),
+      label: item?.label ?? t('taskGraphNodeTypeBranch'),
       config: {
         mode: 'first_match',
         input_ref: '$.nodes.previous.output',
@@ -384,11 +426,11 @@ function defaultNode(type: NodeType, position?: { x: number; y: number }): TaskG
         ],
         default_rule_id: 'fallback',
       },
-    }
+    }, item)
   }
-  return {
+  return withPalettePreset({
     ...base,
-    label: t('taskGraphNodeTypeLoop'),
+    label: item?.label ?? t('taskGraphNodeTypeLoop'),
     config: {
       max_iterations: 3,
       max_iterations_ref: '',
@@ -397,12 +439,12 @@ function defaultNode(type: NodeType, position?: { x: number; y: number }): TaskG
       body_exit: '',
       on_max_iterations: 'fail',
     },
-  }
+  }, item)
 }
 
-function addNode(type: NodeType, position?: { x: number; y: number }) {
+function addNode(item: PaletteNodeType, position?: { x: number; y: number }) {
   if (isReadonly.value) return
-  const node = defaultNode(type, position)
+  const node = defaultNode(item.type, position, item)
   localGraph.value = {
     ...localGraph.value,
     nodes: [...localGraph.value.nodes, node],
@@ -411,14 +453,21 @@ function addNode(type: NodeType, position?: { x: number; y: number }) {
   selectedEdgeId.value = ''
 }
 
-function beginPaletteDrag(type: NodeType, event: DragEvent) {
-  event.dataTransfer?.setData('application/x-task-graph-node', type)
+function beginPaletteDrag(item: PaletteNodeType, event: DragEvent) {
+  event.dataTransfer?.setData('application/x-task-graph-node', JSON.stringify(item))
   if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
 }
 
 function dropPaletteNode(event: DragEvent) {
   const raw = event.dataTransfer?.getData('application/x-task-graph-node')
-  if (!raw || !nodeTypes.some((item) => item.type === raw)) return
+  if (!raw) return
+  let item: PaletteNodeType | undefined
+  try {
+    item = JSON.parse(raw) as PaletteNodeType
+  } catch {
+    item = nodeTypes.find((entry) => entry.type === raw)
+  }
+  if (!item || !nodeTypes.some((entry) => entry.key === item?.key || (entry.type === item?.type && entry.role === item?.role))) return
   event.preventDefault()
   const rect = canvasWrap.value?.getBoundingClientRect()
   const size = canvasSize.value
@@ -432,7 +481,7 @@ function dropPaletteNode(event: DragEvent) {
     x: Math.max(20, (point.x - canvasViewport.value.x) / canvasViewport.value.scale - 115),
     y: Math.max(20, (point.y - canvasViewport.value.y) / canvasViewport.value.scale - 41),
   }
-  addNode(raw as NodeType, snapEditorPosition(position))
+  addNode(item, snapEditorPosition(position))
 }
 
 function updateNode(id: string, updater: (node: TaskGraphNode) => TaskGraphNode) {
@@ -1068,6 +1117,7 @@ function handleNodeMove(move: GraphCanvasNodeMove) {
 }
 
 function handleNodeSelect(id: string) {
+  activeConfigPanel.value = ''
   selectedNodeId.value = id
   selectedEdgeId.value = ''
   focusCanvasWrap()
@@ -1261,28 +1311,70 @@ function cancelClose() {
 
     <div class="task-graph-editor-grid">
       <main class="task-graph-editor-main">
-        <section class="task-graph-editor-top-band">
-          <TaskGraphInputsPanel
-            :inputs="graphInputs"
-            :readonly="isReadonly"
-            @add="addGraphInput"
-            @remove="removeGraphInput"
-            @update="updateGraphInput"
-            @type-change="updateGraphInputType"
-          />
-
-          <section class="task-graph-settings">
-            <h4>{{ t('taskGraphSettings') }}</h4>
-            <label>
-              <span>{{ t('label') }}</span>
-              <input :value="localGraph.title" @input="localGraph = { ...localGraph, title: inputValue($event) }" />
-            </label>
-            <label>
-              <span>{{ t('description') }}</span>
-              <textarea :value="localGraph.description ?? ''" @input="localGraph = { ...localGraph, description: inputValue($event) }" />
-            </label>
-          </section>
+        <section class="task-graph-editor-summary-strip">
+          <button
+            type="button"
+            :class="['task-graph-editor-summary-chip', { active: activeConfigPanel === 'inputs' }]"
+            @click="toggleConfigPanel('inputs')"
+          >
+            <ListChecks aria-hidden="true" />
+            <span>
+              <strong>{{ t('taskGraphInputs') }}</strong>
+              <small>{{ graphInputSummary }}</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            :class="['task-graph-editor-summary-chip', { active: activeConfigPanel === 'settings' }]"
+            @click="toggleConfigPanel('settings')"
+          >
+            <Settings2 aria-hidden="true" />
+            <span>
+              <strong>{{ t('taskGraphSettings') }}</strong>
+              <small>{{ graphSettingsSummary }}</small>
+            </span>
+          </button>
+          <button
+            v-if="activeConfigPanel"
+            type="button"
+            class="task-graph-editor-summary-close"
+            @click="activeConfigPanel = ''"
+          >
+            <X aria-hidden="true" />
+            <span>{{ t('taskGraphEditorCloseConfig') }}</span>
+          </button>
         </section>
+
+        <Transition name="task-graph-config-panel">
+          <section
+            v-if="activeConfigPanel"
+            class="task-graph-editor-config-panel"
+            :class="`task-graph-editor-config-panel-${activeConfigPanel}`"
+          >
+            <TaskGraphInputsPanel
+              v-if="activeConfigPanel === 'inputs'"
+              :inputs="graphInputs"
+              :readonly="isReadonly"
+              layout="drawer"
+              @add="addGraphInput"
+              @remove="removeGraphInput"
+              @update="updateGraphInput"
+              @type-change="updateGraphInputType"
+            />
+
+            <section v-else class="task-graph-settings">
+              <h4>{{ t('taskGraphSettings') }}</h4>
+              <label>
+                <span>{{ t('label') }}</span>
+                <input :value="localGraph.title" @input="localGraph = { ...localGraph, title: inputValue($event) }" />
+              </label>
+              <label>
+                <span>{{ t('description') }}</span>
+                <textarea :value="localGraph.description ?? ''" @input="localGraph = { ...localGraph, description: inputValue($event) }" />
+              </label>
+            </section>
+          </section>
+        </Transition>
 
         <div
           ref="canvasWrap"
@@ -1317,14 +1409,7 @@ function cancelClose() {
             @edge-select="handleEdgeSelect"
           >
             <template #node="{ node, width, height }">
-              <g class="task-graph-ue-node" :class="[`task-graph-ue-${node.kind}`]">
-                <rect :width="width" :height="height" rx="6" />
-                <rect class="graph-node-header" :width="width" height="32" rx="6" />
-                <rect class="graph-node-header-bottom" :width="width" y="24" height="8" />
-                <line class="graph-node-divider" x1="0" y1="32" :x2="width" y2="32" />
-                <circle cx="16" cy="16" r="5" :fill="node.color ?? '#64748b'" />
-                <text x="28" y="21" class="graph-node-title">{{ node.label }}</text>
-              </g>
+              <TaskGraphNodeShape :node="node" :width="width" :height="height" />
             </template>
             <template #edge-label="{ edge, midpoint }">
               <text
@@ -1360,8 +1445,8 @@ function cancelClose() {
             </section>
           </div>
 
-<TaskGraphNodeInspector
-            v-if="selectedNode"
+          <TaskGraphNodeInspector
+            v-if="selectedNode && !activeConfigPanel"
             :node="selectedNode"
             :readonly="isReadonly"
             :project-agents="projectAgents"
@@ -1381,6 +1466,7 @@ function cancelClose() {
             @update-prompt-mode="updatePromptMode"
             @save-prompt-file="savePromptFile"
             @remove="removeSelectedNode"
+            @close="selectedNodeId = ''"
             @update-label="updateSelectedLabel"
             @open-sub-graph="(id) => emit('navigate-graph', id)"
           />
@@ -1425,10 +1511,13 @@ function cancelClose() {
 <style scoped>
 .task-graph-editor {
   display: grid;
-  align-content: start;
-  gap: 12px;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
+  gap: 0;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .task-graph-editor-head {
@@ -1437,7 +1526,8 @@ function cancelClose() {
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
-  padding: 10px 12px;
+  min-height: 58px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--bb-border-warm);
 }
 
@@ -1480,9 +1570,11 @@ function cancelClose() {
 .task-graph-editor-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
+  gap: 0;
   min-height: 0;
+  height: 100%;
   padding: 0 12px 12px;
+  overflow: hidden;
 }
 
 .task-graph-inspector {
@@ -1579,22 +1671,138 @@ function cancelClose() {
 
 .task-graph-editor-main {
   display: grid;
-  gap: 12px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
   position: relative;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
-.task-graph-editor-top-band {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 12px;
+.task-graph-editor-summary-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+  min-height: 44px;
+  padding: 7px 0 1px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.task-graph-editor-summary-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.task-graph-editor-summary-chip,
+.task-graph-editor-summary-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--bb-border-warm-medium);
+  border-radius: 8px;
+  background: var(--bb-surface);
+  color: var(--bb-text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.task-graph-editor-summary-chip {
+  flex: 0 0 auto;
+  justify-content: start;
+  min-width: 154px;
+}
+
+.task-graph-editor-summary-chip.active {
+  border-color: color-mix(in srgb, var(--bb-accent) 36%, var(--bb-hairline));
+  background: var(--bb-accent-soft);
+  color: var(--bb-accent);
+}
+
+.task-graph-editor-summary-chip svg,
+.task-graph-editor-summary-close svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+}
+
+.task-graph-editor-summary-chip > span {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+  text-align: left;
+}
+
+.task-graph-editor-summary-chip strong,
+.task-graph-editor-summary-close span {
+  overflow: hidden;
+  color: currentColor;
+  font-size: 12px;
+  font-weight: 820;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-graph-editor-summary-chip small {
+  overflow: hidden;
+  color: var(--bb-text-muted);
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-graph-editor-summary-chip.active small {
+  color: color-mix(in srgb, var(--bb-accent) 68%, var(--bb-text-muted));
+}
+
+.task-graph-editor-summary-close {
+  margin-left: auto;
+}
+
+.task-graph-editor-config-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  left: auto;
+  z-index: 4;
+  width: min(520px, calc(100% - 250px));
+  max-height: none;
+  overflow: auto;
+  border: 1px solid var(--bb-hairline);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bb-surface) 96%, transparent);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(8px);
+}
+
+.task-graph-config-panel-enter-active,
+.task-graph-config-panel-leave-active {
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.task-graph-config-panel-enter-from,
+.task-graph-config-panel-leave-to {
+  opacity: 0;
+  transform: translateX(8px);
 }
 
 .task-graph-editor-canvas-wrap {
   position: relative;
-  min-height: 560px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--bb-hairline);
+  border-radius: 8px;
+  background: var(--bb-surface);
 }
 
 .task-graph-editor-canvas-wrap:focus {
@@ -1607,28 +1815,15 @@ function cancelClose() {
 }
 
 .task-graph-editor-canvas {
-  min-height: 560px;
+  min-height: 0;
+  height: 100%;
 }
 
 .task-graph-editor-canvas :deep(svg) {
   width: 100%;
   min-width: 0;
-  height: clamp(420px, 58vh, 680px);
-}
-
-.task-graph-editor-canvas :deep(.graph-node-header) {
-  fill: var(--graph-status-color, var(--bb-text-muted));
-  opacity: 0.15;
-}
-
-.task-graph-editor-canvas :deep(.graph-node-header-bottom) {
-  fill: var(--graph-status-color, var(--bb-text-muted));
-  opacity: 0.15;
-}
-
-.task-graph-editor-canvas :deep(.graph-node-divider) {
-  stroke: var(--bb-hairline);
-  stroke-width: 1;
+  height: 100%;
+  min-height: 0;
 }
 
 .task-graph-editor-canvas :deep(.graph-edge.invalid > path) {
@@ -1658,7 +1853,7 @@ function cancelClose() {
   z-index: 2;
   display: grid;
   gap: 10px;
-  width: 190px;
+  width: 214px;
   pointer-events: none;
 }
 
@@ -1669,11 +1864,14 @@ function cancelClose() {
 .task-graph-editor-node-overlay {
   position: absolute;
   right: 12px;
+  top: 12px;
   bottom: 12px;
   z-index: 2;
-  width: 320px;
-  max-height: calc(100% - 24px);
+  width: 336px;
+  max-height: none;
   overflow: auto;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(8px);
 }
 
 .task-graph-node-card header {
@@ -1939,12 +2137,21 @@ function cancelClose() {
     grid-template-columns: 1fr;
   }
 
-  .task-graph-editor-top-band,
+  .task-graph-editor-config-panel,
   .task-graph-editor-node-overlay {
-    grid-template-columns: 1fr;
-    position: static;
-    width: auto;
-    max-height: none;
+    width: min(520px, calc(100% - 24px));
+  }
+
+  .task-graph-editor-config-panel {
+    left: 12px;
+    right: 12px;
+    max-height: min(420px, calc(100% - 76px));
+  }
+
+  .task-graph-editor-node-overlay {
+    top: auto;
+    left: 12px;
+    max-height: min(420px, calc(100% - 24px));
   }
 }
 

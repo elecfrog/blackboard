@@ -14,6 +14,7 @@ mod fork_join;
 mod lifecycle;
 mod model;
 mod node_io;
+mod superstep;
 
 pub use context::{pop_loop_frame, push_loop_frame, record_branch_decision, record_loop_iteration};
 pub use fork_join::{
@@ -27,6 +28,11 @@ pub use model::*;
 pub use node_io::{
     append_node_log, get_node_output, load_all_node_outputs, set_node_output, update_node_log_tail,
     update_node_state, write_artifact,
+};
+pub use superstep::{
+    append_run_event, clear_pending_pregel_writes, list_run_events, list_superstep_checkpoints,
+    read_latest_superstep_checkpoint, read_pending_pregel_writes, read_pregel_checkpoint_tuple,
+    write_pending_pregel_writes, write_superstep_checkpoint,
 };
 
 // ─── Path helpers ────────────────────────────────────────────────────────────
@@ -50,6 +56,10 @@ fn snapshot_path(dir: &Path) -> PathBuf {
     dir.join("graph.snapshot.json")
 }
 
+fn compiled_snapshot_path(dir: &Path) -> PathBuf {
+    dir.join("graph.compiled.json")
+}
+
 fn node_state_path(dir: &Path, node_id: &str) -> PathBuf {
     dir.join("nodes").join(format!("{}.json", node_id))
 }
@@ -60,6 +70,18 @@ fn node_log_path(dir: &Path, node_id: &str) -> PathBuf {
 
 fn artifacts_dir(dir: &Path) -> PathBuf {
     dir.join("artifacts")
+}
+
+fn checkpoints_dir(dir: &Path) -> PathBuf {
+    dir.join("checkpoints")
+}
+
+fn run_events_path(dir: &Path) -> PathBuf {
+    dir.join("events.jsonl")
+}
+
+fn pending_pregel_writes_path(dir: &Path) -> PathBuf {
+    dir.join("pending_pregel_writes.json")
 }
 
 fn node_output_path(dir: &Path, node_id: &str) -> PathBuf {

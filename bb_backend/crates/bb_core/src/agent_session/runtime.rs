@@ -26,11 +26,14 @@ use super::AgentSessionError;
 #[derive(Debug, Clone)]
 pub struct AgentTurnRequest {
     pub workspace_root: PathBuf,
+    pub execution_root: PathBuf,
     pub project: String,
     pub session_id: String,
     pub runtime: String,
     pub agent: String,
     pub model: Option<String>,
+    pub variant: Option<String>,
+    pub continue_provider_session_id: Option<String>,
     pub prompt: String,
     pub codex_path: String,
     pub codex_config_args: Vec<String>,
@@ -90,13 +93,29 @@ where
     let start = Instant::now();
     let mut cmd = Command::new(&request.opencode_path);
     cmd.arg("run").arg("--format").arg("json");
-    if request.agent != "native" {
+    cmd.arg("--thinking");
+    if let Some(session_id) = request
+        .continue_provider_session_id
+        .as_ref()
+        .filter(|session_id| !session_id.is_empty())
+    {
+        cmd.arg("--session").arg(session_id);
+    }
+    if request.agent != "native" && request.agent != "opencode" {
         cmd.arg("--agent").arg(&request.agent);
     }
     if let Some(model) = request.model.as_ref().filter(|model| !model.is_empty()) {
         cmd.arg("--model").arg(model);
     }
-    cmd.arg("--dir").arg(&request.workspace_root);
+    if let Some(variant) = request
+        .variant
+        .as_ref()
+        .filter(|variant| !variant.is_empty())
+    {
+        cmd.arg("--variant").arg(variant);
+    }
+    cmd.current_dir(&request.execution_root);
+    cmd.arg("--dir").arg(&request.execution_root);
     cmd.arg("--dangerously-skip-permissions");
     cmd.arg("--title").arg(format!(
         "as-{}",
@@ -112,6 +131,8 @@ where
     cmd.env("BB_DAEMON_PROJECT", &request.project);
     cmd.env("BB_DAEMON_AGENT", &request.agent);
     cmd.env("BB_AGENT_SESSION", &request.session_id);
+    cmd.env("BB_WORKSPACE_ROOT", &request.workspace_root);
+    cmd.env("BB_PROJECT_ROOT", &request.execution_root);
     if let Some(config) = request.opencode_config_content.as_ref() {
         cmd.env("OPENCODE_CONFIG_CONTENT", config);
     }
@@ -282,7 +303,8 @@ where
     for config_arg in &request.codex_config_args {
         cmd.arg("--config").arg(config_arg);
     }
-    cmd.arg("-C").arg(&request.workspace_root);
+    cmd.current_dir(&request.execution_root);
+    cmd.arg("-C").arg(&request.execution_root);
     cmd.arg("--json");
     cmd.arg("--dangerously-bypass-approvals-and-sandbox");
     cmd.arg("--ephemeral");
@@ -297,6 +319,8 @@ where
     cmd.env("BB_DAEMON_PROJECT", &request.project);
     cmd.env("BB_DAEMON_AGENT", &request.agent);
     cmd.env("BB_AGENT_SESSION", &request.session_id);
+    cmd.env("BB_WORKSPACE_ROOT", &request.workspace_root);
+    cmd.env("BB_PROJECT_ROOT", &request.execution_root);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
@@ -459,16 +483,14 @@ where
     let mcp_config_path = write_codebuddy_mcp_config(&request)?;
     let codebuddy_program = resolve_spawn_program(&request.codebuddy_path);
     let mut cmd = Command::new(&codebuddy_program);
-    cmd.current_dir(&request.workspace_root);
+    cmd.current_dir(&request.execution_root);
     cmd.arg("-p")
         .arg("--output-format")
         .arg("stream-json")
         .arg("--verbose")
         .arg("-y");
     if let Some(path) = mcp_config_path.as_ref() {
-        cmd.arg("--strict-mcp-config")
-            .arg("--mcp-config")
-            .arg(path);
+        cmd.arg("--strict-mcp-config").arg("--mcp-config").arg(path);
     }
     if let Some(settings) = request
         .codebuddy_settings_json
@@ -493,6 +515,8 @@ where
     cmd.env("BB_DAEMON_PROJECT", &request.project);
     cmd.env("BB_DAEMON_AGENT", &request.agent);
     cmd.env("BB_AGENT_SESSION", &request.session_id);
+    cmd.env("BB_WORKSPACE_ROOT", &request.workspace_root);
+    cmd.env("BB_PROJECT_ROOT", &request.execution_root);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
@@ -756,8 +780,8 @@ fn resolve_spawn_program(program: &str) -> String {
             return program.to_string();
         }
 
-        let path_ext = std::env::var("PATHEXT")
-            .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+        let path_ext =
+            std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
         let candidates = path_ext
             .split(';')
             .map(str::trim)
@@ -799,9 +823,12 @@ fn write_codebuddy_mcp_config(
     else {
         return Ok(None);
     };
-    let artifacts_dir =
-        store::session_dir(&request.workspace_root, &request.project, &request.session_id)
-            .join("artifacts");
+    let artifacts_dir = store::session_dir(
+        &request.workspace_root,
+        &request.project,
+        &request.session_id,
+    )
+    .join("artifacts");
     fs::create_dir_all(&artifacts_dir).map_err(|source| AgentSessionError::Io {
         path: artifacts_dir.clone(),
         source,

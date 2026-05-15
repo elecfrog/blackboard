@@ -916,6 +916,7 @@ mod tests {
                 runtime: "codex".to_string(),
                 agent: "codex".to_string(),
                 model: Some("model-a".to_string()),
+                variant: None,
                 parent: None,
             },
         )
@@ -983,6 +984,7 @@ mod tests {
                 runtime: "codex".to_string(),
                 agent: "codex".to_string(),
                 model: Some("gpt-5.2".to_string()),
+                variant: None,
                 parent: None,
             },
         )
@@ -1032,6 +1034,7 @@ mod tests {
                 runtime: "codex".to_string(),
                 agent: "codex".to_string(),
                 model: Some("gpt-5.2".to_string()),
+                variant: None,
                 parent: None,
             },
         )

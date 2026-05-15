@@ -36,10 +36,12 @@ import type {
   BlackboardTicket,
   BoardSummary,
   LaneDef,
+  TicketAttachment,
   TicketStatus,
   TicketWriteResult,
 } from '@/data/tickets'
 import {
+  attachmentsFromExtra,
   extractProgressText,
   isOpenTicketStatus,
   loadBlackboardData,
@@ -101,6 +103,7 @@ const movingTicketId = ref<string | null>(null)
 const assigneeSavingId = ref<string | null>(null)
 const statusSavingId = ref<string | null>(null)
 const dependencySavingId = ref<string | null>(null)
+const attachmentsSavingId = ref<string | null>(null)
 const boardViewSaving = ref(false)
 const mutationError = ref('')
 const kanbanArea = ref<HTMLElement | null>(null)
@@ -593,6 +596,7 @@ function mergeTicketWriteResult(result: TicketWriteResult) {
             file_path: result.ticket.path || item.file_path,
             extra: result.ticket.extra ?? item.extra,
             dependencies: dependenciesFromExtra(result.ticket.extra ?? item.extra, item.id),
+            attachments: attachmentsFromExtra(result.ticket.extra ?? item.extra),
           }
         : item,
     ),
@@ -671,6 +675,62 @@ async function updateTicketAssignee(ticket: BlackboardTicket, assignee: string) 
         : t('boardViewAssigneeModifyFailed')
   } finally {
     assigneeSavingId.value = null
+  }
+}
+
+function normalizeTicketAttachments(attachments: TicketAttachment[]): TicketAttachment[] {
+  return attachments
+    .map((attachment) => {
+      const kind = attachment.kind.trim().toLowerCase()
+      const target = attachment.target.trim()
+      const label = attachment.label?.trim()
+      const description = attachment.description?.trim()
+      if (!kind || !target) return null
+      return {
+        kind,
+        target,
+        ...(label ? { label } : {}),
+        ...(description ? { description } : {}),
+      }
+    })
+    .filter((attachment): attachment is TicketAttachment => Boolean(attachment))
+}
+
+async function updateTicketAttachments(ticket: BlackboardTicket, attachments: TicketAttachment[]) {
+  if (!payload.value || attachmentsSavingId.value) return
+  const previousPayload = payload.value
+  const normalized = normalizeTicketAttachments(attachments)
+  attachmentsSavingId.value = ticket.id
+  mutationError.value = ''
+  payload.value = {
+    ...payload.value,
+    tickets: payload.value.tickets.map((item) =>
+      item.id === ticket.id
+        ? {
+            ...item,
+            attachments: normalized,
+            updated_at: new Date().toISOString().slice(0, 10),
+            extra: normalized.length
+              ? { ...item.extra, attachments: JSON.stringify(normalized) }
+              : Object.fromEntries(
+                  Object.entries(item.extra).filter(([key]) => key !== 'attachments'),
+                ),
+          }
+        : item,
+    ),
+  }
+
+  try {
+    const result = await patchTicket(props.project, ticket.id, { attachments: normalized })
+    mergeTicketWriteResult(result)
+  } catch (err) {
+    payload.value = previousPayload
+    mutationError.value =
+      err instanceof Error
+        ? `${err.message}。${t('ticketAttachmentsSaveFailed')}`
+        : t('ticketAttachmentsSaveFailed')
+  } finally {
+    attachmentsSavingId.value = null
   }
 }
 
@@ -1030,9 +1090,11 @@ async function updateTicketStatus(ticket: BlackboardTicket, status: string) {
       :agents="projectAgents"
       :assignee-saving="assigneeSavingId === selectedTicket.id"
       :status-saving="statusSavingId === selectedTicket.id"
+      :attachments-saving="attachmentsSavingId === selectedTicket.id"
       @close="closeTicket"
       @assignee-change="updateTicketAssignee(selectedTicket, $event)"
       @status-change="updateTicketStatus(selectedTicket, $event)"
+      @attachments-change="updateTicketAttachments(selectedTicket, $event)"
     />
 
     <LaneManager

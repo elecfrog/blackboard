@@ -1,0 +1,449 @@
+{
+  "schema_version": 1,
+  "id": "kb-workflow-router",
+  "scope": "system",
+  "title": "KB / Wiki 工作流路由",
+  "description": "根据 workflow 输入路由到 Research Workflow、Wiki 从零构建或 Wiki 增量更新子图。",
+  "version": 1,
+  "readonly": true,
+  "metadata": {
+    "tags": [
+      "kb",
+      "wiki",
+      "workflow"
+    ],
+    "owner": "blackboard",
+    "created_by": "codex"
+  },
+  "inputs": [
+    {
+      "id": "workflow",
+      "label": "工作流",
+      "type": "string",
+      "default": "wiki",
+      "description": "research | wiki | wiki-update"
+    },
+    {
+      "id": "request",
+      "label": "原始需求",
+      "type": "string",
+      "default": "",
+      "description": "用户对本次 KB / Wiki 任务的自然语言要求。"
+    },
+    {
+      "id": "module-name",
+      "label": "模块名",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "module-root",
+      "label": "模块根目录",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "kb-output-dir",
+      "label": "KB 输出目录",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "extra-source-dirs",
+      "label": "额外源码目录",
+      "type": "array<string>",
+      "default": []
+    },
+    {
+      "id": "language",
+      "label": "文档语言",
+      "type": "string",
+      "default": "zh-CN"
+    },
+    {
+      "id": "mode",
+      "label": "更新模式",
+      "type": "string",
+      "default": "localchanges",
+      "description": "wiki-update 使用：gitchanges | localchanges"
+    },
+    {
+      "id": "since-ref",
+      "label": "起始 ref",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "until-ref",
+      "label": "结束 ref",
+      "type": "string",
+      "default": "HEAD"
+    },
+    {
+      "id": "local-scope",
+      "label": "本地改动范围",
+      "type": "string",
+      "default": "all"
+    },
+    {
+      "id": "version-policy",
+      "label": "版本策略",
+      "type": "string",
+      "default": "auto"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -360.0,
+        "y": 96.0
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "route-workflow",
+      "type": "branch",
+      "label": "选择 KB / Wiki 子图",
+      "description": "research 跑外部调研，wiki 跑从零构建，wiki-update 跑增量维护。",
+      "position": {
+        "x": -56.0,
+        "y": 96.0
+      },
+      "config": {
+        "mode": "first_match",
+        "input_ref": "$.input.workflow",
+        "rules": [
+          {
+            "id": "research",
+            "label": "Research",
+            "when": {
+              "op": "equals",
+              "value": "research"
+            }
+          },
+          {
+            "id": "wiki-update",
+            "label": "Wiki Update",
+            "when": {
+              "op": "equals",
+              "value": "wiki-update"
+            }
+          },
+          {
+            "id": "wiki",
+            "label": "Wiki",
+            "when": {
+              "op": "always"
+            }
+          }
+        ],
+        "default_rule_id": "wiki"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "rule:research",
+          "label": "Research",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "rule:wiki",
+          "label": "Wiki",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "rule:wiki-update",
+          "label": "Update",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "run-research",
+      "type": "sub_graph",
+      "label": "Research Workflow",
+      "position": {
+        "x": 288.0,
+        "y": -80.0
+      },
+      "config": {
+        "graph_id": "kb-research-workflow",
+        "graph_scope": "system",
+        "input_bindings": {
+          "request": "{{inputs.request}}",
+          "language": "{{inputs.language}}"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "run-wiki",
+      "type": "sub_graph",
+      "label": "Wiki Build Workflow",
+      "position": {
+        "x": 288.0,
+        "y": 96.0
+      },
+      "config": {
+        "graph_id": "kb-wiki-build-workflow",
+        "graph_scope": "system",
+        "input_bindings": {
+          "request": "{{inputs.request}}",
+          "module-name": "{{inputs.module-name}}",
+          "module-root": "{{inputs.module-root}}",
+          "kb-output-dir": "{{inputs.kb-output-dir}}",
+          "extra-source-dirs": "{{inputs.extra-source-dirs}}",
+          "language": "{{inputs.language}}"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "run-wiki-update",
+      "type": "sub_graph",
+      "label": "Wiki Update Workflow",
+      "position": {
+        "x": 288.0,
+        "y": 288.0
+      },
+      "config": {
+        "graph_id": "kb-wiki-update-workflow",
+        "graph_scope": "system",
+        "input_bindings": {
+          "request": "{{inputs.request}}",
+          "mode": "{{inputs.mode}}",
+          "module-name": "{{inputs.module-name}}",
+          "module-root": "{{inputs.module-root}}",
+          "kb-output-dir": "{{inputs.kb-output-dir}}",
+          "since-ref": "{{inputs.since-ref}}",
+          "until-ref": "{{inputs.until-ref}}",
+          "local-scope": "{{inputs.local-scope}}",
+          "language": "{{inputs.language}}",
+          "version-policy": "{{inputs.version-policy}}"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-research",
+      "type": "end",
+      "label": "Research Done",
+      "position": {
+        "x": 656.0,
+        "y": -80.0
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "end-wiki",
+      "type": "end",
+      "label": "Wiki Done",
+      "position": {
+        "x": 656.0,
+        "y": 96.0
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "end-update",
+      "type": "end",
+      "label": "Update Done",
+      "position": {
+        "x": 656.0,
+        "y": 288.0
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-start-route",
+      "from": "start",
+      "to": "route-workflow",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-route-research",
+      "from": "route-workflow",
+      "to": "run-research",
+      "kind": "exec",
+      "from_pin": "rule:research",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-route-wiki",
+      "from": "route-workflow",
+      "to": "run-wiki",
+      "kind": "exec",
+      "from_pin": "rule:wiki",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-route-update",
+      "from": "route-workflow",
+      "to": "run-wiki-update",
+      "kind": "exec",
+      "from_pin": "rule:wiki-update",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-research-end",
+      "from": "run-research",
+      "to": "end-research",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-wiki-end",
+      "from": "run-wiki",
+      "to": "end-wiki",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-update-end",
+      "from": "run-wiki-update",
+      "to": "end-update",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0.0,
+      "y": 0.0,
+      "scale": 1.0
+    }
+  }
+}

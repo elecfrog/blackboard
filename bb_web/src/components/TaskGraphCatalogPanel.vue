@@ -10,17 +10,25 @@ import TaskGraphCatalogSidebar from '@/components/task-graph/TaskGraphCatalogSid
 import TaskGraphPreviewPanel from '@/components/task-graph/TaskGraphPreviewPanel.vue'
 import BbDropdown, { type BbDropdownOption } from '@/components/BbDropdown.vue'
 import {
+  createTaskGraphSchedule,
   createProjectTaskGraph,
+  deleteTaskGraphSchedule,
   forkSystemTaskGraph,
+  listTaskGraphSchedules,
   listTaskGraphRuns,
   loadTaskGraphCatalog,
+  patchTaskGraphSchedule,
   readTaskGraph,
+  runTaskGraphScheduleNow,
   startTaskGraphRun,
   taskGraphDefaultInput,
   type TaskGraphCatalogItem,
   type TaskGraphDefinition,
   type TaskGraphRef,
   type TaskGraphRunSummary,
+  type TaskGraphSchedule,
+  type TaskGraphScheduleCreateInput,
+  type TaskGraphSchedulePatchInput,
   type TaskGraphScope,
 } from '@/data/taskGraphs'
 import { t } from '@/i18n'
@@ -54,6 +62,8 @@ const runInputValues = ref<Record<string, unknown>>({})
 const runHistory = ref<TaskGraphRunSummary[]>([])
 const runHistorySource = ref<'rest' | 'mock'>('mock')
 const runHistoryLoading = ref(false)
+const schedules = ref<TaskGraphSchedule[]>([])
+const schedulesLoading = ref(false)
 
 const selectedCatalogItem = computed(() =>
   selectedRef.value
@@ -67,6 +77,13 @@ const isEditorPanelActive = computed(() =>
 )
 const isRunPanelActive = computed(() => Boolean(selectedGraph.value && activeRunId.value))
 const hasEmbeddedDetailPanel = computed(() => isEditorPanelActive.value || isRunPanelActive.value)
+const selectedGraphSchedules = computed(() =>
+  selectedRef.value
+    ? schedules.value.filter((schedule) =>
+        schedule.graph_ref.scope === selectedRef.value?.scope && schedule.graph_ref.id === selectedRef.value.id,
+      )
+    : [],
+)
 
 const catalogStats = computed(() => ({
   system: graphs.value.filter((graph) => graph.scope === 'system').length,
@@ -124,6 +141,7 @@ async function reloadCatalog(options: { refreshSelectedGraph?: boolean } = {}) {
     graphs.value = result.graphs
     catalogSource.value = result.source
     await reloadRunHistory()
+    await reloadSchedules()
     if (refreshSelectedGraph || !selectedGraph.value) {
       await selectFromRouteOrDefault()
     }
@@ -148,6 +166,18 @@ async function reloadRunHistory() {
     showActionError(err)
   } finally {
     runHistoryLoading.value = false
+  }
+}
+
+async function reloadSchedules() {
+  schedulesLoading.value = true
+  try {
+    const result = await listTaskGraphSchedules(props.project)
+    schedules.value = result.schedules
+  } catch (err) {
+    showActionError(err)
+  } finally {
+    schedulesLoading.value = false
   }
 }
 
@@ -297,6 +327,82 @@ async function runSelectedGraph() {
   await runGraph(graph)
 }
 
+async function createSchedule(input: TaskGraphScheduleCreateInput) {
+  if (actionBusy.value) return
+  actionBusy.value = 'schedule:create'
+  clearActionAlert()
+  try {
+    const result = await createTaskGraphSchedule(props.project, input)
+    schedules.value = [result.schedule, ...schedules.value.filter((item) => item.id !== result.schedule.id)]
+  } catch (err) {
+    showActionError(err)
+  } finally {
+    actionBusy.value = ''
+  }
+}
+
+async function patchSchedule(id: string, patch: TaskGraphSchedulePatchInput) {
+  if (actionBusy.value) return
+  actionBusy.value = `schedule:patch:${id}`
+  clearActionAlert()
+  try {
+    const result = await patchTaskGraphSchedule(props.project, id, patch)
+    schedules.value = schedules.value.map((item) => item.id === id ? result.schedule : item)
+  } catch (err) {
+    showActionError(err)
+  } finally {
+    actionBusy.value = ''
+  }
+}
+
+async function deleteSchedule(id: string) {
+  if (actionBusy.value) return
+  actionBusy.value = `schedule:delete:${id}`
+  clearActionAlert()
+  try {
+    await deleteTaskGraphSchedule(props.project, id)
+    schedules.value = schedules.value.filter((item) => item.id !== id)
+  } catch (err) {
+    showActionError(err)
+  } finally {
+    actionBusy.value = ''
+  }
+}
+
+async function runScheduleNow(id: string) {
+  if (actionBusy.value) return
+  const schedule = schedules.value.find((item) => item.id === id)
+  actionBusy.value = `schedule:run:${id}`
+  clearActionAlert()
+  try {
+    const result = await runTaskGraphScheduleNow(props.project, id)
+    activeRunId.value = result.run.id
+    await reloadRunHistory()
+    await reloadSchedules()
+    if (schedule) {
+      const ref = schedule.graph_ref
+      selectedRef.value = { scope: ref.scope, id: ref.id }
+      router.push(graphRoute(ref))
+      graphs.value = graphs.value.map((item) =>
+        item.scope === ref.scope && item.id === ref.id
+          ? {
+              ...item,
+              last_run: {
+                run_id: result.run.id,
+                status: result.run.status,
+                updated_at: result.run.updated_at,
+              },
+            }
+          : item,
+      )
+    }
+  } catch (err) {
+    showActionError(err)
+  } finally {
+    actionBusy.value = ''
+  }
+}
+
 async function handleEditorSaved(graph: TaskGraphDefinition) {
   selectedGraph.value = graph
   await reloadCatalog()
@@ -409,6 +515,8 @@ onMounted(reloadCatalog)
           :run-history="runHistory"
           :run-history-source="runHistorySource"
           :run-history-loading="runHistoryLoading"
+          :schedules="selectedGraphSchedules"
+          :schedules-loading="schedulesLoading"
           :action-busy="actionBusy"
           :mode="props.mode ?? ''"
           :project="project"
@@ -420,6 +528,11 @@ onMounted(reloadCatalog)
           @open-run="openRun"
           @reload-history="reloadRunHistory"
           @navigate-run="navigateToRun"
+          @create-schedule="createSchedule"
+          @patch-schedule="patchSchedule"
+          @delete-schedule="deleteSchedule"
+          @run-schedule-now="runScheduleNow"
+          @reload-schedules="reloadSchedules"
         />
     </div>
   </section>
@@ -471,8 +584,8 @@ onMounted(reloadCatalog)
 
 .task-graph-layout {
   display: grid;
-  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(220px, 272px) minmax(0, 1fr);
+  gap: 12px;
   min-height: 0;
 }
 

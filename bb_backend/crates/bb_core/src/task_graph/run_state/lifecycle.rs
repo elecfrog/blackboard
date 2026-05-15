@@ -3,12 +3,14 @@ use std::path::Path;
 
 use chrono::Utc;
 
+use super::super::compiler::compile_graph_for_execution;
+use super::super::pregel::initial_checkpoint;
 use super::super::types::{TaskGraphDefinition, TaskGraphError};
 use super::model::*;
 use super::node_io::load_all_node_outputs;
 use super::{
-    generate_run_id, node_state_path, read_json, run_dir, run_json_path, runs_root, snapshot_path,
-    write_json,
+    compiled_snapshot_path, generate_run_id, node_state_path, read_json, run_dir, run_json_path,
+    runs_root, snapshot_path, write_json,
 };
 
 // ─── CRUD Operations ─────────────────────────────────────────────────────────
@@ -50,6 +52,7 @@ pub fn create_run(
     graph_snapshot: &TaskGraphDefinition,
     input: serde_json::Value,
 ) -> Result<TaskGraphRun, TaskGraphError> {
+    let compiled = compile_graph_for_execution(graph_snapshot)?;
     let id = generate_run_id();
     let dir = run_dir(workspace_root, project, &id);
     let input = resolve_graph_input(graph_snapshot, input);
@@ -67,8 +70,14 @@ pub fn create_run(
         path: dir.join("artifacts"),
         source,
     })?;
+    fs::create_dir_all(dir.join("checkpoints")).map_err(|source| TaskGraphError::Io {
+        path: dir.join("checkpoints"),
+        source,
+    })?;
 
     let now = Utc::now().to_rfc3339();
+
+    let pregel_checkpoint = initial_checkpoint(&compiled, input.clone());
 
     let run = TaskGraphRun {
         id: id.clone(),
@@ -79,6 +88,9 @@ pub fn create_run(
         started_at: None,
         updated_at: now,
         completed_at: None,
+        current_superstep: 0,
+        last_checkpoint_id: None,
+        pregel_checkpoint: Some(pregel_checkpoint),
         paused: None,
         cursor: Vec::new(),
         context: RunContext {
@@ -90,6 +102,7 @@ pub fn create_run(
             completed_branches: std::collections::HashMap::new(),
         },
         parent_run_id: None,
+        checkpoint_ns: None,
     };
 
     // Write run.json
@@ -97,6 +110,9 @@ pub fn create_run(
 
     // Write frozen graph snapshot
     write_json(&snapshot_path(&dir), graph_snapshot)?;
+
+    // Write compiled graph snapshot so execution has an auditable plan input.
+    write_json(&compiled_snapshot_path(&dir), &compiled)?;
 
     // Initialize node states as idle
     for node in &graph_snapshot.nodes {
@@ -159,6 +175,9 @@ pub fn list_runs(
                     started_at: run.started_at,
                     updated_at: run.updated_at,
                     completed_at: run.completed_at,
+                    current_superstep: run.current_superstep,
+                    last_checkpoint_id: run.last_checkpoint_id,
+                    checkpoint_ns: run.checkpoint_ns,
                 });
             }
         }
@@ -339,6 +358,31 @@ pub fn write_run_json(
     let dir = run_dir(workspace_root, project, run_id);
     let run_file = run_json_path(&dir);
     write_json(&run_file, run)
+}
+
+pub(super) fn update_run_checkpoint_pointer(
+    workspace_root: &Path,
+    project: &str,
+    run_id: &str,
+    superstep: u64,
+    checkpoint_id: String,
+) -> Result<TaskGraphRun, TaskGraphError> {
+    let dir = run_dir(workspace_root, project, run_id);
+    let run_file = run_json_path(&dir);
+
+    if !run_file.exists() {
+        return Err(TaskGraphError::RunNotFound {
+            project: project.to_string(),
+            run_id: run_id.to_string(),
+        });
+    }
+
+    let mut run: TaskGraphRun = read_json(&run_file)?;
+    run.current_superstep = superstep;
+    run.last_checkpoint_id = Some(checkpoint_id);
+    run.updated_at = Utc::now().to_rfc3339();
+    write_json(&run_file, &run)?;
+    Ok(run)
 }
 
 /// Set the run's paused state (for human gate).

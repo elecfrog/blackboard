@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Trash2 } from 'lucide-vue-next'
+import { PanelRightClose, Trash2 } from 'lucide-vue-next'
 import { t } from '@/i18n'
 import TaskGraphLlmNodeForm from './TaskGraphLlmNodeForm.vue'
 import TaskGraphBranchNodeForm from './TaskGraphBranchNodeForm.vue'
@@ -33,6 +33,7 @@ const emit = defineEmits<{
   'update-prompt-mode': [mode: string]
   'save-prompt-file': []
   'remove': []
+  'close': []
   'open-sub-graph': [graphId: string]
   'update-label': [value: string]
 }>()
@@ -47,6 +48,10 @@ function numberValue(event: Event) {
   return Number(inputValue(event))
 }
 
+function checkedValue(event: Event) {
+  return event.target instanceof HTMLInputElement ? event.target.checked : false
+}
+
 function configString(node: TaskGraphNode, key: string) {
   const value = node.config[key]
   return typeof value === 'string' ? value : ''
@@ -55,6 +60,58 @@ function configString(node: TaskGraphNode, key: string) {
 function configNumber(node: TaskGraphNode, key: string) {
   const value = node.config[key]
   return typeof value === 'number' ? value : Number(value || 0)
+}
+
+function configRecord(node: TaskGraphNode, key: string): Record<string, unknown> {
+  const value = node.config[key]
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function shellArgsText(node: TaskGraphNode) {
+  const args = node.config.args
+  return Array.isArray(args) ? args.filter((item): item is string => typeof item === 'string').join('\n') : ''
+}
+
+function updateShellArgs(value: string) {
+  emit('update-config', { args: value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean) })
+}
+
+function shellExpectedExitCodesText(node: TaskGraphNode) {
+  const codes = node.config.expected_exit_codes
+  return Array.isArray(codes) ? codes.join(', ') : '0'
+}
+
+function updateShellExpectedExitCodes(value: string) {
+  const codes = value
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isInteger(item))
+  emit('update-config', { expected_exit_codes: codes.length > 0 ? codes : [0] })
+}
+
+function shellEnvText(node: TaskGraphNode) {
+  return JSON.stringify(configRecord(node, 'env'), null, 2)
+}
+
+function updateShellEnv(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      emit('update-config', { env: parsed })
+    }
+  } catch {
+    // Keep the last valid environment object while the user edits.
+  }
+}
+
+function shellCapture(node: TaskGraphNode) {
+  return configRecord(node, 'capture')
+}
+
+function updateShellCapture(patch: Record<string, unknown>) {
+  emit('update-config', { capture: { ...shellCapture(props.node), ...patch } })
 }
 
 function inputReference(inputId: string) {
@@ -150,16 +207,27 @@ function addLlmInput() {
   <section class="task-graph-node-card task-graph-editor-overlay task-graph-editor-node-overlay" :class="{ 'task-graph-node-readonly': readonly }">
     <header>
       <h4>{{ t('taskGraphInspectorNode') }}</h4>
-      <button
-        type="button"
-        class="task-graph-node-delete-button"
-        :title="t('taskGraphDeleteSelectedNode')"
-        :disabled="readonly"
-        @click="emit('remove')"
-      >
-        <Trash2 aria-hidden="true" />
-        <span>{{ t('taskGraphDeleteNode') }}</span>
-      </button>
+      <div class="task-graph-node-card-actions">
+        <button
+          type="button"
+          class="task-graph-node-icon-button"
+          :title="t('taskGraphEditorCloseConfig')"
+          :aria-label="t('taskGraphEditorCloseConfig')"
+          @click="emit('close')"
+        >
+          <PanelRightClose aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="task-graph-node-delete-button"
+          :title="t('taskGraphDeleteSelectedNode')"
+          :disabled="readonly"
+          @click="emit('remove')"
+        >
+          <Trash2 aria-hidden="true" />
+          <span>{{ t('taskGraphDeleteNode') }}</span>
+        </button>
+      </div>
     </header>
     <label>
       <span>ID</span>
@@ -208,6 +276,59 @@ function addLlmInput() {
         @add="addLlmInput"
         @use-input="(key, inputId) => updateLlmInput(key, inputReference(inputId))"
       />
+    </template>
+
+    <template v-else-if="node.type === 'shell'">
+      <label>
+        <span>command</span>
+        <input :value="configString(node, 'command')" @input="emit('update-config', { command: inputValue($event) })" />
+      </label>
+      <label>
+        <span>args</span>
+        <textarea :value="shellArgsText(node)" @input="updateShellArgs(inputValue($event))" />
+      </label>
+      <label>
+        <span>cwd</span>
+        <input :value="configString(node, 'cwd') || '.'" @input="emit('update-config', { cwd: inputValue($event) || '.' })" />
+      </label>
+      <label>
+        <span>permission</span>
+        <select :value="configString(node, 'permission') || 'read_only'" @change="emit('update-config', { permission: inputValue($event) })">
+          <option value="read_only">read_only</option>
+          <option value="project_write">project_write</option>
+          <option value="git_write">git_write</option>
+          <option value="network">network</option>
+        </select>
+      </label>
+      <label>
+        <span>timeout_ms</span>
+        <input type="number" min="1" :value="configNumber(node, 'timeout_ms') || 600000" @input="emit('update-config', { timeout_ms: numberValue($event) })" />
+      </label>
+      <label>
+        <span>expected_exit_codes</span>
+        <input :value="shellExpectedExitCodesText(node)" @input="updateShellExpectedExitCodes(inputValue($event))" />
+      </label>
+      <label>
+        <span>env JSON</span>
+        <textarea :value="shellEnvText(node)" @change="updateShellEnv(inputValue($event))" />
+      </label>
+      <label>
+        <span>capture.max_bytes</span>
+        <input
+          type="number"
+          min="1"
+          :value="Number(shellCapture(node).max_bytes ?? 1048576)"
+          @input="updateShellCapture({ max_bytes: numberValue($event) })"
+        />
+      </label>
+      <label class="task-graph-checkbox-row">
+        <input
+          type="checkbox"
+          :checked="shellCapture(node).strip_ansi !== false"
+          @change="updateShellCapture({ strip_ansi: checkedValue($event) })"
+        />
+        <span>strip_ansi</span>
+      </label>
     </template>
 
     <template v-else-if="node.type === 'sub_graph'">
@@ -347,6 +468,13 @@ function addLlmInput() {
   gap: 8px;
 }
 
+.task-graph-node-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .task-graph-node-card header button {
   display: inline-flex;
   align-items: center;
@@ -359,6 +487,11 @@ function addLlmInput() {
   background: var(--bb-surface);
   color: var(--bb-text-muted);
   cursor: pointer;
+}
+
+.task-graph-node-icon-button {
+  width: 28px;
+  padding: 0;
 }
 
 .task-graph-node-card header button svg {
@@ -408,10 +541,22 @@ function addLlmInput() {
   resize: vertical;
 }
 
+.task-graph-node-card .task-graph-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-graph-node-card .task-graph-checkbox-row input {
+  width: 16px;
+  min-height: 16px;
+  padding: 0;
+}
+
 .task-graph-node-readonly input,
 .task-graph-node-readonly select,
 .task-graph-node-readonly textarea,
-.task-graph-node-readonly button {
+.task-graph-node-readonly button:not(.task-graph-node-icon-button) {
   pointer-events: none;
   opacity: 0.7;
 }
