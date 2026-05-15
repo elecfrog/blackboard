@@ -4,12 +4,20 @@ import {
   AlertCircle,
   Eye,
   GitFork,
+  ListChecks,
   Pencil,
   Play,
+  X,
 } from 'lucide-vue-next'
 import GraphCanvas, { type GraphCanvasEdge, type GraphCanvasNode } from '@/components/GraphCanvas.vue'
+import TaskGraphNodeShape from '@/components/task-graph/TaskGraphNodeShape.vue'
 import TaskGraphRunInputsPanel from '@/components/task-graph/TaskGraphRunInputsPanel.vue'
 import TaskGraphRunHistory from '@/components/task-graph/TaskGraphRunHistory.vue'
+import TaskGraphSchedulePanel from '@/components/task-graph/TaskGraphSchedulePanel.vue'
+import {
+  taskGraphNodeMetaLabel,
+  taskGraphNodeVisualForNode,
+} from '@/components/task-graph/taskGraphNodeVisuals'
 import { t } from '@/i18n'
 import {
   nodeToCanvasPins,
@@ -18,29 +26,25 @@ import {
   type TaskGraphDefinition,
   type TaskGraphEdge,
   type TaskGraphNode,
+  type TaskGraphRef,
   type TaskGraphRunSummary,
+  type TaskGraphSchedule,
+  type TaskGraphScheduleCreateInput,
+  type TaskGraphSchedulePatchInput,
 } from '@/data/taskGraphs'
-
-const nodeColors: Record<string, string> = {
-  start: '#64748b',
-  end: '#059669',
-  llm: '#2563eb',
-  sub_graph: '#7c3aed',
-  human_gate: '#d97706',
-  branch: '#9333ea',
-  loop: '#0891b2',
-}
 
 const props = defineProps<{
   selectedCatalogItem: TaskGraphCatalogItem | null
   selectedGraph: TaskGraphDefinition | null
-  selectedRef: { scope: string; id: string } | null
+  selectedRef: TaskGraphRef | null
   graphLoading: boolean
   activeRunId: string
   runInputValues: Record<string, unknown>
   runHistory: TaskGraphRunSummary[]
   runHistorySource: 'rest' | 'mock'
   runHistoryLoading: boolean
+  schedules: TaskGraphSchedule[]
+  schedulesLoading: boolean
   actionBusy: string
   mode: string
   project: string
@@ -55,9 +59,15 @@ const emit = defineEmits<{
   'open-run': [run: TaskGraphRunSummary]
   'reload-history': []
   'navigate-run': [runId: string]
+  'create-schedule': [input: TaskGraphScheduleCreateInput]
+  'patch-schedule': [id: string, patch: TaskGraphSchedulePatchInput]
+  'delete-schedule': [id: string]
+  'run-schedule-now': [id: string]
+  'reload-schedules': []
 }>()
 
 const selectedPreviewNodeId = ref('')
+const activePreviewPanel = ref<'inputs' | ''>('')
 
 const selectedActiveRun = computed(() =>
   props.selectedRef ? props.runHistory.find((run) =>
@@ -76,6 +86,23 @@ const hasEmbeddedDetailPanel = computed(() =>
   Boolean(props.selectedGraph && (props.mode === 'edit' || props.activeRunId)),
 )
 
+const runInputSummary = computed(() => {
+  const count = props.selectedGraph?.inputs?.length ?? 0
+  return count === 0
+    ? t('taskGraphEditorNoInputs')
+    : t('taskGraphEditorInputsCount', { count })
+})
+
+function togglePreviewInputs() {
+  activePreviewPanel.value = activePreviewPanel.value === 'inputs' ? '' : 'inputs'
+  if (activePreviewPanel.value) selectedPreviewNodeId.value = ''
+}
+
+function handlePreviewNodeSelect(id: string) {
+  activePreviewPanel.value = ''
+  selectedPreviewNodeId.value = id
+}
+
 function semanticHandleLabel(handle?: string) {
   if (!handle || handle.startsWith('pin:')) return ''
   if (handle === 'body') return t('taskGraphLoopBody')
@@ -89,27 +116,18 @@ function edgeDisplayLabel(edge: TaskGraphEdge) {
   return edge.label || semanticHandleLabel(edge.source_handle) || semanticHandleLabel(edge.target_handle)
 }
 
-function loopMeta(node: TaskGraphNode) {
-  const config = node.config ?? {}
-  const ref = typeof config.max_iterations_ref === 'string' ? config.max_iterations_ref : ''
-  const inputId = ref.match(/^\{\{inputs\.([^}]+)\}\}\}$/)?.[1]
-  const inputDefault = inputId ? props.selectedGraph?.inputs?.find((input) => input.id === inputId)?.default : undefined
-  const value = inputDefault ?? config.max_iterations ?? ref
-  return value === undefined || value === '' ? t('taskGraphLoopsEmpty') : t('taskGraphLoops', { count: String(value) })
-}
-
 const previewNodes = computed<GraphCanvasNode[]>(() =>
   (props.selectedGraph?.nodes ?? []).map((node) => ({
     id: node.id,
     x: node.position?.x ?? 80,
     y: node.position?.y ?? 120,
-    width: 220,
-    height: nodeHeightForPins(node),
+    width: 230,
+    height: Math.max(nodeHeightForPins(node), 64),
     status: node.type,
     kind: node.type,
-    color: nodeColors[node.type] ?? '#64748b',
+    color: taskGraphNodeVisualForNode(node).color,
     label: node.label,
-    meta: node.type === 'loop' ? loopMeta(node) : node.type,
+    meta: taskGraphNodeMetaLabel(node, props.selectedGraph?.inputs ?? []),
     title: node.label,
     pins: nodeToCanvasPins(node),
     classes: [`task-node-${node.type}`],
@@ -137,7 +155,7 @@ const previewCanvasSize = computed(() => {
   const nodes = previewNodes.value
   if (nodes.length === 0) return { width: 980, height: 560 }
   return {
-    width: Math.max(980, Math.max(...nodes.map((node) => node.x + (node.width ?? 220))) + 120),
+    width: Math.max(980, Math.max(...nodes.map((node) => node.x + (node.width ?? 230))) + 120),
     height: Math.max(560, Math.max(...nodes.map((node) => node.y + (node.height ?? 76))) + 120),
   }
 })
@@ -237,12 +255,49 @@ function lastRunLabel() {
       <pre class="task-graph-compile-error-detail">{{ selectedCatalogItem.compile_error }}</pre>
     </div>
     <div v-else-if="selectedGraph" class="task-graph-preview-body">
-      <TaskGraphRunInputsPanel
-        v-if="selectedGraph.inputs?.length"
-        :inputs="selectedGraph.inputs"
-        :values="runInputValues"
-        @update="(id, val) => emit('update:run-input', id, val)"
-      />
+      <section v-if="selectedGraph.inputs?.length" class="task-graph-preview-summary-strip">
+        <button
+          type="button"
+          :class="['task-graph-preview-summary-chip', { active: activePreviewPanel === 'inputs' }]"
+          @click="togglePreviewInputs"
+        >
+          <ListChecks aria-hidden="true" />
+          <span>
+            <strong>{{ t('taskGraphInputs') }}</strong>
+            <small>{{ runInputSummary }}</small>
+          </span>
+        </button>
+        <button
+          v-if="activePreviewPanel"
+          type="button"
+          class="task-graph-preview-summary-close"
+          @click="activePreviewPanel = ''"
+        >
+          <X aria-hidden="true" />
+          <span>{{ t('taskGraphEditorCloseConfig') }}</span>
+        </button>
+      </section>
+
+      <Transition name="task-graph-preview-panel">
+        <section
+          v-if="activePreviewPanel === 'inputs' && selectedGraph.inputs?.length"
+          class="task-graph-preview-config-panel"
+        >
+          <header>
+            <h4>{{ t('taskGraphInputs') }}</h4>
+            <button type="button" @click="activePreviewPanel = ''">
+              <X aria-hidden="true" />
+            </button>
+          </header>
+          <TaskGraphRunInputsPanel
+            :inputs="selectedGraph.inputs"
+            :values="runInputValues"
+            layout="drawer"
+            @update="(id, val) => emit('update:run-input', id, val)"
+          />
+        </section>
+      </Transition>
+
       <GraphCanvas
         class="ticket-graph-canvas task-graph-preview-canvas"
         readonly
@@ -250,19 +305,12 @@ function lastRunLabel() {
         :nodes="previewNodes"
         :edges="previewEdges"
         :canvas-size="previewCanvasSize"
-        :default-node-width="220"
-        :default-node-height="48"
-        @node-select="selectedPreviewNodeId = $event"
+        :default-node-width="230"
+        :default-node-height="64"
+        @node-select="handlePreviewNodeSelect"
       >
         <template #node="{ node, width, height }">
-          <g class="task-graph-ue-node" :class="[`task-graph-ue-${node.kind}`]">
-            <rect :width="width" :height="height" rx="6" />
-            <rect class="graph-node-header" :width="width" height="32" rx="6" />
-            <rect class="graph-node-header-bottom" :width="width" y="24" height="8" />
-            <line class="graph-node-divider" x1="0" y1="32" :x2="width" y2="32" />
-            <circle cx="16" cy="16" r="5" :fill="node.color ?? '#64748b'" />
-            <text x="28" y="21" class="graph-node-title">{{ node.label }}</text>
-          </g>
+          <TaskGraphNodeShape :node="node" :width="width" :height="height" />
         </template>
         <template #edge-label="{ edge, midpoint }">
           <text
@@ -299,6 +347,20 @@ function lastRunLabel() {
         :loading="runHistoryLoading"
         @reload="emit('reload-history')"
         @open="(run) => emit('open-run', run)"
+      />
+      <TaskGraphSchedulePanel
+        :selected-graph="selectedGraph"
+        :selected-ref="selectedRef"
+        :schedules="schedules"
+        :loading="schedulesLoading"
+        :run-input-values="runInputValues"
+        :action-busy="actionBusy"
+        @create="(input) => emit('create-schedule', input)"
+        @patch="(id, patch) => emit('patch-schedule', id, patch)"
+        @delete="(id) => emit('delete-schedule', id)"
+        @run-now="(id) => emit('run-schedule-now', id)"
+        @reload="emit('reload-schedules')"
+        @navigate-run="(id) => emit('navigate-run', id)"
       />
     </div>
     <div v-else class="bb-empty">{{ t('taskGraphEmptyPreview') }}</div>
@@ -353,8 +415,156 @@ function lastRunLabel() {
   display: grid;
   align-content: start;
   gap: 12px;
+  position: relative;
   min-height: 0;
   padding: 12px;
+}
+
+.task-graph-preview-summary-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.task-graph-preview-summary-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.task-graph-preview-summary-chip,
+.task-graph-preview-summary-close,
+.task-graph-preview-config-panel > header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--bb-border-warm-medium);
+  border-radius: 8px;
+  background: var(--bb-surface);
+  color: var(--bb-text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.task-graph-preview-summary-chip {
+  flex: 0 0 auto;
+  justify-content: start;
+  min-width: 154px;
+}
+
+.task-graph-preview-summary-chip.active {
+  border-color: color-mix(in srgb, var(--bb-accent) 36%, var(--bb-hairline));
+  background: var(--bb-accent-soft);
+  color: var(--bb-accent);
+}
+
+.task-graph-preview-summary-chip svg,
+.task-graph-preview-summary-close svg,
+.task-graph-preview-config-panel > header button svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+}
+
+.task-graph-preview-summary-chip > span {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+  text-align: left;
+}
+
+.task-graph-preview-summary-chip strong,
+.task-graph-preview-summary-close span {
+  overflow: hidden;
+  color: currentColor;
+  font-size: 12px;
+  font-weight: 820;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-graph-preview-summary-chip small {
+  overflow: hidden;
+  color: var(--bb-text-muted);
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-graph-preview-summary-chip.active small {
+  color: color-mix(in srgb, var(--bb-accent) 68%, var(--bb-text-muted));
+}
+
+.task-graph-preview-summary-close {
+  margin-left: auto;
+}
+
+.task-graph-preview-config-panel {
+  position: absolute;
+  top: 60px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  width: min(440px, calc(100% - 250px));
+  min-height: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid var(--bb-hairline);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bb-surface) 96%, transparent);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(8px);
+}
+
+.task-graph-preview-config-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-graph-preview-config-panel > header h4 {
+  margin: 0;
+  color: var(--bb-text-strong);
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.task-graph-preview-config-panel > header button {
+  width: 30px;
+  min-width: 30px;
+  padding: 0;
+}
+
+.task-graph-preview-panel-enter-active,
+.task-graph-preview-panel-leave-active {
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.task-graph-preview-panel-enter-from,
+.task-graph-preview-panel-leave-to {
+  opacity: 0;
+  transform: translateX(8px);
+}
+
+@media (max-width: 980px) {
+  .task-graph-preview-config-panel {
+    left: 12px;
+    width: auto;
+  }
 }
 
 .task-graph-preview-canvas {
@@ -365,10 +575,6 @@ function lastRunLabel() {
   width: 100%;
   min-width: 0;
   height: clamp(360px, 50vh, 620px);
-}
-
-.task-graph-preview-canvas :deep(.graph-node-accent) {
-  fill: var(--graph-status-color);
 }
 
 .task-graph-edge-label {

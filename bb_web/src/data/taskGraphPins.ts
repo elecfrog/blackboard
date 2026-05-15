@@ -2,6 +2,7 @@ import type { NodePin, PinValueType, TaskGraphNode } from './taskGraphs'
 
 export const PIN_VALUE_TYPE_COLORS: Record<PinValueType, string> = {
   string: '#ec4899',
+  text: '#14b8a6',
   int: '#06b6d4',
   float: '#06b6d4',
   bool: '#ef4444',
@@ -9,6 +10,15 @@ export const PIN_VALUE_TYPE_COLORS: Record<PinValueType, string> = {
   array: '#8b5cf6',
   any: '#6b7280',
   markdown: '#10b981',
+  file_ref: '#64748b',
+  wiki_ref: '#0ea5e9',
+  ticket_ref: '#2563eb',
+  diff: '#f59e0b',
+  test_result: '#22c55e',
+  review_comment: '#a855f7',
+  handoff_summary: '#84cc16',
+  runtime_log: '#475569',
+  artifact_ref: '#0891b2',
 }
 
 export const PIN_EXEC_COLOR = '#9ca3af'
@@ -24,6 +34,12 @@ export function getDefaultPins(nodeType: TaskGraphNode['type'], config: Record<s
         { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },
       ]
     case 'llm':
+      return [
+        { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },
+        { id: 'exec_out', label: 'Out', direction: 'out', category: 'exec' },
+        { id: 'output', label: 'Output', direction: 'out', category: 'data', value_type: 'json' },
+      ]
+    case 'shell':
       return [
         { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },
         { id: 'exec_out', label: 'Out', direction: 'out', category: 'exec' },

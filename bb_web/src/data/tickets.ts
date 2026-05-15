@@ -14,6 +14,7 @@ export interface BlackboardTicket {
   file_name: string
   file_path: string
   dependencies: string[]
+  attachments?: TicketAttachment[]
   /// Markdown body content. Only populated when the ticket detail is loaded
   /// on demand via `loadTicketContent`; the list endpoint no longer returns
   /// this field (index/content split).
@@ -23,6 +24,13 @@ export interface BlackboardTicket {
   /// `current` / `family` until those files are cleaned up via
   /// `update_ticket` + `remove`.
   extra: Record<string, string>
+}
+
+export interface TicketAttachment {
+  kind: string
+  target: string
+  label?: string
+  description?: string
 }
 
 /// Lane definition declared in `__project__.json` under `lanes`. Replaces the
@@ -146,6 +154,7 @@ export interface PatchTicketInput {
   lane?: string
   assignee?: string
   depends_on?: string[]
+  attachments?: TicketAttachment[]
 }
 
 // Matches the shape returned by bb-server at
@@ -495,6 +504,35 @@ export function boardRoute(project: string): string {
 
 export function ticketRoute(project: string, id: string): string {
   return `/projects/${project}/tickets/${id}`
+}
+
+export function attachmentsFromExtra(extra: Record<string, string>): TicketAttachment[] {
+  const raw = extra.attachments
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null
+        const record = item as Record<string, unknown>
+        const kind = typeof record.kind === 'string' ? record.kind.trim() : ''
+        const target = typeof record.target === 'string' ? record.target.trim() : ''
+        if (!kind || !target) return null
+        const label = typeof record.label === 'string' ? record.label.trim() : ''
+        const description =
+          typeof record.description === 'string' ? record.description.trim() : ''
+        return {
+          kind,
+          target,
+          ...(label ? { label } : {}),
+          ...(description ? { description } : {}),
+        }
+      })
+      .filter((item): item is TicketAttachment => Boolean(item))
+  } catch {
+    return []
+  }
 }
 
 /// Pull a short plain-text preview out of a ticket's markdown body for the

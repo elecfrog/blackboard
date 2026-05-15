@@ -1,5 +1,5 @@
 {
-  "current_counter": "000052",
+  "current_counter": "000066",
   "tickets": [
     {
       "name": "000001-产品基线-多agent工具管理dashboard.md",
@@ -877,8 +877,10 @@
       "title": "Roadmap：Runtime 连接与 AgentSession 维护",
       "status": "done",
       "created_at": "2026-05-13",
-      "updated_at": "2026-05-13",
-      "extra": {},
+      "updated_at": "2026-05-15",
+      "extra": {
+        "assignee": "codex"
+      },
       "metadata_error": null,
       "metadata_warnings": []
     },
@@ -888,10 +890,321 @@
       "id": "000052",
       "lane": "bbt",
       "title": "Roadmap：内置 Agent Chat 与任务下发",
-      "status": "in_progress",
+      "status": "done",
       "created_at": "2026-05-13",
-      "updated_at": "2026-05-13",
-      "extra": {},
+      "updated_at": "2026-05-14",
+      "extra": {
+        "assignee": "codex"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000053-taskgraph-autonomous-orchestration-vision.md",
+      "path": "tickets/000053-taskgraph-autonomous-orchestration-vision.md",
+      "id": "000053",
+      "lane": "bbp",
+      "title": "TaskGraph Vision：多 Runtime 自主协作执行图",
+      "status": "todo",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-14",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000051 000052",
+        "kind": "vision-umbrella",
+        "requested_by": "user",
+        "scope": "autonomous-taskgraph-orchestration"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000054-taskgraph-task-creation-compile.md",
+      "path": "tickets/000054-taskgraph-task-creation-compile.md",
+      "id": "000054",
+      "lane": "bbt",
+      "title": "TaskGraph Task Creation & Compile：从意图到可执行计划",
+      "status": "todo",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-14",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000053",
+        "kind": "platform-track",
+        "parent": "000053",
+        "requested_by": "user",
+        "scope": "task-creation-compile"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000055-taskgraph-task-execution.md",
+      "path": "tickets/000055-taskgraph-task-execution.md",
+      "id": "000055",
+      "lane": "bbt",
+      "title": "TaskGraph Task Execution：运行态、Runtime Session 与验收闭环",
+      "status": "todo",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-14",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000053",
+        "kind": "platform-track",
+        "parent": "000053",
+        "requested_by": "user",
+        "scope": "task-execution"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000056-taskgraph-trigger-system.md",
+      "path": "tickets/000056-taskgraph-trigger-system.md",
+      "id": "000056",
+      "lane": "bbp",
+      "title": "TaskGraph Trigger System：统一任务触发层",
+      "status": "todo",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-14",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000053",
+        "kind": "platform-track",
+        "parent": "000053",
+        "requested_by": "user",
+        "scope": "trigger-system"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000057-taskgraph-manual-trigger.md",
+      "path": "tickets/000057-taskgraph-manual-trigger.md",
+      "id": "000057",
+      "lane": "bbt",
+      "title": "TaskGraph Trigger：手动触发入口（Chat/Web/CLI）",
+      "status": "todo",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-14",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000056",
+        "kind": "trigger-subtrack",
+        "parent": "000056",
+        "requested_by": "user",
+        "scope": "manual-trigger"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000058-taskgraph-hook-trigger-outbox.md",
+      "path": "tickets/000058-taskgraph-hook-trigger-outbox.md",
+      "id": "000058",
+      "lane": "bbt",
+      "title": "TaskGraph Trigger：Hook 触发与内部事件 Outbox",
+      "status": "todo",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-14",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000056",
+        "kind": "trigger-subtrack",
+        "parent": "000056",
+        "requested_by": "user",
+        "scope": "hook-trigger"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000059-taskgraph-scheduled-trigger-ui.md",
+      "path": "tickets/000059-taskgraph-scheduled-trigger-ui.md",
+      "id": "000059",
+      "lane": "bbt",
+      "title": "TaskGraph Trigger：定时任务与 Schedule UI",
+      "status": "review",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-15",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codex",
+        "depends_on": "000056",
+        "kind": "trigger-subtrack",
+        "parent": "000056",
+        "requested_by": "user",
+        "scope": "scheduled-trigger"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000060-taskgraph-execution-foundation.md",
+      "path": "tickets/000060-taskgraph-execution-foundation.md",
+      "id": "000060",
+      "lane": "bbt",
+      "title": "TaskGraph 060：Graph Compile 与 Superstep Execution Kernel",
+      "status": "review",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-15",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codex",
+        "attachments": "[{\"kind\":\"wiki\",\"target\":\"proposal/taskgraph-superstep-agent-orchestration.md\",\"label\":\"Superstep TaskGraph Proposal\"}]",
+        "depends_on": "000055",
+        "explicitly_excludes": "business-agent-role-palette,prompt-source,agent-profile-design",
+        "kind": "langgraph-distillation-execution-kernel",
+        "layer": "execution-core",
+        "parent": "000055",
+        "proposal": "wiki/proposal/taskgraph-superstep-agent-orchestration.md",
+        "requested_by": "user",
+        "rewrite_version": "2026-05-15-corrected-langgraph-boundary",
+        "scope": "compile-superstep-scheduler-checkpoint-event-log"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000061-taskgraph-dataflow-type-system.md",
+      "path": "tickets/000061-taskgraph-dataflow-type-system.md",
+      "id": "000061",
+      "lane": "bbt",
+      "title": "TaskGraph 061：State / Channel / Reducer / Checkpoint Data Plane",
+      "status": "todo",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-15",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codex",
+        "attachments": "[{\"kind\":\"wiki\",\"target\":\"proposal/taskgraph-superstep-agent-orchestration.md\",\"label\":\"Superstep TaskGraph Proposal\"}]",
+        "depends_on": "000060",
+        "explicitly_excludes": "business-artifact-taxonomy,explorer-implementer-role-contract,prompt-source",
+        "kind": "langgraph-distillation-state-data-plane",
+        "layer": "data-plane",
+        "parent": "000055",
+        "proposal": "wiki/proposal/taskgraph-superstep-agent-orchestration.md",
+        "requested_by": "user",
+        "rewrite_version": "2026-05-15-corrected-langgraph-boundary",
+        "scope": "channels-state-reducers-versions-seen-checkpoints"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000062-taskgraph-node-taxonomy.md",
+      "path": "tickets/000062-taskgraph-node-taxonomy.md",
+      "id": "000062",
+      "lane": "bbt",
+      "title": "TaskGraph 062：Interrupt / Command / Resume Control Plane",
+      "status": "todo",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-15",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codex",
+        "attachments": "[{\"kind\":\"wiki\",\"target\":\"proposal/taskgraph-superstep-agent-orchestration.md\",\"label\":\"Superstep TaskGraph Proposal\"}]",
+        "depends_on": "000061",
+        "explicitly_excludes": "business-node-taxonomy,palette-agent-roles,prompt-contract",
+        "kind": "langgraph-distillation-control-plane",
+        "layer": "control-plane",
+        "parent": "000055",
+        "proposal": "wiki/proposal/taskgraph-superstep-agent-orchestration.md",
+        "requested_by": "user",
+        "rewrite_version": "2026-05-15-corrected-langgraph-boundary",
+        "scope": "interrupt-command-resume-approval-durable-control"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000063-taskgraph-shell-local-tool-node.md",
+      "path": "tickets/000063-taskgraph-shell-local-tool-node.md",
+      "id": "000063",
+      "lane": "bbt",
+      "title": "TaskGraph 063：Blackboard Runtime Adapter Layer for Existing Nodes",
+      "status": "todo",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-15",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codex",
+        "attachments": "[{\"kind\":\"wiki\",\"target\":\"proposal/taskgraph-superstep-agent-orchestration.md\",\"label\":\"Superstep TaskGraph Proposal\"}]",
+        "depends_on": "000062",
+        "explicitly_excludes": "inventing-new-business-agent-model,replacing-agent-profile,prompt-source-redesign",
+        "kind": "runtime-adapter-layer",
+        "layer": "adapter",
+        "parent": "000055",
+        "proposal": "wiki/proposal/taskgraph-superstep-agent-orchestration.md",
+        "requested_by": "user",
+        "rewrite_version": "2026-05-15-corrected-langgraph-boundary",
+        "scope": "adapt-existing-llm-agent-profile-shell-opencode-to-superstep-runtime"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000064-taskgraph-frontend-graph-run-ui.md",
+      "path": "tickets/000064-taskgraph-frontend-graph-run-ui.md",
+      "id": "000064",
+      "lane": "bbd",
+      "title": "TaskGraph 前端 Graph 与 Run UI：节点编辑、状态覆盖与 Artifact 面板",
+      "status": "review",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-15",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codex",
+        "depends_on": "000055",
+        "kind": "execution-subtrack",
+        "parent": "000055",
+        "requested_by": "user",
+        "scope": "frontend-graph-run-ui"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000065-taskgraph-integrations-feishu-webhook-plugins.md",
+      "path": "tickets/000065-taskgraph-integrations-feishu-webhook-plugins.md",
+      "id": "000065",
+      "lane": "bbt",
+      "title": "TaskGraph 第三方生态：飞书通知、Webhook、本地工具与插件接入",
+      "status": "todo",
+      "created_at": "2026-05-14",
+      "updated_at": "2026-05-14",
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000055",
+        "kind": "execution-subtrack",
+        "parent": "000055",
+        "requested_by": "user",
+        "scope": "integrations-feishu-webhook-plugins"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000066-taskgraph-e2e-smoke-superstep-dataflow-business-node.md",
+      "path": "tickets/000066-taskgraph-e2e-smoke-superstep-dataflow-business-node.md",
+      "id": "000066",
+      "lane": "bbt",
+      "title": "TaskGraph E2E Smoke：Superstep + Dataflow + Business Node 全链路验收",
+      "status": "review",
+      "created_at": "2026-05-15",
+      "updated_at": "2026-05-15",
+      "extra": {
+        "area": "TaskGraph",
+        "assignee": "codex",
+        "attachments": "[{\"kind\":\"wiki\",\"target\":\"proposal/taskgraph-superstep-agent-orchestration.md\",\"label\":\"Superstep TaskGraph Proposal\"},{\"kind\":\"ticket\",\"target\":\"000060\",\"label\":\"Superstep Execution Kernel\"},{\"kind\":\"ticket\",\"target\":\"000061\",\"label\":\"Dataflow Channels & Artifact Contract\"},{\"kind\":\"ticket\",\"target\":\"000062\",\"label\":\"Business Node Taxonomy\"}]",
+        "depends_on": "000063",
+        "kind": "e2e-validation",
+        "parent": "000055",
+        "proposal": "wiki/proposal/taskgraph-superstep-agent-orchestration.md",
+        "related": "000064",
+        "requested_by": "user",
+        "scope": "taskgraph-e2e-smoke"
+      },
       "metadata_error": null,
       "metadata_warnings": []
     }

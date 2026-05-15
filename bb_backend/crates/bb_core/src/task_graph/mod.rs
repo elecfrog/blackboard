@@ -1,50 +1,84 @@
-//! Task Graph storage and validation layer.
+//! TaskGraph public API surface.
 //!
-//! Implements System Graph registry (read-only), Project Graph store (CRUD),
-//! structural validation, run state management, and workflow interpreter
-//! for the Task Graph MVP contract.
+//! The graph execution engine lives in `pregel/`; this root module groups
+//! definition, compile, runtime, schedule, and public re-exports.
 
-pub mod coordinator;
-pub mod eval;
-pub mod executor;
-pub mod interpreter;
-pub mod llm;
-pub mod node_exec;
-pub mod outcome;
-pub mod pins;
+pub mod compile;
+pub mod definition;
+pub mod nodes;
+pub mod pregel;
 pub mod run_state;
 pub mod runtime;
-pub mod store;
-pub mod types;
-pub mod upgrade;
+pub mod schedules;
 pub mod validation;
 
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
-mod interpreter_tests;
-
-pub use eval::{evaluate_branch, evaluate_loop_condition};
-pub use interpreter::{execute_run, resume_run, InterpreterOptions, RunOutcome, StepResult};
-pub use llm::{
-    build_codebuddy_mcp_config_content, build_codebuddy_settings_json, build_codex_mcp_config_args,
-    build_opencode_task_graph_config,
+pub use compile::channels;
+pub use compile::channels::{
+    apply_channel_writes, changed_channels_for, mark_versions_seen, ArtifactKind, ArtifactRef,
+    ChannelKind, ChannelSpec, ChannelState, ChannelValueType, ChannelWrite, VersionsSeen,
 };
-pub use outcome::{ExecutionMode, NodeOutcome, ReadyNode, ReduceAction, SideEffect};
-pub use pins::default_pins_for;
-pub use run_state::{
-    append_node_log, cancel_run_cascade, create_run, list_runs, read_run, read_run_detail,
-    record_branch_decision, record_loop_iteration, set_node_output, set_run_paused, update_cursor,
-    update_node_state, update_run_status, write_artifact, ArtifactContentType, BranchDecision,
-    GraphRef, LoopFrame, LoopIterationEntry, LoopIterationResult, LoopIterationState, NodeError,
-    NodeRunStatus, OutputArtifact, PausedAction, RunContext, RunPaused, RunStatus, TaskGraphRun,
-    TaskGraphRunDetail, TaskGraphRunNode, TaskGraphRunSummary,
+pub use compile::compiler;
+pub use compile::compiler::{
+    compile_graph, compile_graph_for_execution, CompiledChannel, CompiledChannelClass,
+    CompiledChannelKind, CompiledEdge, CompiledGraph, CompiledNode, CompiledProcess,
+    CompiledProcessMode, CompiledReducer, CompiledWriteValue, CompiledWriter,
 };
-pub use store::{
+pub use definition::pins;
+pub use definition::pins::default_pins_for;
+pub use definition::store;
+pub use definition::store::{
     delete_project_graph, list_project_graphs, list_system_graphs, read_project_graph,
     read_system_graph, save_project_graph, save_system_graph,
 };
-pub use types::*;
-pub use upgrade::upgrade_graph;
-pub use validation::{validate_graph, validate_pre_run};
+pub use definition::types;
+pub use definition::types::*;
+pub use definition::upgrade;
+pub use definition::upgrade::upgrade_graph;
+pub use nodes::eval;
+pub use nodes::eval::{evaluate_branch, evaluate_loop_condition};
+pub use nodes::llm;
+pub use nodes::llm::{
+    build_codebuddy_mcp_config_content, build_codebuddy_settings_json, build_codex_mcp_config_args,
+    build_opencode_task_graph_config,
+};
+pub use nodes::registry as node_registry;
+pub use nodes::registry::{
+    builtin_node_specs, node_category_for, node_role_from_config, node_spec_for,
+    ArtifactOutputSpec, NodeCategory, NodeRole, NodeSpec, PermissionKind, PermissionSpec,
+    RuntimeBinding, RuntimeBindingKind, SessionResumePolicy,
+};
+pub use pregel::coordinator;
+pub use pregel::executor;
+pub use pregel::outcome;
+pub use pregel::outcome::{
+    ExecutionMode, NodeOutcome, ReadyNode, ReduceAction, SideEffect, SuperstepPlan,
+};
+pub use pregel::runner;
+pub use pregel::runner::{execute_run, resume_run, RunOutcome, RunnerOptions, RunnerStepResult};
+pub use run_state::{
+    append_node_log, append_run_event, cancel_run_cascade, clear_pending_pregel_writes, create_run,
+    list_run_events, list_runs, list_superstep_checkpoints, read_latest_superstep_checkpoint,
+    read_pending_pregel_writes, read_pregel_checkpoint_tuple, read_run, read_run_detail,
+    record_branch_decision, record_loop_iteration, set_node_output, set_run_paused, update_cursor,
+    update_node_state, update_run_status, write_artifact, write_pending_pregel_writes,
+    write_superstep_checkpoint, ArtifactContentType, BranchDecision, GraphRef, LoopFrame,
+    LoopIterationEntry, LoopIterationResult, LoopIterationState, NodeError, NodeRunStatus,
+    OutputArtifact, PausedAction, PendingWrite, RunContext, RunEvent, RunPaused, RunStatus,
+    SuperstepCheckpoint, SuperstepStatus, TaskGraphRun, TaskGraphRunDetail, TaskGraphRunNode,
+    TaskGraphRunSummary,
+};
+pub use schedules::{
+    claim_schedule_fire, compute_next_run_after, create_schedule, delete_schedule,
+    due_planned_fire_at, list_schedules, mark_schedule_failed, mark_schedule_skipped,
+    mark_schedule_triggered, patch_schedule, read_schedule, refresh_schedule_last_status,
+    TaskSchedule, TaskScheduleConcurrencyPolicy, TaskScheduleCreate, TaskScheduleGraphRef,
+    TaskScheduleKind, TaskScheduleMisfirePolicy, TaskSchedulePatch, TaskScheduleSpec,
+    TaskScheduleState,
+};
+pub use validation::{
+    decode_graph_value_at, parse_json_source, prefix_validation_errors, validate_graph,
+    validate_graph_source, validate_graph_value, validate_graph_value_at, validate_pre_run,
+};

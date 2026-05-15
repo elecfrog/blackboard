@@ -1,5 +1,7 @@
 //! Unit tests for the task_graph module.
 
+mod runner;
+
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 mod tests {
@@ -130,6 +132,71 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_shell_config_defaults_deserialize() {
+        let config: ShellConfig = serde_json::from_value(serde_json::json!({
+            "command": "git"
+        }))
+        .unwrap();
+
+        assert_eq!(config.cwd, ".");
+        assert_eq!(config.args, Vec::<String>::new());
+        assert!(config.env.is_empty());
+        assert_eq!(config.timeout_ms, 600_000);
+        assert_eq!(config.permission, ShellPermission::ReadOnly);
+        assert_eq!(config.expected_exit_codes, vec![0]);
+        assert_eq!(config.capture.max_bytes, 1_048_576);
+        assert!(config.capture.strip_ansi);
+    }
+
+    #[test]
+    fn test_shell_validation_rejects_raw_command_string() {
+        let mut graph = minimal_valid_graph();
+        graph.nodes.insert(
+            1,
+            TaskGraphNode {
+                id: "shell".to_string(),
+                node_type: NodeType::Shell,
+                label: "Shell".to_string(),
+                description: None,
+                position: None,
+                config: serde_json::json!({
+                    "command": "git status"
+                }),
+                pins: vec![],
+            },
+        );
+        graph.edges = vec![
+            TaskGraphEdge {
+                id: "start__shell".to_string(),
+                from: "start".to_string(),
+                to: "shell".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: None,
+                target_handle: None,
+                from_pin: None,
+                to_pin: None,
+            },
+            TaskGraphEdge {
+                id: "shell__end-success".to_string(),
+                from: "shell".to_string(),
+                to: "end-success".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: None,
+                target_handle: None,
+                from_pin: None,
+                to_pin: None,
+            },
+        ];
+
+        let errors = validate_graph(&graph);
+        assert!(errors
+            .iter()
+            .any(|err| err.code == "raw_shell_string_not_supported"));
+    }
+
     // ─── Project Graph Store Tests ───────────────────────────────────────────
 
     #[test]
@@ -253,6 +320,32 @@ mod tests {
         let def: TaskGraphDefinition = serde_json::from_str(fixture).unwrap();
         let errors = validate_graph(&def);
         assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_validate_graph_source_reports_invalid_json() {
+        let errors = validate_graph_source(br#"{ "id": "#).unwrap_err();
+        assert!(errors
+            .iter()
+            .any(|e| e.code == "invalid_json" && e.path == "$"));
+    }
+
+    #[test]
+    fn test_validate_graph_value_reports_field_path_decode_errors() {
+        let mut value = serde_json::to_value(minimal_valid_graph()).unwrap();
+        value["nodes"] = serde_json::json!("not-an-array");
+
+        let errors = validate_graph_value_at(value, "graph").unwrap_err();
+        assert!(errors
+            .iter()
+            .any(|e| e.code == "invalid_type" && e.path == "graph.nodes"));
+    }
+
+    #[test]
+    fn test_validate_graph_value_decodes_valid_graph() {
+        let value = serde_json::to_value(minimal_valid_graph()).unwrap();
+        let graph = validate_graph_value(value).unwrap();
+        assert_eq!(graph.id, "test-graph");
     }
 
     // ─── Validation Tests: Invalid Graphs ────────────────────────────────────
@@ -611,8 +704,10 @@ mod tests {
 
 #[cfg(test)]
 mod run_state_tests {
+    use super::super::pregel::{checkpoint_config, checkpoint_metadata, PregelWrite};
     use super::super::run_state::*;
     use super::super::types::*;
+    use std::collections::BTreeMap;
     use std::fs;
     use tempfile::TempDir;
 
@@ -698,10 +793,12 @@ mod run_state_tests {
             .join(&run.id);
         assert!(run_dir.join("run.json").exists());
         assert!(run_dir.join("graph.snapshot.json").exists());
+        assert!(run_dir.join("graph.compiled.json").exists());
         assert!(run_dir.join("nodes/start.json").exists());
         assert!(run_dir.join("nodes/end-success.json").exists());
         assert!(run_dir.join("logs").is_dir());
         assert!(run_dir.join("artifacts").is_dir());
+        assert!(run_dir.join("checkpoints").is_dir());
     }
 
     #[test]
@@ -735,6 +832,88 @@ mod run_state_tests {
             run.context.input,
             serde_json::json!({"ticket_refs": ["000028"]})
         );
+    }
+
+    #[test]
+    fn test_pending_pregel_writes_roundtrip_and_clear() {
+        let tmp = TempDir::new().unwrap();
+        let run = create_test_run(&tmp);
+        let writes = vec![PregelWrite {
+            task_id: "task-000001-start-pull-start".to_string(),
+            source_node_id: "start".to_string(),
+            channel: "branch:to:end-success".to_string(),
+            value: serde_json::json!("start"),
+        }];
+
+        write_pending_pregel_writes(tmp.path(), "test-project", &run.id, &writes).unwrap();
+        let loaded = read_pending_pregel_writes(tmp.path(), "test-project", &run.id).unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].task_id, writes[0].task_id);
+
+        clear_pending_pregel_writes(tmp.path(), "test-project", &run.id).unwrap();
+        let loaded = read_pending_pregel_writes(tmp.path(), "test-project", &run.id).unwrap();
+        assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn test_pregel_checkpoint_tuple_prefers_latest_superstep_checkpoint() {
+        let tmp = TempDir::new().unwrap();
+        let run = create_test_run(&tmp);
+        let parent_checkpoint = run.pregel_checkpoint.clone().unwrap();
+        let mut checkpoint = parent_checkpoint.clone();
+        checkpoint.id = "pregel-checkpoint-000001".to_string();
+        checkpoint.superstep = 1;
+        checkpoint.channel_values.insert(
+            "branch:to:end-success".to_string(),
+            serde_json::json!("start"),
+        );
+        checkpoint
+            .channel_versions
+            .insert("branch:to:end-success".to_string(), 1);
+        checkpoint.updated_channels = vec!["branch:to:end-success".to_string()];
+        let parent_config = checkpoint_config(&run.id, "", parent_checkpoint.id.clone());
+        let metadata = checkpoint_metadata("loop", 1, Some(&parent_config));
+        let superstep_checkpoint = SuperstepCheckpoint {
+            id: "checkpoint-000001".to_string(),
+            run_id: run.id.clone(),
+            superstep: 1,
+            status: SuperstepStatus::Succeeded,
+            created_at: "2026-05-15T00:00:00Z".to_string(),
+            completed_at: Some("2026-05-15T00:00:01Z".to_string()),
+            cursor_before: Vec::new(),
+            cursor_after: vec!["end-success".to_string()],
+            ready_nodes: vec!["start".to_string()],
+            waiting_nodes: Vec::new(),
+            node_statuses: BTreeMap::new(),
+            context: run.context.clone(),
+            pending_writes: Vec::new(),
+            pregel_checkpoint: Some(checkpoint.clone()),
+            pregel_parent_config: Some(parent_config.clone()),
+            pregel_checkpoint_metadata: Some(metadata.clone()),
+            message: Some("checkpoint tuple test".to_string()),
+        };
+        write_superstep_checkpoint(tmp.path(), "test-project", &run.id, &superstep_checkpoint)
+            .unwrap();
+        let pending = vec![PregelWrite {
+            task_id: "task-000002-end-success-pull-branch-to-end-success".to_string(),
+            source_node_id: "end-success".to_string(),
+            channel: "__end__".to_string(),
+            value: serde_json::json!("succeeded"),
+        }];
+        write_pending_pregel_writes(tmp.path(), "test-project", &run.id, &pending).unwrap();
+
+        let tuple = read_pregel_checkpoint_tuple(tmp.path(), "test-project", &run.id, "")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(tuple.config.thread_id, run.id);
+        assert_eq!(tuple.config.checkpoint_ns, "");
+        assert_eq!(tuple.config.checkpoint_id, checkpoint.id);
+        assert_eq!(tuple.checkpoint.superstep, 1);
+        assert_eq!(tuple.parent_config, Some(parent_config));
+        assert_eq!(tuple.metadata, metadata);
+        assert_eq!(tuple.pending_writes.len(), 1);
+        assert_eq!(tuple.pending_writes[0].task_id, pending[0].task_id);
     }
 
     // ── List runs ────────────────────────────────────────────────────────────

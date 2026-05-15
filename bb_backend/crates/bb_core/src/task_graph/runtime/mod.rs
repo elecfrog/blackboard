@@ -14,8 +14,8 @@ use serde::Deserialize;
 use super::llm::ResolvedLlmInvocation;
 use super::run_state::{self, ArtifactContentType, RunStatus};
 use super::types::{LlmConfig, TaskGraphError};
-use super::InterpreterOptions;
-use super::StepResult;
+use super::RunnerOptions;
+use super::RunnerStepResult;
 
 mod opencode;
 
@@ -43,7 +43,7 @@ pub(super) struct RuntimeCommandObserver {
 // ─── Command builder ─────────────────────────────────────────────────────────
 
 pub(super) fn run_runtime_command(
-    opts: &InterpreterOptions,
+    opts: &RunnerOptions,
     invocation: &ResolvedLlmInvocation,
     project: &str,
     node_id: &str,
@@ -64,6 +64,9 @@ pub(super) fn run_runtime_command(
             }
             if let Some(ref model) = invocation.model {
                 c.arg("--model").arg(model);
+            }
+            if let Some(ref variant) = invocation.variant {
+                c.arg("--variant").arg(variant);
             }
             c.arg("--dir").arg(&opts.workspace_root);
             c.arg("--dangerously-skip-permissions");
@@ -235,7 +238,7 @@ pub(super) fn mark_node_cancelled(
     duration_ms: u64,
     exit_code: Option<i32>,
     capture: &RuntimeCommandCapture,
-) -> Result<StepResult, TaskGraphError> {
+) -> Result<RunnerStepResult, TaskGraphError> {
     use super::run_state::{NodeRunStatus, TaskGraphRunNode};
 
     let tail = tail_str(&capture.log, 4096);
@@ -263,7 +266,7 @@ pub(super) fn mark_node_cancelled(
         agent_session: None,
     };
     run_state::update_node_state(ws, project, run_id, &node_state)?;
-    Ok(StepResult::Completed("cancelled".to_string()))
+    Ok(RunnerStepResult::Completed("cancelled".to_string()))
 }
 
 pub(super) fn try_parse_json_or_text(s: &str) -> serde_json::Value {

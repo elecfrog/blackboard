@@ -36,7 +36,25 @@ export interface TaskGraphCatalogItem extends TaskGraphRef {
 
 export type PinCategory = 'exec' | 'data'
 export type PinDirection = 'in' | 'out'
-export type PinValueType = 'string' | 'int' | 'float' | 'bool' | 'json' | 'array' | 'any' | 'markdown'
+export type PinValueType =
+  | 'string'
+  | 'text'
+  | 'int'
+  | 'float'
+  | 'bool'
+  | 'json'
+  | 'array'
+  | 'any'
+  | 'markdown'
+  | 'file_ref'
+  | 'wiki_ref'
+  | 'ticket_ref'
+  | 'diff'
+  | 'test_result'
+  | 'review_comment'
+  | 'handoff_summary'
+  | 'runtime_log'
+  | 'artifact_ref'
 
 export interface NodePin {
   id: string
@@ -47,11 +65,93 @@ export interface NodePin {
   required?: boolean
 }
 
+// ─── Dataflow Channel Types ─────────────────────────────────────────────────
+
+export type TaskGraphChannelValueType = PinValueType
+export type TaskGraphChannelKind = 'last_value' | 'topic' | 'aggregate' | 'barrier' | 'artifact_ref'
+
+export interface TaskGraphChannelSpec {
+  name: string
+  kind: TaskGraphChannelKind
+  value_type: TaskGraphChannelValueType
+  reducer?: string
+  barrier_nodes?: string[]
+  description?: string
+}
+
+export interface TaskGraphChannelState {
+  name: string
+  kind: TaskGraphChannelKind
+  value_type: TaskGraphChannelValueType
+  version: number
+  value: unknown
+  updated_by_node_id?: string
+  updated_at?: string
+}
+
+export interface TaskGraphChannelWrite {
+  channel: string
+  source_node_id: string
+  value: unknown
+}
+
+// ─── Node Taxonomy Types ────────────────────────────────────────────────────
+
+export type TaskGraphNodeCategory = 'terminal' | 'control' | 'runtime' | 'transform' | 'artifact' | 'integration' | 'approval'
+export type TaskGraphNodeRole =
+  | 'explorer_agent'
+  | 'implementer_agent'
+  | 'verifier_agent'
+  | 'reviewer_agent'
+  | 'handoff_writer'
+  | 'opencode_session'
+  | 'codex_session'
+  | 'claude_session'
+  | 'local_shell'
+  | 'write_wiki_doc'
+  | 'update_ticket'
+  | 'feishu_notify'
+
+export type TaskGraphPermissionKind =
+  | 'read_project'
+  | 'read_worktree'
+  | 'write_scoped'
+  | 'run_tests'
+  | 'network'
+  | 'git_operation'
+  | 'external_notify'
+  | 'update_ticket'
+  | 'write_wiki'
+
+export type TaskGraphRuntimeBindingKind = 'none' | 'llm' | 'agent_session' | 'shell' | 'sub_graph' | 'blackboard' | 'webhook'
+export type TaskGraphSessionResumePolicy = 'none' | 'reuse_by_run' | 'reuse_by_node' | 'fork_from_previous'
+
+export interface TaskGraphRuntimeBinding {
+  kind: TaskGraphRuntimeBindingKind
+  provider?: string
+  profile?: string
+  model?: string
+  variant?: string
+  session_resume_policy: TaskGraphSessionResumePolicy
+}
+
+export interface TaskGraphPermissionSpec {
+  kind: TaskGraphPermissionKind
+  required?: boolean
+  scope?: string
+}
+
+export interface TaskGraphArtifactOutputSpec {
+  name: string
+  value_type: TaskGraphChannelValueType
+  channel_kind: TaskGraphChannelKind
+}
+
 // ─── Node / Edge Types ───────────────────────────────────────────────────────
 
 export interface TaskGraphNode {
   id: string
-  type: 'start' | 'end' | 'llm' | 'human_gate' | 'branch' | 'loop' | 'input_var' | 'sub_graph'
+  type: 'start' | 'end' | 'llm' | 'shell' | 'human_gate' | 'branch' | 'loop' | 'input_var' | 'sub_graph'
   label: string
   description?: string
   position?: { x: number; y: number }
@@ -150,6 +250,8 @@ export interface TaskGraphRunSummary {
   started_at?: string
   updated_at: string
   completed_at?: string
+  current_superstep?: number
+  last_checkpoint_id?: string
 }
 
 export interface TaskGraphPausedAction {
@@ -232,6 +334,8 @@ export interface TaskGraphRunDetail {
   started_at?: string
   updated_at: string
   completed_at?: string
+  current_superstep?: number
+  last_checkpoint_id?: string
   paused?: TaskGraphRunPaused
   cursor: string[]
   context: TaskGraphRunContext
@@ -250,6 +354,94 @@ export interface TaskGraphValidationResult {
   status: 'passed' | 'failed'
   errors: TaskGraphValidationError[]
 }
+
+export type TaskGraphSuperstepStatus = 'running' | 'succeeded' | 'paused' | 'failed' | 'cancelled'
+
+export interface TaskGraphPendingWrite {
+  source_node_id: string
+  target: string
+  value: unknown
+}
+
+export interface TaskGraphSuperstepCheckpoint {
+  id: string
+  run_id: string
+  superstep: number
+  status: TaskGraphSuperstepStatus
+  created_at: string
+  completed_at?: string
+  cursor_before: string[]
+  cursor_after: string[]
+  ready_nodes: string[]
+  waiting_nodes: string[]
+  node_statuses: Record<string, TaskGraphNodeRunStatus>
+  context: TaskGraphRunContext
+  pending_writes?: TaskGraphPendingWrite[]
+  message?: string
+}
+
+export interface TaskGraphRunEvent {
+  id: string
+  seq: number
+  run_id: string
+  superstep: number
+  kind: string
+  node_id?: string
+  message: string
+  payload?: unknown
+  created_at: string
+}
+
+export type TaskGraphScheduleKind = 'interval' | 'daily' | 'weekly' | 'cron'
+
+export interface TaskGraphScheduleSpec {
+  kind: TaskGraphScheduleKind
+  expression: string
+}
+
+export interface TaskGraphScheduleState {
+  next_run_at?: string
+  last_run_at?: string
+  last_run_id?: string
+  last_status?: string
+  last_error?: string
+  last_planned_fire_at?: string
+}
+
+export interface TaskGraphSchedule {
+  id: string
+  name: string
+  project: string
+  enabled: boolean
+  graph_ref: TaskGraphRef
+  input: unknown
+  schedule: TaskGraphScheduleSpec
+  timezone: string
+  concurrency_policy: 'skip'
+  misfire_policy: 'run_once'
+  created_at: string
+  updated_at: string
+  state: TaskGraphScheduleState
+}
+
+export interface TaskGraphScheduleCreateInput {
+  id?: string
+  name: string
+  graph_ref: TaskGraphRef
+  input?: unknown
+  schedule: TaskGraphScheduleSpec
+  timezone?: string
+  enabled?: boolean
+}
+
+export type TaskGraphSchedulePatchInput = Partial<{
+  name: string
+  enabled: boolean
+  graph_ref: TaskGraphRef
+  input: unknown
+  schedule: TaskGraphScheduleSpec
+  timezone: string
+}>
 
 const TASK_GRAPH_ENGINE_STORAGE_KEY = 'blackboard.task-graphs.engine'
 const knownLlmRuntimes = ['codex', 'opencode', 'codebuddy']
@@ -416,6 +608,35 @@ export function validateTaskGraph(
         if (!knownLlmRuntimes.includes(runtime)) {
           errors.push({ target: 'node', id: node.id, message: `LLM runtime must be one of ${knownLlmRuntimes.join(', ')}.` })
         }
+      }
+    }
+    if (node.type === 'shell') {
+      const command = configString(node.config, 'command')
+      if (!command.trim()) {
+        errors.push({ target: 'node', id: node.id, message: 'Shell command is required.' })
+      }
+      if (/\s/.test(command)) {
+        errors.push({ target: 'node', id: node.id, message: 'Shell command must be an executable name/path; put parameters in args.' })
+      }
+      if (/[|;<>`]/.test(command) || command.includes('&&') || command.includes('||') || command.includes('$(')) {
+        errors.push({ target: 'node', id: node.id, message: 'Shell command cannot contain shell metacharacters.' })
+      }
+      const args = node.config.args
+      if (Array.isArray(args) && args.some((arg) => typeof arg === 'string' && (/[|;<>`]/.test(arg) || arg.includes('&&') || arg.includes('||') || arg.includes('$(')))) {
+        errors.push({ target: 'node', id: node.id, message: 'Shell args cannot contain shell metacharacters.' })
+      }
+      const timeout = configNumber(node.config, 'timeout_ms')
+      if (Number.isFinite(timeout) && timeout <= 0) {
+        errors.push({ target: 'node', id: node.id, message: 'Shell timeout_ms must be greater than 0.' })
+      }
+      const expectedExitCodes = node.config.expected_exit_codes
+      if (Array.isArray(expectedExitCodes) && expectedExitCodes.length === 0) {
+        errors.push({ target: 'node', id: node.id, message: 'Shell expected_exit_codes must contain at least one code.' })
+      }
+      const capture = configRecord(node.config, 'capture')
+      const maxBytes = typeof capture.max_bytes === 'number' ? capture.max_bytes : Number.NaN
+      if (Number.isFinite(maxBytes) && maxBytes <= 0) {
+        errors.push({ target: 'node', id: node.id, message: 'Shell capture.max_bytes must be greater than 0.' })
       }
     }
     if (node.type === 'branch') {
@@ -591,6 +812,62 @@ export async function startTaskGraphRun(
   return { run: { ...payload.run, graph: runGraphRef(payload.run), graph_ref: runGraphRef(payload.run) as TaskGraphRef & { version: number } }, source: 'rest' }
 }
 
+export async function listTaskGraphSchedules(project: string): Promise<{ schedules: TaskGraphSchedule[]; source: 'rest' }> {
+  const encoded = encodeURIComponent(project)
+  const payload = await fetchJson<{ schedules: TaskGraphSchedule[] }>(`/api/projects/${encoded}/task-graph-schedules`)
+  return { schedules: payload.schedules ?? [], source: 'rest' }
+}
+
+export async function createTaskGraphSchedule(
+  project: string,
+  input: TaskGraphScheduleCreateInput,
+): Promise<{ schedule: TaskGraphSchedule; source: 'rest' }> {
+  const encoded = encodeURIComponent(project)
+  const payload = await fetchJson<{ schedule: TaskGraphSchedule }>(`/api/projects/${encoded}/task-graph-schedules`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  return { schedule: payload.schedule, source: 'rest' }
+}
+
+export async function patchTaskGraphSchedule(
+  project: string,
+  id: string,
+  patch: TaskGraphSchedulePatchInput,
+): Promise<{ schedule: TaskGraphSchedule; source: 'rest' }> {
+  const encoded = encodeURIComponent(project)
+  const payload = await fetchJson<{ schedule: TaskGraphSchedule }>(
+    `/api/projects/${encoded}/task-graph-schedules/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    },
+  )
+  return { schedule: payload.schedule, source: 'rest' }
+}
+
+export async function deleteTaskGraphSchedule(project: string, id: string): Promise<void> {
+  const encoded = encodeURIComponent(project)
+  await fetch(`/api/projects/${encoded}/task-graph-schedules/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    cache: 'no-cache',
+  }).then((response) => {
+    if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`)
+  })
+}
+
+export async function runTaskGraphScheduleNow(
+  project: string,
+  id: string,
+): Promise<{ run: TaskGraphRunSummary; source: 'rest' }> {
+  const encoded = encodeURIComponent(project)
+  const payload = await fetchJson<{ run: TaskGraphRunSummary }>(
+    `/api/projects/${encoded}/task-graph-schedules/${encodeURIComponent(id)}/run-now`,
+    { method: 'POST' },
+  )
+  return { run: { ...payload.run, graph: runGraphRef(payload.run), graph_ref: runGraphRef(payload.run) as TaskGraphRef & { version: number } }, source: 'rest' }
+}
+
 export async function cancelTaskGraphRun(project: string, runId: string): Promise<void> {
   const encoded = encodeURIComponent(project)
   await fetchJson(`/api/projects/${encoded}/task-graph-runs/${encodeURIComponent(runId)}/cancel`, {
@@ -604,6 +881,22 @@ export async function readTaskGraphRun(project: string, runId: string): Promise<
     `/api/projects/${encoded}/task-graph-runs/${encodeURIComponent(runId)}`,
   )
   return { run: payload.run, source: 'rest' }
+}
+
+export async function readTaskGraphRunEventLog(project: string, runId: string): Promise<TaskGraphRunEvent[]> {
+  const encoded = encodeURIComponent(project)
+  const payload = await fetchJson<{ events: TaskGraphRunEvent[] }>(
+    `/api/projects/${encoded}/task-graph-runs/${encodeURIComponent(runId)}/event-log`,
+  )
+  return payload.events
+}
+
+export async function readTaskGraphRunCheckpoints(project: string, runId: string): Promise<TaskGraphSuperstepCheckpoint[]> {
+  const encoded = encodeURIComponent(project)
+  const payload = await fetchJson<{ checkpoints: TaskGraphSuperstepCheckpoint[] }>(
+    `/api/projects/${encoded}/task-graph-runs/${encodeURIComponent(runId)}/checkpoints`,
+  )
+  return payload.checkpoints
 }
 
 export function watchTaskGraphRun(

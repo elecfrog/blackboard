@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use super::super::types::*;
+use crate::task_graph::definition::types::*;
 
 /// Node id: kebab-case, 1-64 chars, alphanumeric + hyphen.
 pub(super) fn is_valid_node_id(id: &str) -> bool {
@@ -332,9 +332,99 @@ pub(super) fn validate_node_config_shape(
                 }
             }
         }
+        NodeType::Shell => {
+            validate_shell_config(node, idx, errors);
+        }
         // LLM, Branch, Loop, SubGraph — already validated in dedicated functions
         _ => {}
     }
+}
+
+fn validate_shell_config(
+    node: &TaskGraphNode,
+    idx: usize,
+    errors: &mut Vec<TaskGraphValidationError>,
+) {
+    let config: Result<ShellConfig, _> = serde_json::from_value(node.config.clone());
+    let config = match config {
+        Ok(c) => c,
+        Err(e) => {
+            errors.push(TaskGraphValidationError {
+                path: format!("nodes[{}].config", idx),
+                code: "invalid_config".to_string(),
+                message: format!("Shell node '{}' config parse error: {}", node.id, e),
+            });
+            return;
+        }
+    };
+
+    if config.command.trim().is_empty() {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config.command", idx),
+            code: "empty_command".to_string(),
+            message: format!("Shell node '{}' command must not be empty", node.id),
+        });
+    }
+
+    if config.command.chars().any(char::is_whitespace) {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config.command", idx),
+            code: "raw_shell_string_not_supported".to_string(),
+            message: format!(
+                "Shell node '{}' command must be an executable name/path; put parameters in args",
+                node.id
+            ),
+        });
+    }
+
+    if contains_shell_metachar(&config.command)
+        || config.args.iter().any(|arg| contains_shell_metachar(arg))
+    {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config", idx),
+            code: "shell_metachar_not_supported".to_string(),
+            message: format!(
+                "Shell node '{}' does not support shell metacharacters or pipelines",
+                node.id
+            ),
+        });
+    }
+
+    if config.timeout_ms == 0 {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config.timeout_ms", idx),
+            code: "out_of_range".to_string(),
+            message: format!("Shell node '{}' timeout_ms must be greater than 0", node.id),
+        });
+    }
+
+    if config.expected_exit_codes.is_empty() {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config.expected_exit_codes", idx),
+            code: "empty_expected_exit_codes".to_string(),
+            message: format!(
+                "Shell node '{}' expected_exit_codes must contain at least one code",
+                node.id
+            ),
+        });
+    }
+
+    if config.capture.max_bytes == 0 {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config.capture.max_bytes", idx),
+            code: "out_of_range".to_string(),
+            message: format!(
+                "Shell node '{}' capture.max_bytes must be greater than 0",
+                node.id
+            ),
+        });
+    }
+}
+
+fn contains_shell_metachar(value: &str) -> bool {
+    ["&&", "||", "|", ";", ">", "<", "`", "$("]
+        .iter()
+        .any(|token| value.contains(token))
 }
 
 // ─── SubGraph validation ─────────────────────────────────────────────────────────────

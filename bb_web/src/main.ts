@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import 'tdesign-vue-next/es/style/index.css'
+import '@tdesign-vue-next/chat/es/style/index.css'
 import './styles.css'
 import App from './App.vue'
 import BoardView from './views/BoardView.vue'

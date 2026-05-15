@@ -27,6 +27,7 @@ pub struct CreateAgentSession {
     pub runtime: String,
     pub agent: String,
     pub model: Option<String>,
+    pub variant: Option<String>,
     pub parent: Option<AgentSessionParent>,
 }
 
@@ -44,6 +45,7 @@ pub fn create_session(
         runtime: input.runtime,
         agent: input.agent,
         model: input.model,
+        variant: input.variant,
         parent: input.parent,
         provider_session_id: None,
         created_at: now.clone(),

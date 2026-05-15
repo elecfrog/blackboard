@@ -10,6 +10,7 @@ type GraphInputPatch = Partial<Omit<TaskGraphInputParam, 'default'>> & {
 defineProps<{
   inputs: TaskGraphInputParam[]
   readonly?: boolean
+  layout?: 'wide' | 'drawer'
 }>()
 
 const emit = defineEmits<{
@@ -80,7 +81,7 @@ function inputReference(inputId: string) {
 </script>
 
 <template>
-  <section class="task-graph-inputs">
+  <section :class="['task-graph-inputs', `task-graph-inputs-${layout ?? 'wide'}`]">
     <header>
       <h4>{{ t('taskGraphInputs') }}</h4>
       <button type="button" :disabled="readonly" @click="emit('add')">
@@ -214,6 +215,54 @@ function inputReference(inputId: string) {
   background: var(--bb-surface);
 }
 
+.task-graph-inputs-drawer {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.task-graph-inputs-drawer header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 34px;
+  padding-bottom: 4px;
+  background: color-mix(in srgb, var(--bb-surface) 96%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.task-graph-inputs-drawer .task-graph-input-row {
+  grid-template-columns: minmax(82px, 0.8fr) minmax(108px, 1fr) minmax(94px, 0.75fr) 30px;
+  grid-template-areas:
+    "id label type remove"
+    "default default reference reference";
+  align-items: end;
+}
+
+.task-graph-inputs-drawer .task-graph-input-cell-id {
+  grid-area: id;
+}
+
+.task-graph-inputs-drawer .task-graph-input-cell-label {
+  grid-area: label;
+}
+
+.task-graph-inputs-drawer .task-graph-input-cell-type {
+  grid-area: type;
+}
+
+.task-graph-inputs-drawer .task-graph-input-cell-default {
+  grid-area: default;
+}
+
+.task-graph-inputs-drawer .task-graph-input-cell-reference {
+  grid-area: reference;
+}
+
+.task-graph-inputs-drawer .task-graph-input-remove {
+  grid-area: remove;
+}
+
 .task-graph-input-cell {
   display: grid;
   gap: 4px;
@@ -287,6 +336,17 @@ function inputReference(inputId: string) {
 @media (max-width: 720px) {
   .task-graph-input-row {
     min-width: 604px;
+  }
+
+  .task-graph-inputs-drawer .task-graph-input-row {
+    grid-template-columns: minmax(0, 1fr) 30px;
+    grid-template-areas:
+      "id remove"
+      "label label"
+      "type type"
+      "default default"
+      "reference reference";
+    min-width: 0;
   }
 }
 </style>

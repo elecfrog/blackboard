@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
-use crate::http::task_graph::interpreter_config::{
-    build_interpreter_opts, resolve_overrides_from_profile, InterpreterOverrides,
+use crate::http::task_graph::runner_config::{
+    build_runner_opts, resolve_overrides_from_profile, RunnerOverrides,
 };
 
 // ---------------------------------------------------------------------------
@@ -33,6 +33,7 @@ pub struct DaemonOptions {
     pub once: bool,
     pub dry_run: bool,
     pub watch: bool,
+    pub schedules: bool,
     pub retry_failed: bool,
 }
 
@@ -110,7 +111,7 @@ fn run_graph(
         run.id, project, options.graph
     );
 
-    let overrides = InterpreterOverrides {
+    let overrides = RunnerOverrides {
         model: options.model.clone(),
         dry_run: options.dry_run,
         codex_path: Some(options.codex.clone()),
@@ -136,14 +137,17 @@ fn run_graph(
             })
             .unwrap_or_else(|| "opencode".to_string());
         let cwd = workspace.root();
-        if let Err(e) =
-            bb_core::skills::inject_skills_for_runtime(workspace.root(), &runtime, &overrides.skills, cwd)
-        {
+        if let Err(e) = bb_core::skills::inject_skills_for_runtime(
+            workspace.root(),
+            &runtime,
+            &overrides.skills,
+            cwd,
+        ) {
             eprintln!("bb-daemon warning: failed to inject skills: {}", e);
         }
     }
 
-    let opts = build_interpreter_opts(
+    let opts = build_runner_opts(
         workspace.root(),
         project.to_string(),
         run.id.clone(),
@@ -186,7 +190,11 @@ struct Dispatch {
 // ---------------------------------------------------------------------------
 
 pub fn run(workspace: Workspace, options: DaemonOptions) -> Result<()> {
-    let (scope, graph_id) = parse_graph_ref(&options.graph)?;
+    let parsed_graph = if options.schedules {
+        None
+    } else {
+        Some(parse_graph_ref(&options.graph)?)
+    };
 
     eprintln!(
         "bb-daemon starting: root={} graph={} agent={} watch={}",
@@ -195,6 +203,28 @@ pub fn run(workspace: Workspace, options: DaemonOptions) -> Result<()> {
         options.agent,
         options.watch,
     );
+
+    if options.schedules {
+        loop {
+            let count = crate::http::task_graph::dispatch_due_schedules(&workspace)
+                .map_err(|err| anyhow::anyhow!(err.0.to_string()))?;
+            if options.once {
+                eprintln!("bb-daemon schedule scan complete: dispatched={count}");
+                return Ok(());
+            }
+            if count == 0 {
+                eprintln!(
+                    "bb-daemon schedule idle: interval={}s",
+                    options.interval_seconds
+                );
+            } else {
+                eprintln!("bb-daemon schedule dispatched: {count}");
+            }
+            thread::sleep(Duration::from_secs(options.interval_seconds.max(1)));
+        }
+    }
+
+    let (scope, graph_id) = parsed_graph.expect("non-schedule daemon mode parses graph");
 
     if options.watch {
         // Watch mode: poll inbox for new notes
@@ -232,7 +262,7 @@ pub fn run(workspace: Workspace, options: DaemonOptions) -> Result<()> {
         for project in &projects {
             let graph = load_graph(&workspace, scope, graph_id, &project.name)?;
             let graph_ref = GraphRef {
-scope: graph.scope,
+                scope: graph.scope,
                 id: graph.id.clone(),
                 version: graph.version,
             };
@@ -246,7 +276,14 @@ scope: graph.scope,
                 "project": project.name,
             });
 
-            match run_graph(&workspace, &options, &graph, graph_ref, &project.name, input) {
+            match run_graph(
+                &workspace,
+                &options,
+                &graph,
+                graph_ref,
+                &project.name,
+                input,
+            ) {
                 Ok(RunOutcome::Succeeded) => {
                     eprintln!("bb-daemon run succeeded: project={}", project.name);
                 }
@@ -267,10 +304,7 @@ scope: graph.scope,
                     eprintln!("bb-daemon run cancelled: project={}", project.name);
                 }
                 Err(e) => {
-                    eprintln!(
-                        "bb-daemon run error: project={} error={}",
-                        project.name, e
-                    );
+                    eprintln!("bb-daemon run error: project={} error={}", project.name, e);
                     any_failed = true;
                 }
             }
@@ -339,11 +373,15 @@ fn scan_inbox(
             );
 
             if options.dry_run {
-                eprintln!("bb-daemon dry-run: would create run for note {}", dispatch.note.name);
+                eprintln!(
+                    "bb-daemon dry-run: would create run for note {}",
+                    dispatch.note.name
+                );
                 record_result(state, &dispatch, "dry_run", None, None);
                 write_state(state_path, state)?;
                 dispatched += 1;
-                if options.max_dispatch_per_scan > 0 && dispatched >= options.max_dispatch_per_scan {
+                if options.max_dispatch_per_scan > 0 && dispatched >= options.max_dispatch_per_scan
+                {
                     return Ok(dispatched);
                 }
                 continue;
@@ -391,13 +429,7 @@ fn scan_inbox(
                     record_result(state, &dispatch, "cancelled", None, None);
                 }
                 Err(e) => {
-                    record_result(
-                        state,
-                        &dispatch,
-                        "failed",
-                        None,
-                        Some(e.to_string()),
-                    );
+                    record_result(state, &dispatch, "failed", None, Some(e.to_string()));
                 }
             }
 

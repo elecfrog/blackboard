@@ -32,6 +32,7 @@ export interface AgentSession extends AgentSessionSummary {
   runtime: string
   agent: string
   model?: string
+  variant?: string
   parent?: Record<string, unknown>
   created_at: string
   completed_at?: string
@@ -65,6 +66,46 @@ async function fetchJson<T>(url: string): Promise<T> {
     throw new Error(message)
   }
   return (await response.json()) as T
+}
+
+async function writeJson<T>(url: string, method: string, body?: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method,
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (!response.ok) {
+    let message = `HTTP ${response.status} ${response.statusText} for ${url}`
+    try {
+      const payload = (await response.json()) as { error?: { message?: string } }
+      if (payload.error?.message) message = payload.error.message
+    } catch {
+      // Keep the HTTP fallback.
+    }
+    throw new Error(message)
+  }
+  return (await response.json()) as T
+}
+
+export async function createAgentSession(
+  project: string,
+  input: {
+    prompt: string
+    title?: string
+    runtime?: string
+    agent?: string
+    model?: string
+    variant?: string
+    provider_session_id?: string
+    timeout_secs?: number
+  },
+): Promise<AgentSession> {
+  const payload = await writeJson<{ session: AgentSession }>(
+    `/api/projects/${encodeURIComponent(project)}/agent-sessions`,
+    'POST',
+    input,
+  )
+  return payload.session
 }
 
 export async function readAgentSession(

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::super::types::*;
+use crate::task_graph::definition::types::*;
 
 // ─── Pin connection validation ───────────────────────────────────────────────
 

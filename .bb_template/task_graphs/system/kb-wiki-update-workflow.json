@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "id": "kb-wiki-update-workflow",
+  "scope": "system",
+  "title": "KB Wiki Update Workflow",
+  "description": "调用 OpenCode kb-wiki-updater agent 从 git/local changes 增量更新已有 Wiki，记录版本、时间、changelog 与 QMD。",
+  "version": 1,
+  "readonly": true,
+  "metadata": {
+    "tags": [
+      "kb",
+      "wiki",
+      "update"
+    ],
+    "owner": "blackboard",
+    "created_by": "codex"
+  },
+  "inputs": [
+    {
+      "id": "request",
+      "label": "更新需求",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "mode",
+      "label": "更新模式",
+      "type": "string",
+      "default": "localchanges",
+      "description": "gitchanges | localchanges"
+    },
+    {
+      "id": "module-name",
+      "label": "模块名",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "module-root",
+      "label": "模块根目录",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "kb-output-dir",
+      "label": "已有 Wiki 输出目录",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "since-ref",
+      "label": "起始 ref",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "until-ref",
+      "label": "结束 ref",
+      "type": "string",
+      "default": "HEAD"
+    },
+    {
+      "id": "local-scope",
+      "label": "本地改动范围",
+      "type": "string",
+      "default": "all"
+    },
+    {
+      "id": "language",
+      "label": "文档语言",
+      "type": "string",
+      "default": "zh-CN"
+    },
+    {
+      "id": "version-policy",
+      "label": "版本策略",
+      "type": "string",
+      "default": "auto"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -260.0,
+        "y": 120.0
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "run-wiki-update",
+      "type": "llm",
+      "label": "kb-wiki-updater",
+      "description": "增量维护已有 Wiki：gate、collect changes、impact、plan、update、review、state recorder。",
+      "position": {
+        "x": 64.0,
+        "y": 120.0
+      },
+      "config": {
+        "runtime": "opencode",
+        "agent": "kb-wiki-updater",
+        "inputs": {
+          "request": "{{inputs.request}}",
+          "mode": "{{inputs.mode}}",
+          "module-name": "{{inputs.module-name}}",
+          "module-root": "{{inputs.module-root}}",
+          "kb-output-dir": "{{inputs.kb-output-dir}}",
+          "since-ref": "{{inputs.since-ref}}",
+          "until-ref": "{{inputs.until-ref}}",
+          "local-scope": "{{inputs.local-scope}}",
+          "language": "{{inputs.language}}",
+          "version-policy": "{{inputs.version-policy}}"
+        },
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "请按 Wiki Update Flow 增量更新已有完整 Wiki。\n\n用户需求：\n{{inputs.request}}\n\nmode: {{inputs.mode}}\nmodule_name: {{inputs.module-name}}\nmodule_root: {{inputs.module-root}}\nkb_output_dir: {{inputs.kb-output-dir}}\nsince_ref: {{inputs.since-ref}}\nuntil_ref: {{inputs.until-ref}}\nlocal_scope: {{inputs.local-scope}}\nlanguage: {{inputs.language}}\nversion_policy: {{inputs.version-policy}}\n\n要求：先执行 complete Wiki gate；标准化 gitchanges/localchanges 为 change-set.json；分派 impact scouts、impact planner、targeted updaters、parallel reviewers、state-recorder；如果 risk=major，按既有规则停止并建议重新 distill；最后返回版本变化、更新文档、review 状态、state/changelog/report 路径、QMD 状态。"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "markdown",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 432.0,
+        "y": 120.0
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-start-update",
+      "from": "start",
+      "to": "run-wiki-update",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-update-end",
+      "from": "run-wiki-update",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0.0,
+      "y": 0.0,
+      "scale": 1.0
+    }
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "id": "kb-research-workflow",
+  "scope": "system",
+  "title": "KB Research Workflow",
+  "description": "调用 OpenCode kb-research agent 完成外部调研、验证、KB Markdown 写入与 QMD 刷新。",
+  "version": 1,
+  "readonly": true,
+  "metadata": {
+    "tags": [
+      "kb",
+      "research"
+    ],
+    "owner": "blackboard",
+    "created_by": "codex"
+  },
+  "inputs": [
+    {
+      "id": "request",
+      "label": "调研需求",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "language",
+      "label": "输出语言",
+      "type": "string",
+      "default": "zh-CN"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -260.0,
+        "y": 120.0
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "run-research",
+      "type": "llm",
+      "label": "kb-research",
+      "description": "外部研究：fan-out scout、verify、writer、qmd embed。",
+      "position": {
+        "x": 64.0,
+        "y": 120.0
+      },
+      "config": {
+        "runtime": "opencode",
+        "agent": "kb-research",
+        "inputs": {
+          "request": "{{inputs.request}}",
+          "language": "{{inputs.language}}"
+        },
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "请按 Research Workflow 端到端执行本次 KB 调研。\n\n用户需求：\n{{inputs.request}}\n\n输出语言：{{inputs.language}}\n\n要求：先查本地 KB，再按既有 kb-research-workflow 分派 kb-scout / kb-docs-scout / kb-verify / kb-writer；如果写入 Markdown，刷新 qmd embed；最后返回工作流状态、写入路径、QMD 状态、未确认点。"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "markdown",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 432.0,
+        "y": 120.0
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-start-research",
+      "from": "start",
+      "to": "run-research",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-research-end",
+      "from": "run-research",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0.0,
+      "y": 0.0,
+      "scale": 1.0
+    }
+  }
+}

@@ -3,6 +3,7 @@
 //! Extracted from the monolithic `http.rs` to improve maintainability.
 //! Contains: catalog, CRUD, fork, run management, SSE events.
 
+use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
@@ -10,25 +11,31 @@ use bb_core::task_graph::{
     self, upgrade_graph, TaskGraphDefinition, TaskGraphError, TaskGraphScope,
 };
 use chrono::Utc;
-use std::path::PathBuf;
+use std::path::{Path as FsPath, PathBuf};
 
 use super::AppState;
 
 mod dto;
 mod events;
-pub(crate) mod interpreter_config;
 mod prompt_files;
+pub(crate) mod runner_config;
+mod schedules;
 
 use dto::{
-    is_active_run_status, TaskGraphApiError, TgCatalogResponse, TgCreateBody,
-    TgCreateRunBody, TgForkBody, TgGraphResponse, TgPatchBody, TgResumeGateBody,
-    TgRunDetailResponse, TgRunResponse, TgRunStatusResponse, TgRunsListResponse,
-    TgValidationStatus, TgWriteResponse,
+    decode_create_body, decode_patch_body, is_active_run_status, TaskGraphApiError,
+    TgCatalogResponse, TgCreateRunBody, TgForkBody, TgGraphRef, TgGraphResponse, TgResumeGateBody,
+    TgRunCheckpointsResponse, TgRunDetailResponse, TgRunEventsResponse, TgRunResponse,
+    TgRunStatusResponse, TgRunsListResponse, TgValidationStatus, TgWriteResponse,
 };
-use interpreter_config::build_interpreter_opts;
+use runner_config::build_runner_opts;
 
 pub(super) use events::tg_run_events;
 pub(super) use prompt_files::{tg_get_graph_inputs, tg_read_prompt_file, tg_write_prompt_file};
+pub(crate) use schedules::{dispatch_due_schedules, spawn_schedule_dispatcher};
+pub(super) use schedules::{
+    tg_create_schedule, tg_delete_schedule, tg_list_schedules, tg_patch_schedule,
+    tg_run_schedule_now,
+};
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -66,12 +73,13 @@ pub(super) async fn tg_read_system_graph(
 pub(super) async fn tg_patch_system_graph(
     State(state): State<AppState>,
     Path((project, graph_id)): Path<(String, String)>,
-    Json(mut body): Json<TgPatchBody>,
+    body: Bytes,
 ) -> Result<Json<TgWriteResponse>, TaskGraphApiError> {
     if project != "blackboard" {
         return Err(TaskGraphApiError(TaskGraphError::ReadonlyGraph(graph_id)));
     }
     let root = current_workspace_root(&state)?;
+    let mut body = decode_patch_body(&body)?;
 
     // 自动填充 pins（前端可能未发送）
     upgrade_graph(&mut body.graph);
@@ -111,9 +119,10 @@ pub(super) async fn tg_read_project_graph(
 pub(super) async fn tg_create_graph(
     State(state): State<AppState>,
     Path(project): Path<String>,
-    Json(mut body): Json<TgCreateBody>,
+    body: Bytes,
 ) -> Result<Json<TgWriteResponse>, TaskGraphApiError> {
     let root = current_workspace_root(&state)?;
+    let mut body = decode_create_body(&body)?;
 
     // 自动填充 pins（前端可能未发送）
     upgrade_graph(&mut body.graph);
@@ -140,9 +149,10 @@ pub(super) async fn tg_create_graph(
 pub(super) async fn tg_patch_graph(
     State(state): State<AppState>,
     Path((project, graph_id)): Path<(String, String)>,
-    Json(mut body): Json<TgPatchBody>,
+    body: Bytes,
 ) -> Result<Json<TgWriteResponse>, TaskGraphApiError> {
     let root = current_workspace_root(&state)?;
+    let mut body = decode_patch_body(&body)?;
 
     // 自动填充 pins（前端可能未发送）
     upgrade_graph(&mut body.graph);
@@ -223,14 +233,35 @@ pub(super) async fn tg_create_run(
     Json(body): Json<TgCreateRunBody>,
 ) -> Result<(StatusCode, Json<TgRunResponse>), TaskGraphApiError> {
     let root = current_workspace_root(&state)?;
+    let run = create_task_graph_run(&root, &project, &body.graph, body.input, true)?;
 
-    let graph = match body.graph.scope.as_str() {
-        "system" => task_graph::read_system_graph(&root, &body.graph.id)?,
-        "project" => task_graph::read_project_graph(&root, &project, &body.graph.id)?,
+    if run.created && !body.dry_run {
+        spawn_task_graph_run(root, project.clone(), run.run.id.clone());
+    }
+
+    Ok((run.status, Json(TgRunResponse { run: run.run })))
+}
+
+pub(crate) struct CreatedTaskGraphRun {
+    pub(crate) run: task_graph::TaskGraphRunSummary,
+    pub(crate) created: bool,
+    pub(crate) status: StatusCode,
+}
+
+pub(crate) fn create_task_graph_run(
+    root: &FsPath,
+    project: &str,
+    graph_ref_input: &TgGraphRef,
+    input: serde_json::Value,
+    reuse_active: bool,
+) -> Result<CreatedTaskGraphRun, TaskGraphApiError> {
+    let graph = match graph_ref_input.scope.as_str() {
+        "system" => task_graph::read_system_graph(root, &graph_ref_input.id)?,
+        "project" => task_graph::read_project_graph(root, project, &graph_ref_input.id)?,
         _ => {
             return Err(TaskGraphApiError(TaskGraphError::InvalidGraphId(format!(
                 "invalid scope: {}",
-                body.graph.scope
+                graph_ref_input.scope
             ))));
         }
     };
@@ -241,26 +272,31 @@ pub(super) async fn tg_create_run(
         version: graph.version,
     };
 
-    if let Some(active_run) = task_graph::list_runs(&root, &project)?
-        .into_iter()
-        .find(|run| {
-            is_active_run_status(run.status)
-                && run.graph_ref.scope == graph_ref.scope
-                && run.graph_ref.id == graph_ref.id
-        })
-    {
-        return Ok((StatusCode::OK, Json(TgRunResponse { run: active_run })));
+    if reuse_active {
+        if let Some(active_run) = task_graph::list_runs(root, project)?
+            .into_iter()
+            .find(|run| {
+                is_active_run_status(run.status)
+                    && run.graph_ref.scope == graph_ref.scope
+                    && run.graph_ref.id == graph_ref.id
+            })
+        {
+            return Ok(CreatedTaskGraphRun {
+                run: active_run,
+                created: false,
+                status: StatusCode::OK,
+            });
+        }
     }
 
-    let input = if body.input.is_null() {
+    let input = if input.is_null() {
         serde_json::json!({})
     } else {
-        body.input
+        input
     };
 
     // ── 运行前完整性校验 ──
-    let pre_run_errors =
-        task_graph::validate_pre_run(&graph, &root, &project);
+    let pre_run_errors = task_graph::validate_pre_run(&graph, root, project);
     if !pre_run_errors.is_empty() {
         return Err(TaskGraphApiError(TaskGraphError::ValidationFailed {
             count: pre_run_errors.len(),
@@ -268,53 +304,7 @@ pub(super) async fn tg_create_run(
         }));
     }
 
-    let run = task_graph::create_run(&root, &project, graph_ref, &graph, input)?;
-
-    if !body.dry_run {
-        let project_clone = project.clone();
-        let run_id_clone = run.id.clone();
-        let opts = build_interpreter_opts(&root, project_clone, run_id_clone, None);
-
-        tokio::task::spawn_blocking(move || {
-            // Fast-fail: 使用 catch_unwind 捕获 panic，确保 run 不会变成僵尸
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                task_graph::execute_run(&opts)
-            }));
-
-            match result {
-                Ok(Ok(outcome)) => {
-                    eprintln!("bb task-graph run completed: {:?}", outcome);
-                }
-                Ok(Err(e)) => {
-                    // execute_run 内部已经会尝试标记 failed，这里做兜底
-                    eprintln!("bb task-graph run error: {}", e);
-                    let _ = task_graph::update_run_status(
-                        &opts.workspace_root,
-                        &opts.project,
-                        &opts.run_id,
-                        task_graph::RunStatus::Failed,
-                    );
-                }
-                Err(panic_info) => {
-                    // panic 兜底：确保 run 被标记为 failed
-                    let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
-                        s.to_string()
-                    } else if let Some(s) = panic_info.downcast_ref::<String>() {
-                        s.clone()
-                    } else {
-                        "unknown panic".to_string()
-                    };
-                    eprintln!("bb task-graph run panicked: {}", msg);
-                    let _ = task_graph::update_run_status(
-                        &opts.workspace_root,
-                        &opts.project,
-                        &opts.run_id,
-                        task_graph::RunStatus::Failed,
-                    );
-                }
-            }
-        });
-    }
+    let run = task_graph::create_run(root, project, graph_ref, &graph, input)?;
 
     let summary = task_graph::TaskGraphRunSummary {
         id: run.id,
@@ -325,9 +315,59 @@ pub(super) async fn tg_create_run(
         started_at: run.started_at,
         updated_at: run.updated_at,
         completed_at: run.completed_at,
+        current_superstep: run.current_superstep,
+        last_checkpoint_id: run.last_checkpoint_id,
+        checkpoint_ns: run.checkpoint_ns,
     };
 
-    Ok((StatusCode::CREATED, Json(TgRunResponse { run: summary })))
+    Ok(CreatedTaskGraphRun {
+        run: summary,
+        created: true,
+        status: StatusCode::CREATED,
+    })
+}
+
+pub(crate) fn spawn_task_graph_run(root: PathBuf, project: String, run_id: String) {
+    let opts = build_runner_opts(&root, project, run_id, None);
+    tokio::task::spawn_blocking(move || {
+        // Fast-fail: 使用 catch_unwind 捕获 panic，确保 run 不会变成僵尸
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            task_graph::execute_run(&opts)
+        }));
+
+        match result {
+            Ok(Ok(outcome)) => {
+                eprintln!("bb task-graph run completed: {:?}", outcome);
+            }
+            Ok(Err(e)) => {
+                // execute_run 内部已经会尝试标记 failed，这里做兜底
+                eprintln!("bb task-graph run error: {}", e);
+                let _ = task_graph::update_run_status(
+                    &opts.workspace_root,
+                    &opts.project,
+                    &opts.run_id,
+                    task_graph::RunStatus::Failed,
+                );
+            }
+            Err(panic_info) => {
+                // panic 兜底：确保 run 被标记为 failed
+                let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                    s.to_string()
+                } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "unknown panic".to_string()
+                };
+                eprintln!("bb task-graph run panicked: {}", msg);
+                let _ = task_graph::update_run_status(
+                    &opts.workspace_root,
+                    &opts.project,
+                    &opts.run_id,
+                    task_graph::RunStatus::Failed,
+                );
+            }
+        }
+    });
 }
 
 /// GET /api/projects/{project}/task-graph-runs — list runs
@@ -348,6 +388,28 @@ pub(super) async fn tg_read_run(
     let root = current_workspace_root(&state)?;
     let detail = task_graph::read_run_detail(&root, &project, &run_id)?;
     Ok(Json(TgRunDetailResponse { run: detail }))
+}
+
+/// GET /api/projects/{project}/task-graph-runs/{run_id}/event-log
+pub(super) async fn tg_run_event_log(
+    State(state): State<AppState>,
+    Path((project, run_id)): Path<(String, String)>,
+) -> Result<Json<TgRunEventsResponse>, TaskGraphApiError> {
+    let root = current_workspace_root(&state)?;
+    task_graph::read_run(&root, &project, &run_id)?;
+    let events = task_graph::list_run_events(&root, &project, &run_id)?;
+    Ok(Json(TgRunEventsResponse { events }))
+}
+
+/// GET /api/projects/{project}/task-graph-runs/{run_id}/checkpoints
+pub(super) async fn tg_run_checkpoints(
+    State(state): State<AppState>,
+    Path((project, run_id)): Path<(String, String)>,
+) -> Result<Json<TgRunCheckpointsResponse>, TaskGraphApiError> {
+    let root = current_workspace_root(&state)?;
+    task_graph::read_run(&root, &project, &run_id)?;
+    let checkpoints = task_graph::list_superstep_checkpoints(&root, &project, &run_id)?;
+    Ok(Json(TgRunCheckpointsResponse { checkpoints }))
 }
 
 /// POST /api/projects/{project}/task-graph-runs/{run_id}/gates/{node_id}/resume
@@ -377,7 +439,7 @@ pub(super) async fn tg_resume_gate(
     let project_clone = project.clone();
     let run_id_clone = run_id.clone();
     let action = body.action.clone();
-    let opts = build_interpreter_opts(&root, project_clone, run_id_clone, None);
+    let opts = build_runner_opts(&root, project_clone, run_id_clone, None);
 
     tokio::task::spawn_blocking(move || {
         // Fast-fail: 使用 catch_unwind 捕获 panic，确保 run 不会变成僵尸

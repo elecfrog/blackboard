@@ -2,33 +2,219 @@
   "notes": [
     {
       "name": "2026-05-12-codex-taskgraph-llm-agent-dual-mode-implementation.md",
-      "size": 1950,
-      "modified_at": "2026-05-12T18:18:30Z",
+      "size": 1983,
+      "modified_at": "2026-05-14T02:42:06Z",
       "excerpt": "时间: 2026-05-12T18:18:30Z"
     },
     {
-      "name": "2026-05-13-codex-codebuddy-cli-taskgraph-agentsession-runtime.md",
-      "size": 2217,
-      "modified_at": "2026-05-13T08:53:23Z",
-      "excerpt": "时间: 2026-05-13T08:53:23Z"
-    },
-    {
-      "name": "2026-05-13-codex-codex-agent-session-runtime.md",
-      "size": 1203,
-      "modified_at": "2026-05-13T07:11:25Z",
-      "excerpt": "时间: 2026-05-13T07:11:25Z"
-    },
-    {
       "name": "2026-05-13-codex-readme-upstream-references-acknowledgement.md",
-      "size": 748,
-      "modified_at": "2026-05-13T03:45:24Z",
+      "size": 772,
+      "modified_at": "2026-05-14T02:42:06Z",
       "excerpt": "时间: 2026-05-13T03:45:24Z"
     },
     {
       "name": "2026-05-13-codex-roadmap-todo-tickets-for-runtime-session-and-built-in-agent-capabilities.md",
-      "size": 1145,
-      "modified_at": "2026-05-13T03:49:24Z",
+      "size": 1172,
+      "modified_at": "2026-05-14T02:42:06Z",
       "excerpt": "时间: 2026-05-13T03:49:24Z"
+    },
+    {
+      "name": "2026-05-14-codex-agent-chat-project-cwd.md",
+      "size": 1702,
+      "modified_at": "2026-05-14T10:00:58Z",
+      "excerpt": "时间: 2026-05-14T10:00:58Z"
+    },
+    {
+      "name": "2026-05-14-codex-agent-chat-续接-opencode-provider-session.md",
+      "size": 1467,
+      "modified_at": "2026-05-14T08:26:12Z",
+      "excerpt": "时间: 2026-05-14T08:26:12Z"
+    },
+    {
+      "name": "2026-05-14-codex-opencode-provider-thinking-event-mapping.md",
+      "size": 1190,
+      "modified_at": "2026-05-14T09:25:53Z",
+      "excerpt": "时间: 2026-05-14T09:25:53Z"
+    },
+    {
+      "name": "2026-05-14-codex-taskgraph-superstep-orchestration-proposal-and-attachments.md",
+      "size": 2075,
+      "modified_at": "2026-05-14T17:07:00Z",
+      "excerpt": "时间: 2026-05-15T00:00:00+08:00"
+    },
+    {
+      "name": "2026-05-14-codex-tdesign-chatengine-自定义渲染能力调研.md",
+      "size": 1908,
+      "modified_at": "2026-05-14T08:48:15Z",
+      "excerpt": "时间: 2026-05-14T08:48:15Z"
+    },
+    {
+      "name": "2026-05-14-codex-内置-agent-chat-支持模型与变体设置.md",
+      "size": 1491,
+      "modified_at": "2026-05-14T08:14:12Z",
+      "excerpt": "时间: 2026-05-14T08:14:12Z"
+    },
+    {
+      "name": "2026-05-15-codex-060-incremental-langgraph-channel-state-parity.md",
+      "size": 2210,
+      "modified_at": "2026-05-15T06:45:22Z",
+      "excerpt": "时间: 2026-05-15T06:45:22Z"
+    },
+    {
+      "name": "2026-05-15-codex-060-langgraph-checkpoint-recovery-pending-writes-replay-increment.md",
+      "size": 3874,
+      "modified_at": "2026-05-15T07:30:23Z",
+      "excerpt": "时间: 2026-05-15T07:30:23Z"
+    },
+    {
+      "name": "2026-05-15-codex-060-langgraph-compile-pregel-superstep-alignment.md",
+      "size": 3174,
+      "modified_at": "2026-05-15T06:32:50Z",
+      "excerpt": "时间: 2026-05-15T06:32:50Z"
+    },
+    {
+      "name": "2026-05-15-codex-060-langgraph-state-channel-reducer-parity-increment.md",
+      "size": 2521,
+      "modified_at": "2026-05-15T07:00:22Z",
+      "excerpt": "时间: 2026-05-15T07:00:22Z"
+    },
+    {
+      "name": "2026-05-15-codex-060-langgraph-stategraph-attachnode-command-send-parity-increment.md",
+      "size": 3501,
+      "modified_at": "2026-05-15T07:18:31Z",
+      "excerpt": "时间: 2026-05-15T07:18:31Z"
+    },
+    {
+      "name": "2026-05-15-codex-060-pregel-cleanup-pass-拆分-monolith-并收紧-pregel-模块边界.md",
+      "size": 2180,
+      "modified_at": "2026-05-15T08:53:52Z",
+      "excerpt": "时间: 2026-05-15T08:53:52Z"
+    },
+    {
+      "name": "2026-05-15-codex-060-pregel-push-task-model-follow-up.md",
+      "size": 1289,
+      "modified_at": "2026-05-15T06:35:22Z",
+      "excerpt": "时间: 2026-05-15T06:35:22Z"
+    },
+    {
+      "name": "2026-05-15-codex-060-taskgraph-compile-superstep-kernel-implementation-aligned-with-langgraphjs-source.md",
+      "size": 2432,
+      "modified_at": "2026-05-15T06:07:30Z",
+      "excerpt": "时间: 2026-05-15T06:07:30Z"
+    },
+    {
+      "name": "2026-05-15-codex-066-taskgraph-e2e-smoke-tests.md",
+      "size": 1367,
+      "modified_at": "2026-05-15T05:03:53Z",
+      "excerpt": "时间: 2026-05-15T05:03:53Z"
+    },
+    {
+      "name": "2026-05-15-codex-pregelloop-长程推进-checkpoint-recovery-interrupt-annotation-factory-industrial-details-namespace.md",
+      "size": 4034,
+      "modified_at": "2026-05-15T08:21:47Z",
+      "excerpt": "时间: 2026-05-15T08:21:47Z"
+    },
+    {
+      "name": "2026-05-15-codex-pregelloop-长程推进-prepare-commit-外壳接入-coordinator.md",
+      "size": 2314,
+      "modified_at": "2026-05-15T07:46:57Z",
+      "excerpt": "时间: 2026-05-15T07:46:57Z"
+    },
+    {
+      "name": "2026-05-15-codex-pregelloop-长程推进-长期-loop-state-recursion-limit.md",
+      "size": 3119,
+      "modified_at": "2026-05-15T07:55:55Z",
+      "excerpt": "时间: 2026-05-15T07:55:55Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-062-business-node-taxonomy-and-runtime-binding.md",
+      "size": 1567,
+      "modified_at": "2026-05-15T04:42:03Z",
+      "excerpt": "时间: 2026-05-15T04:42:03Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-e2e-smoke-tests.md",
+      "size": 2198,
+      "modified_at": "2026-05-15T05:06:48Z",
+      "excerpt": "时间: 2026-05-15T05:06:48Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-node-去除左侧-accent-strip.md",
+      "size": 893,
+      "modified_at": "2026-05-15T04:49:09Z",
+      "excerpt": "时间: 2026-05-15T04:49:09Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-nodes-module-rename-cleanup-tool-audit.md",
+      "size": 1021,
+      "modified_at": "2026-05-15T09:55:14Z",
+      "excerpt": "时间: 2026-05-15T09:55:14Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-nodes-module-rename-cleanup.md",
+      "size": 2534,
+      "modified_at": "2026-05-15T09:53:08Z",
+      "excerpt": "时间: 2026-05-15T09:53:08Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-pregel-owns-runner-coordinator-executor-outcome.md",
+      "size": 2517,
+      "modified_at": "2026-05-15T12:37:26Z",
+      "excerpt": "时间: 2026-05-15T12:37:26Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-preview-run-inputs-改为摘要入口与右侧抽屉.md",
+      "size": 1700,
+      "modified_at": "2026-05-15T03:38:38Z",
+      "excerpt": "时间: 2026-05-15T03:38:38Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-readme-模块地图.md",
+      "size": 1031,
+      "modified_at": "2026-05-15T09:04:07Z",
+      "excerpt": "时间: 2026-05-15T09:04:07Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-root-module-surface-cleanup.md",
+      "size": 2569,
+      "modified_at": "2026-05-15T12:27:22Z",
+      "excerpt": "时间: 2026-05-15T12:27:22Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-run-节点状态-footer-避免-output-pin-重叠.md",
+      "size": 1145,
+      "modified_at": "2026-05-15T04:24:25Z",
+      "excerpt": "时间: 2026-05-15T04:24:25Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-runner-命名收束.md",
+      "size": 2527,
+      "modified_at": "2026-05-15T09:39:46Z",
+      "excerpt": "时间: 2026-05-15T09:39:46Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-task-node-视觉对齐-编辑-预览-运行-fixture-统一节点组件.md",
+      "size": 2477,
+      "modified_at": "2026-05-15T03:19:07Z",
+      "excerpt": "时间: 2026-05-15T03:19:07Z"
+    },
+    {
+      "name": "2026-05-15-codex-taskgraph-测试目录整理-合并-interpreter-tests-到-tests.md",
+      "size": 2230,
+      "modified_at": "2026-05-15T09:12:19Z",
+      "excerpt": "时间: 2026-05-15T09:12:19Z"
+    },
+    {
+      "name": "2026-05-15-codex-完善-000063-shell-local-tool-节点-ticket-描述与计划.md",
+      "size": 1118,
+      "modified_at": "2026-05-15T02:08:08Z",
+      "excerpt": "时间: 2026-05-15T02:08:08Z"
+    },
+    {
+      "name": "2026-05-15-codex-实施-taskgraph-shell-local-tool-node.md",
+      "size": 2931,
+      "modified_at": "2026-05-15T02:28:51Z",
+      "excerpt": "时间: 2026-05-15T02:28:51Z"
     }
   ]
 }

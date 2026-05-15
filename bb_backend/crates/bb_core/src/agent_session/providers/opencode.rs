@@ -65,6 +65,12 @@ struct OpenCodeEventPart {
     #[serde(default)]
     text: Option<String>,
     #[serde(default)]
+    thinking: Option<String>,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    summary: Option<String>,
+    #[serde(default)]
     tool: Option<String>,
     #[serde(rename = "callID", default)]
     call_id: Option<String>,
@@ -224,6 +230,11 @@ fn handle_opencode_event(
                     None,
                     BTreeMap::new(),
                 )?;
+            }
+        }
+        "reasoning" | "thinking" => {
+            if let Some(text) = opencode_thinking_text(event) {
+                append_thinking(observer, capture, &text)?;
             }
         }
         "tool_use" => {
@@ -408,6 +419,9 @@ fn opencode_event_log_lines(event: &OpenCodeEvent) -> Vec<String> {
             .filter(|text| !text.is_empty())
             .map(|text| vec![format!("AI output:\n{}", text.trim_end())])
             .unwrap_or_default(),
+        "reasoning" | "thinking" => opencode_thinking_text(event)
+            .map(|text| vec![format!("Reasoning:\n{}", text.trim_end())])
+            .unwrap_or_default(),
         "tool_use" => {
             let tool = event.part.tool.as_deref().unwrap_or("unknown");
             let call_id = event.part.call_id.as_deref().unwrap_or("-");
@@ -473,6 +487,43 @@ fn opencode_event_log_lines(event: &OpenCodeEvent) -> Vec<String> {
             }
         }
     }
+}
+
+fn append_thinking(
+    observer: &OpenCodeObserver,
+    capture: &mut OpenCodeCapture,
+    text: &str,
+) -> Result<(), AgentSessionError> {
+    if text.trim().is_empty() {
+        return Ok(());
+    }
+    append_event(
+        observer,
+        capture,
+        AgentEventType::Thinking,
+        Some(text.to_string()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        BTreeMap::new(),
+    )
+}
+
+fn opencode_thinking_text(event: &OpenCodeEvent) -> Option<String> {
+    [
+        event.part.text.as_deref(),
+        event.part.thinking.as_deref(),
+        event.part.content.as_deref(),
+        event.part.summary.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .map(str::to_string)
+    .find(|text| !text.trim().is_empty())
 }
 
 fn opencode_event_error_message(event: &OpenCodeEvent) -> Option<String> {
@@ -548,6 +599,7 @@ mod tests {
                 runtime: "opencode".to_string(),
                 agent: "native".to_string(),
                 model: Some("model-a".to_string()),
+                variant: None,
                 parent: None,
             },
         )
@@ -560,6 +612,7 @@ mod tests {
         };
         let stdout = r#"{"type":"step_start","sessionID":"sess-1","part":{}}
 {"type":"text","part":{"text":"hello"}}
+{"type":"reasoning","part":{"text":"think"}}
 {"type":"tool_use","part":{"tool":"bash","callID":"call-1","state":{"status":"completed","input":{"command":"pwd"},"output":"ok"}}}
 {"type":"step_finish","part":{"tokens":{"input":10,"output":5,"cache":{"read":1,"write":2}}}}
 {"type":"error","error":{"name":"RateLimitError","data":{"message":"boom"}}}
@@ -573,7 +626,11 @@ mod tests {
         assert_eq!(capture.tool_count, 1);
         assert_eq!(capture.usage["model-a"].input_tokens, 10);
         let events = read_events(temp.path(), "demo", &session.id, None).unwrap();
-        assert_eq!(events.len(), 6);
+        assert_eq!(events.len(), 7);
+        assert!(events.iter().any(|event| {
+            event.event_type == AgentEventType::Thinking
+                && event.content.as_deref() == Some("think")
+        }));
         assert!(events
             .iter()
             .any(|event| event.event_type == AgentEventType::ToolUse));

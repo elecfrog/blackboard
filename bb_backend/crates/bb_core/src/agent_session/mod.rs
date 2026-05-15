@@ -18,7 +18,7 @@ pub use model::{
 pub use runtime::{run_turn, AgentTurnOutcome, AgentTurnRequest};
 pub use store::{
     append_event, create_session, read_events, read_session, session_dir, session_summary,
-    CreateAgentSession,
+    update_session, CreateAgentSession,
 };
 
 #[derive(Debug, thiserror::Error)]

@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use super::super::store;
-use super::super::types::*;
 use super::validate_graph;
 use crate::agents_registry;
+use crate::task_graph::definition::store;
+use crate::task_graph::definition::types::*;
 
 // ─── Pre-run integrity validation ────────────────────────────────────────────
 

@@ -7,9 +7,15 @@ import GraphCanvas, {
   type GraphCanvasNodeMove,
   type GraphCanvasViewport,
 } from '@/components/GraphCanvas.vue'
+import TaskGraphNodeShape from '@/components/task-graph/TaskGraphNodeShape.vue'
+import {
+  taskGraphNodeColor,
+  taskGraphNodeMetaLabel,
+} from '@/components/task-graph/taskGraphNodeVisuals'
+import type { TaskGraphNode } from '@/data/taskGraphs'
 import { t } from '@/i18n'
 
-const nodeWidth = 220
+const nodeWidth = 230
 const nodeHeight = 76
 const viewport = ref<GraphCanvasViewport>({ x: 40, y: 36, scale: 1 })
 const positions = ref<Record<string, { x: number; y: number }>>({
@@ -21,18 +27,22 @@ const positions = ref<Record<string, { x: number; y: number }>>({
   'end-success': { x: 1120, y: 80 },
 })
 
-const fixtureNodes = [
-  { id: 'start', type: 'start', label: t('taskGraphNodeTypeStart'), color: '#64748b' },
-  { id: 'plan-llm', type: 'llm', label: t('taskGraphFixturePlanLlm'), color: '#2563eb' },
-  { id: 'smoke-task', type: 'llm', label: t('taskGraphFixtureSmokeTask'), color: '#2563eb' },
-  { id: 'failure-branch', type: 'branch', label: t('taskGraphFixtureHasFailures'), color: '#d97706' },
-  { id: 'fix-loop', type: 'loop', label: t('taskGraphFixtureRetryMax'), color: '#7c3aed' },
-  { id: 'end-success', type: 'end', label: t('taskGraphFixtureSuccess'), color: '#059669' },
+const fixtureNodes: Array<Pick<TaskGraphNode, 'id' | 'type' | 'label' | 'config'>> = [
+  { id: 'start', type: 'start', label: t('taskGraphNodeTypeStart'), config: {} },
+  { id: 'plan-llm', type: 'llm', label: t('taskGraphFixturePlanLlm'), config: {} },
+  { id: 'smoke-task', type: 'llm', label: t('taskGraphFixtureSmokeTask'), config: {} },
+  { id: 'failure-branch', type: 'branch', label: t('taskGraphFixtureHasFailures'), config: {} },
+  { id: 'fix-loop', type: 'loop', label: t('taskGraphFixtureRetryMax'), config: { max_iterations: 3 } },
+  { id: 'end-success', type: 'end', label: t('taskGraphFixtureSuccess'), config: {} },
 ]
 
 const nodes = computed<GraphCanvasNode[]>(() =>
   fixtureNodes.map((node) => ({
-    ...node,
+    id: node.id,
+    label: node.label,
+    kind: node.type,
+    color: taskGraphNodeColor(node.type),
+    meta: taskGraphNodeMetaLabel(node),
     x: positions.value[node.id]?.x ?? 80,
     y: positions.value[node.id]?.y ?? 80,
     width: nodeWidth,
@@ -83,12 +93,7 @@ function handleConnectionCreate(connection: GraphCanvasConnection) {
       @edge-remove="edges = edges.filter((item) => item.id !== $event.id)"
     >
       <template #node="{ node, width, height }">
-        <rect :width="width" :height="height" rx="6" />
-        <rect class="graph-node-header" :width="width" height="32" rx="6" />
-        <rect class="graph-node-header-bottom" :width="width" y="24" height="8" />
-        <line class="graph-node-divider" x1="0" y1="32" :x2="width" y2="32" />
-        <circle cx="16" cy="16" r="5" :fill="node.color ?? '#64748b'" />
-        <text x="28" y="21" class="graph-node-title">{{ node.label }}</text>
+        <TaskGraphNodeShape :node="node" :width="width" :height="height" />
       </template>
       <template #edge-label="{ edge, midpoint }">
         <text
