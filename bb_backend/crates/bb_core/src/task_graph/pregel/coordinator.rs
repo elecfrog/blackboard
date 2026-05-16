@@ -8,7 +8,7 @@
 //! **核心原则**：所有最终 graph 状态变更都在 Coordinator 中发生（单写者）。
 //! 执行平面（Executor）返回 `NodeOutcome`；长运行节点只允许写 streaming log / running projection。
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
 
 use chrono::Utc;
@@ -22,7 +22,7 @@ use crate::task_graph::compile::compiler::{
     compile_graph_for_execution, CompiledGraph, CompiledProcessMode,
 };
 use crate::task_graph::definition::types::{
-    TaskGraphDefinition, TaskGraphEdge, TaskGraphError, TaskGraphNode,
+    TaskGraphDefinition, TaskGraphEdge, TaskGraphError, TaskGraphNode, TaskGraphValidationError,
 };
 use crate::task_graph::pregel::{
     checkpoint_config, checkpoint_metadata, initial_checkpoint as initial_pregel_checkpoint,
@@ -30,8 +30,13 @@ use crate::task_graph::pregel::{
     PregelPreparedStep, DEFAULT_CHECKPOINT_NAMESPACE,
 };
 use crate::task_graph::run_state::{
-    self, NodeRunStatus, PausedAction, PendingWrite, RunPaused, RunStatus, SuperstepCheckpoint,
-    SuperstepStatus, TaskGraphRun, TaskGraphRunNode,
+    self, NodeRunStatus, PausedAction, PendingTaskEffect, PendingWrite, RunPaused, RunStatus,
+    SuperstepCheckpoint, SuperstepStatus, TaskGraphRun, TaskGraphRunNode,
+};
+use crate::task_graph::topology::{
+    apply_mutation_requests, conflict_validation_error, graph_mutations_from_output,
+    migrate_checkpoint_channels, GraphMutationBatch, GraphMutationBatchResult,
+    GraphMutationConflict, GraphMutationRequest, GraphRevision,
 };
 
 // ─── Graph Coordinator ──────────────────────────────────────────────────────
@@ -45,13 +50,14 @@ pub(super) struct GraphCoordinator<'a> {
     run: TaskGraphRun,
     edge_map: HashMap<String, Vec<TaskGraphEdge>>,
     node_map: HashMap<String, TaskGraphNode>,
-    join_nodes: HashSet<String>,
     /// 本轮需要持久化的节点状态
     pending_node_states: Vec<TaskGraphRunNode>,
     /// 本轮需要持久化的节点输出
     pending_node_outputs: Vec<(String, serde_json::Value)>,
     /// 本轮 barrier 前收集到的 pending writes，写入 superstep checkpoint。
     pending_writes: Vec<PendingWrite>,
+    pending_effects: Vec<PendingTaskEffect>,
+    pending_graph_mutations: Vec<GraphMutationRequest>,
     /// Run 开始执行的时刻，用于整体超时检测
     run_start: Instant,
 }
@@ -79,16 +85,18 @@ impl<'a> GraphCoordinator<'a> {
             .unwrap_or_else(|| DEFAULT_CHECKPOINT_NAMESPACE.to_string());
         let tuple = run_state::read_pregel_checkpoint_tuple(ws, project, run_id, &checkpoint_ns)?;
         let (checkpoint, recovered_pregel_writes) = if let Some(tuple) = tuple {
-            let checkpoint = tuple.checkpoint;
+            let mut checkpoint = tuple.checkpoint;
+            checkpoint.graph_revision = run.current_graph_revision;
             run.current_superstep = run.current_superstep.max(checkpoint.superstep);
             run.last_checkpoint_id = Some(tuple.config.checkpoint_id);
             run.pregel_checkpoint = Some(checkpoint.clone());
             (checkpoint, tuple.pending_writes)
         } else {
-            let checkpoint = run
+            let mut checkpoint = run
                 .pregel_checkpoint
                 .clone()
                 .unwrap_or_else(|| initial_pregel_checkpoint(&compiled, run.context.input.clone()));
+            checkpoint.graph_revision = run.current_graph_revision;
             run.pregel_checkpoint = Some(checkpoint.clone());
             (checkpoint, Vec::new())
         };
@@ -112,8 +120,6 @@ impl<'a> GraphCoordinator<'a> {
         // 构建导航结构（owned 版本，避免生命周期问题）
         let edge_map = build_owned_edge_map(&graph.edges);
         let node_map = build_owned_node_map(&graph.nodes);
-        let join_nodes = compiled.join_nodes.iter().cloned().collect();
-
         Ok(Self {
             opts,
             graph,
@@ -122,10 +128,11 @@ impl<'a> GraphCoordinator<'a> {
             run,
             edge_map,
             node_map,
-            join_nodes,
             pending_node_states: Vec::new(),
             pending_node_outputs: Vec::new(),
             pending_writes: Vec::new(),
+            pending_effects: Vec::new(),
+            pending_graph_mutations: Vec::new(),
             run_start: Instant::now(),
         })
     }
@@ -164,7 +171,7 @@ impl<'a> GraphCoordinator<'a> {
                 let msg = format!("Run timeout: exceeded {:?} limit", self.opts.run_timeout);
                 run_state::update_run_status(ws, project, run_id, RunStatus::Failed)?;
                 return Ok(RunOutcome::Failed {
-                    node_id: self.run.cursor.first().cloned().unwrap_or_default(),
+                    node_id: self.run.active_nodes.first().cloned().unwrap_or_default(),
                     message: msg,
                 });
             }
@@ -197,12 +204,12 @@ impl<'a> GraphCoordinator<'a> {
                 });
             }
 
-            self.run.cursor = plan
+            self.run.active_nodes = plan
                 .ready_nodes
                 .iter()
                 .map(|node| node.node_id.clone())
                 .collect();
-            self.persist_cursor()?;
+            run_state::write_run_json(ws, project, run_id, &self.run)?;
 
             self.append_event(
                 superstep,
@@ -210,7 +217,8 @@ impl<'a> GraphCoordinator<'a> {
                 None,
                 format!("superstep {superstep} started"),
                 serde_json::json!({
-                    "cursor_before": plan.cursor_before.clone(),
+                    "active_nodes": self.run.active_nodes.clone(),
+                    "graph_revision": self.run.current_graph_revision,
                     "ready_nodes": plan.ready_nodes.iter().map(|node| node.node_id.clone()).collect::<Vec<_>>(),
                     "waiting_nodes": plan.waiting_nodes.clone(),
                     "replayed_tasks": plan.replayed_pregel_tasks.iter().map(|task| task.node_id.clone()).collect::<Vec<_>>(),
@@ -245,14 +253,10 @@ impl<'a> GraphCoordinator<'a> {
 
             // ── Phase 5: 处理 ReduceAction ──
             match action {
-                ReduceAction::Continue { next_cursor } => {
-                    let cursor_after = next_cursor.clone();
-                    self.run.cursor = next_cursor;
-                    self.persist_cursor()?;
+                ReduceAction::Continue => {
                     self.record_superstep(
                         &plan,
                         SuperstepStatus::Succeeded,
-                        cursor_after,
                         "superstep_completed",
                         "superstep completed",
                     )?;
@@ -285,7 +289,6 @@ impl<'a> GraphCoordinator<'a> {
                     self.record_superstep(
                         &plan,
                         superstep_status,
-                        Vec::new(),
                         if final_status == RunStatus::Succeeded {
                             "run_completed"
                         } else {
@@ -311,16 +314,11 @@ impl<'a> GraphCoordinator<'a> {
                         self.run =
                             run_state::update_run_status(ws, project, run_id, RunStatus::Paused)?;
                     }
-                    // paused cursor: 保留 paused 节点 + waiting 节点
-                    let mut paused_cursor = vec![node_id.clone()];
-                    paused_cursor.extend(plan.waiting_nodes.clone());
-                    let cursor_after = paused_cursor.clone();
-                    self.run.cursor = paused_cursor;
-                    self.persist_cursor()?;
+                    self.run.active_nodes = vec![node_id.clone()];
+                    run_state::write_run_json(ws, project, run_id, &self.run)?;
                     self.record_superstep(
                         &plan,
                         SuperstepStatus::Paused,
-                        cursor_after,
                         "run_paused",
                         format!("run paused at node {node_id}"),
                     )?;
@@ -332,7 +330,6 @@ impl<'a> GraphCoordinator<'a> {
                     self.record_superstep(
                         &plan,
                         SuperstepStatus::Failed,
-                        self.run.cursor.clone(),
                         "run_failed",
                         message.clone(),
                     )?;
@@ -342,7 +339,6 @@ impl<'a> GraphCoordinator<'a> {
                     self.record_superstep(
                         &plan,
                         SuperstepStatus::Cancelled,
-                        self.run.cursor.clone(),
                         "run_cancelled",
                         "run cancelled",
                     )?;
@@ -380,7 +376,6 @@ impl<'a> GraphCoordinator<'a> {
             .collect();
         SuperstepPlan {
             superstep,
-            cursor_before: self.run.cursor.clone(),
             ready_nodes,
             waiting_nodes: Vec::new(),
             pregel_tasks: prepared.tasks,
@@ -419,7 +414,7 @@ impl<'a> GraphCoordinator<'a> {
                 },
             ],
         });
-        self.run.cursor = plan
+        self.run.active_nodes = plan
             .ready_nodes
             .iter()
             .map(|node| node.node_id.clone())
@@ -451,7 +446,6 @@ impl<'a> GraphCoordinator<'a> {
         outcomes: Vec<NodeOutcome>,
         plan: &SuperstepPlan,
     ) -> Result<ReduceAction, TaskGraphError> {
-        let mut next_cursor: Vec<String> = Vec::new();
         let mut had_completion = false;
         let mut completion_result: Option<String> = None;
         let mut completion_node_id: Option<String> = None;
@@ -471,12 +465,19 @@ impl<'a> GraphCoordinator<'a> {
             // 2. 收集 Pregel writes。节点输出和后继触发都先进入 pending writes，
             // barrier 时统一 apply 到 channel checkpoint。
             if let Some(task) = &task {
+                let mut graph_mutations = outcome.graph_mutations.clone();
+                graph_mutations.extend(graph_mutations_from_output(
+                    outcome.output.as_ref(),
+                    &task.id,
+                    &outcome.node_id,
+                ));
                 let mut pregel_writes = writes_from_node_outcome(
                     &self.compiled,
                     task,
                     outcome.output.as_ref(),
-                    &outcome.next_nodes,
+                    &outcome.control,
                     outcome.end_result.as_deref(),
+                    outcome.status == NodeRunStatus::Succeeded,
                 )?;
                 if outcome.status == NodeRunStatus::Paused {
                     pregel_writes.push(interrupt_write(task, "node_paused"));
@@ -493,6 +494,13 @@ impl<'a> GraphCoordinator<'a> {
                         });
                     }
                 }
+                self.pending_effects.push(PendingTaskEffect {
+                    task_id: task.id.clone(),
+                    source_node_id: outcome.node_id.clone(),
+                    normal_writes: pregel_writes,
+                    graph_mutations: graph_mutations.clone(),
+                });
+                self.pending_graph_mutations.extend(graph_mutations);
             }
 
             // 3. 保持现有 node_outputs 投影，供 UI 和旧节点输入读取。
@@ -573,36 +581,6 @@ impl<'a> GraphCoordinator<'a> {
                     message: msg,
                 });
             }
-
-            // 6. 计算 next_cursor（兼容 UI projection；调度事实来自 Pregel checkpoint）
-            for n in &outcome.next_nodes {
-                if self.join_nodes.contains(n.as_str()) {
-                    // 记录 branch completion（内存中操作）
-                    self.run
-                        .context
-                        .completed_branches
-                        .entry(n.clone())
-                        .or_default()
-                        .push(outcome.node_id.clone());
-
-                    let expected = run_state::count_exec_in_edges(&self.graph.edges, n);
-                    if run_state::is_join_ready(&self.run, n, expected) {
-                        if !next_cursor.contains(n) {
-                            next_cursor.push(n.clone());
-                        }
-                    } else {
-                        // join 点未就绪，加入 waiting
-                        // （不加入 next_cursor，保留在下一轮的 waiting 中）
-                        if !next_cursor.contains(n) {
-                            next_cursor.push(n.clone());
-                        }
-                    }
-                } else {
-                    if !next_cursor.contains(n) {
-                        next_cursor.push(n.clone());
-                    }
-                }
-            }
         }
 
         // 处理 completion
@@ -622,14 +600,7 @@ impl<'a> GraphCoordinator<'a> {
             }
         }
 
-        // 合并 waiting cursor
-        for w in &plan.waiting_nodes {
-            if !next_cursor.contains(w) {
-                next_cursor.push(w.clone());
-            }
-        }
-
-        Ok(ReduceAction::Continue { next_cursor })
+        Ok(ReduceAction::Continue)
     }
 
     // ─── Persistence ─────────────────────────────────────────────────────────
@@ -668,19 +639,10 @@ impl<'a> GraphCoordinator<'a> {
         Ok(())
     }
 
-    /// 持久化 cursor 变更。
-    fn persist_cursor(&self) -> Result<(), TaskGraphError> {
-        let ws = &self.opts.workspace_root;
-        let project = &self.opts.project;
-        let run_id = &self.opts.run_id;
-        run_state::update_cursor(ws, project, run_id, self.run.cursor.clone())
-    }
-
     fn record_superstep(
         &mut self,
         plan: &SuperstepPlan,
         status: SuperstepStatus,
-        cursor_after: Vec<String>,
         event_kind: &str,
         message: impl Into<String>,
     ) -> Result<(), TaskGraphError> {
@@ -718,7 +680,14 @@ impl<'a> GraphCoordinator<'a> {
         let applied_pregel_write_count = commit.applied_writes.len();
         let new_versions = commit.new_versions.clone();
         let pregel_loop_status = self.pregel_loop.status();
-        let pregel_checkpoint = commit.checkpoint;
+        let mut pregel_checkpoint = commit.checkpoint;
+        let mutation_batch_id = self.apply_topology_mutations_after_commit(
+            plan.superstep,
+            &mut pregel_checkpoint,
+            &commit.completed_tasks,
+        )?;
+        self.pregel_loop
+            .replace_compiled_and_checkpoint(self.compiled.clone(), pregel_checkpoint.clone());
         let checkpoint = SuperstepCheckpoint {
             id: format!("checkpoint-{:06}", plan.superstep),
             run_id: run_id.clone(),
@@ -726,8 +695,14 @@ impl<'a> GraphCoordinator<'a> {
             status,
             created_at: now.clone(),
             completed_at: Some(now),
-            cursor_before: plan.cursor_before.clone(),
-            cursor_after: cursor_after.clone(),
+            graph_revision_before: self
+                .run
+                .pregel_checkpoint
+                .as_ref()
+                .map(|checkpoint| checkpoint.graph_revision)
+                .unwrap_or(self.run.current_graph_revision),
+            graph_revision_after: pregel_checkpoint.graph_revision,
+            mutation_batch_id: mutation_batch_id.clone(),
             ready_nodes: plan
                 .ready_nodes
                 .iter()
@@ -737,6 +712,7 @@ impl<'a> GraphCoordinator<'a> {
             node_statuses,
             context: detail.run.context,
             pending_writes: pending_writes.clone(),
+            pending_effects: self.pending_effects.clone(),
             pregel_checkpoint: Some(pregel_checkpoint.clone()),
             pregel_parent_config,
             pregel_checkpoint_metadata: Some(pregel_checkpoint_metadata),
@@ -756,6 +732,7 @@ impl<'a> GraphCoordinator<'a> {
                 "checkpoint_id": checkpoint.id.clone(),
                 "count": pending_writes.len(),
                 "targets": pending_writes.iter().map(|write| write.target.clone()).collect::<Vec<_>>(),
+                "pending_effect_count": self.pending_effects.len(),
                 "executed_task_count": executed_task_count,
                 "replayed_task_count": replayed_task_count,
                 "completed_task_count": completed_task_count,
@@ -763,6 +740,7 @@ impl<'a> GraphCoordinator<'a> {
                 "new_versions": new_versions,
                 "pregel_loop_status": format!("{:?}", pregel_loop_status),
                 "updated_channels": pregel_checkpoint.updated_channels.clone(),
+                "graph_revision": pregel_checkpoint.graph_revision,
             }),
         )?;
         self.append_event(
@@ -774,6 +752,7 @@ impl<'a> GraphCoordinator<'a> {
                 "checkpoint_id": checkpoint.id.clone(),
                 "status": status,
                 "pregel_checkpoint_id": pregel_checkpoint.id,
+                "graph_revision": pregel_checkpoint.graph_revision,
             }),
         )?;
         self.append_event(
@@ -784,12 +763,162 @@ impl<'a> GraphCoordinator<'a> {
             serde_json::json!({
                 "checkpoint_id": checkpoint.id.clone(),
                 "status": status,
-                "cursor_after": cursor_after,
+                "active_nodes": self.run.active_nodes.clone(),
+                "graph_revision": pregel_checkpoint.graph_revision,
             }),
         )?;
         self.pending_writes.clear();
+        self.pending_effects.clear();
+        self.pending_graph_mutations.clear();
         run_state::clear_pending_pregel_writes(ws, project, run_id)?;
         Ok(())
+    }
+
+    fn apply_topology_mutations_after_commit(
+        &mut self,
+        superstep: u64,
+        checkpoint: &mut crate::task_graph::pregel::PregelCheckpoint,
+        completed_tasks: &[crate::task_graph::pregel::PregelTask],
+    ) -> Result<Option<String>, TaskGraphError> {
+        if self.pending_graph_mutations.is_empty() {
+            checkpoint.graph_revision = self.run.current_graph_revision;
+            return Ok(None);
+        }
+
+        let ws = &self.opts.workspace_root;
+        let project = &self.opts.project;
+        let run_id = &self.opts.run_id;
+        let base_revision = self.run.current_graph_revision;
+        let new_revision = base_revision + 1;
+        let requests = self.pending_graph_mutations.clone();
+        let apply = apply_mutation_requests(
+            &self.graph,
+            base_revision,
+            new_revision,
+            superstep,
+            requests,
+        );
+        let batch = apply.batch;
+
+        if let GraphMutationBatchResult::Rejected { conflicts } = &batch.result {
+            run_state::write_mutation_batch(ws, project, run_id, &batch)?;
+            self.append_topology_mutation_event(superstep, &batch)?;
+            return Err(TaskGraphError::ValidationFailed {
+                count: conflicts.len().max(1),
+                errors: conflicts.iter().map(conflict_validation_error).collect(),
+            });
+        }
+
+        let Some(candidate_graph) = apply.graph else {
+            return Err(topology_validation_error(
+                "topology_mutation_invalid_state",
+                "mutation batch was applied without a candidate graph",
+            ));
+        };
+        let candidate_compiled = match compile_graph_for_execution(&candidate_graph) {
+            Ok(compiled) => compiled,
+            Err(source) => {
+                let rejected = rejected_compile_batch(batch, source.to_string());
+                run_state::write_mutation_batch(ws, project, run_id, &rejected)?;
+                self.append_topology_mutation_event(superstep, &rejected)?;
+                return Err(topology_validation_error(
+                    "topology_mutation_compile_failed",
+                    "topology mutation candidate graph failed to compile",
+                ));
+            }
+        };
+
+        let completed_source_nodes = completed_tasks
+            .iter()
+            .map(|task| task.node_id.clone())
+            .collect::<BTreeSet<_>>();
+        let mut migrated = migrate_checkpoint_channels(
+            &self.compiled,
+            &candidate_compiled,
+            checkpoint.clone(),
+            &self.pending_graph_mutations,
+            &completed_source_nodes,
+        );
+        migrated.graph_revision = new_revision;
+        *checkpoint = migrated;
+
+        let revision = GraphRevision {
+            revision: new_revision,
+            graph: candidate_graph.clone(),
+            created_at: Utc::now().to_rfc3339(),
+            parent_revision: Some(base_revision),
+            mutation_batch_id: Some(batch.id.clone()),
+        };
+        run_state::write_graph_revision(ws, project, run_id, &revision)?;
+        run_state::write_mutation_batch(ws, project, run_id, &batch)?;
+        self.initialize_added_node_states(&batch)?;
+
+        self.graph = candidate_graph;
+        self.compiled = candidate_compiled;
+        self.edge_map = build_owned_edge_map(&self.graph.edges);
+        self.node_map = build_owned_node_map(&self.graph.nodes);
+        self.run.current_graph_revision = new_revision;
+        self.append_topology_mutation_event(superstep, &batch)?;
+        Ok(Some(batch.id))
+    }
+
+    fn initialize_added_node_states(
+        &self,
+        batch: &GraphMutationBatch,
+    ) -> Result<(), TaskGraphError> {
+        let GraphMutationBatchResult::Applied { summary, .. } = &batch.result else {
+            return Ok(());
+        };
+        for node_id in &summary.added_nodes {
+            let state = TaskGraphRunNode {
+                node_id: node_id.clone(),
+                status: NodeRunStatus::Idle,
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+                iteration: None,
+                exit_code: None,
+                error: None,
+                output_artifact: None,
+                log_tail: None,
+                child_run_id: None,
+                runtime: None,
+                agent: None,
+                model: None,
+                agent_session_id: None,
+                agent_session: None,
+            };
+            run_state::update_node_state(
+                &self.opts.workspace_root,
+                &self.opts.project,
+                &self.opts.run_id,
+                &state,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn append_topology_mutation_event(
+        &self,
+        superstep: u64,
+        batch: &GraphMutationBatch,
+    ) -> Result<(), TaskGraphError> {
+        let (graph_revision_after, result_status) = match &batch.result {
+            GraphMutationBatchResult::Applied { new_revision, .. } => (*new_revision, "applied"),
+            GraphMutationBatchResult::Rejected { .. } => (batch.base_revision, "rejected"),
+        };
+        self.append_event(
+            superstep,
+            "topology_mutation",
+            None,
+            format!("topology mutation batch {} {}", batch.id, result_status),
+            serde_json::json!({
+                "batch_id": batch.id,
+                "graph_revision_before": batch.base_revision,
+                "graph_revision_after": graph_revision_after,
+                "result": batch.result,
+            }),
+        )
     }
 
     fn append_event(
@@ -849,7 +978,8 @@ impl<'a> GraphCoordinator<'a> {
                 ),
                 serde_json::json!({
                     "status": outcome.status,
-                    "next_nodes": outcome.next_nodes.clone(),
+                    "control": outcome.control.iter().map(|item| format!("{:?}", item)).collect::<Vec<_>>(),
+                    "graph_mutations": outcome.graph_mutations.len(),
                     "has_output": outcome.output.is_some(),
                     "end_result": outcome.end_result.clone(),
                 }),
@@ -902,4 +1032,244 @@ fn build_owned_edge_map(edges: &[TaskGraphEdge]) -> HashMap<String, Vec<TaskGrap
 /// Build an owned node lookup map: node_id → node (owned).
 fn build_owned_node_map(nodes: &[TaskGraphNode]) -> HashMap<String, TaskGraphNode> {
     nodes.iter().map(|n| (n.id.clone(), n.clone())).collect()
+}
+
+fn topology_validation_error(code: &str, message: &str) -> TaskGraphError {
+    TaskGraphError::ValidationFailed {
+        count: 1,
+        errors: vec![TaskGraphValidationError {
+            path: "topology_mutation".to_string(),
+            code: code.to_string(),
+            message: message.to_string(),
+        }],
+    }
+}
+
+fn rejected_compile_batch(mut batch: GraphMutationBatch, message: String) -> GraphMutationBatch {
+    batch.result = GraphMutationBatchResult::Rejected {
+        conflicts: vec![GraphMutationConflict {
+            code: "topology_mutation_compile_failed".to_string(),
+            message,
+            request_ids: batch
+                .requests
+                .iter()
+                .map(|request| request.id.clone())
+                .collect(),
+            node_id: None,
+            edge_id: None,
+        }],
+    };
+    batch
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use tempfile::TempDir;
+
+    use super::*;
+    use crate::task_graph::definition::types::{
+        EdgeKind, NodeType, TaskGraphDefinition, TaskGraphEdge, TaskGraphNode, TaskGraphScope,
+    };
+    use crate::task_graph::pregel::{prepare_next_tasks, PregelTask, PregelTaskKind};
+    use crate::task_graph::run_state::GraphRef;
+    use crate::task_graph::topology::{mutation_batch_id, GraphMutationOp};
+
+    #[test]
+    fn topology_mutation_adds_graph_revision_and_schedules_new_node() {
+        let tmp = TempDir::new().unwrap();
+        let graph = mutation_base_graph();
+        let graph_ref = GraphRef {
+            scope: TaskGraphScope::Project,
+            id: graph.id.clone(),
+            version: graph.version,
+        };
+        let run = run_state::create_run(
+            tmp.path(),
+            "test-project",
+            graph_ref,
+            &graph,
+            json!({ "dynamic": "created" }),
+        )
+        .unwrap();
+        let opts = runner_options(tmp.path().to_path_buf(), run.id.clone());
+        let mut coordinator = GraphCoordinator::load(&opts).unwrap();
+        let mut checkpoint = coordinator.run.pregel_checkpoint.clone().unwrap();
+        checkpoint
+            .channel_values
+            .insert("branch:to:end".to_string(), json!("mutator"));
+        checkpoint
+            .channel_versions
+            .insert("branch:to:end".to_string(), 2);
+        checkpoint.updated_channels = vec!["branch:to:end".to_string()];
+
+        coordinator.pending_graph_mutations = vec![
+            GraphMutationRequest {
+                id: "add-dynamic-node".to_string(),
+                source_task_id: "task-mutator".to_string(),
+                source_node_id: "mutator".to_string(),
+                op: GraphMutationOp::AddNode {
+                    node: TaskGraphNode {
+                        id: "dynamic".to_string(),
+                        node_type: NodeType::InputVar,
+                        label: "Dynamic".to_string(),
+                        description: None,
+                        position: None,
+                        config: json!({ "input_id": "dynamic" }),
+                        pins: vec![],
+                    },
+                },
+                reason: None,
+            },
+            GraphMutationRequest {
+                id: "add-mutator-dynamic-edge".to_string(),
+                source_task_id: "task-mutator".to_string(),
+                source_node_id: "mutator".to_string(),
+                op: GraphMutationOp::AddEdge {
+                    edge: TaskGraphEdge {
+                        id: "mutator__dynamic".to_string(),
+                        from: "mutator".to_string(),
+                        to: "dynamic".to_string(),
+                        kind: EdgeKind::Exec,
+                        label: None,
+                        source_handle: None,
+                        target_handle: None,
+                        from_pin: None,
+                        to_pin: None,
+                    },
+                },
+                reason: None,
+            },
+        ];
+
+        let batch_id = coordinator
+            .apply_topology_mutations_after_commit(
+                1,
+                &mut checkpoint,
+                &[PregelTask {
+                    id: "task-mutator".to_string(),
+                    node_id: "mutator".to_string(),
+                    kind: PregelTaskKind::Pull,
+                    triggers: vec!["branch:to:mutator".to_string()],
+                    path: vec![],
+                    input: json!(null),
+                }],
+            )
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(batch_id, mutation_batch_id(1));
+        assert_eq!(coordinator.run.current_graph_revision, 1);
+        assert_eq!(checkpoint.graph_revision, 1);
+        assert!(coordinator.compiled.nodes.contains_key("dynamic"));
+        assert!(checkpoint
+            .updated_channels
+            .contains(&"branch:to:dynamic".to_string()));
+
+        let next = prepare_next_tasks(&coordinator.compiled, &checkpoint, 2);
+        assert!(next.tasks.iter().any(|task| task.node_id == "dynamic"));
+        assert!(next.tasks.iter().any(|task| task.node_id == "end"));
+
+        let revision = run_state::read_graph_revision(tmp.path(), "test-project", &run.id, 1)
+            .unwrap()
+            .unwrap();
+        assert_eq!(revision.revision, 1);
+        assert!(revision.graph.nodes.iter().any(|node| node.id == "dynamic"));
+
+        let batch_path = tmp
+            .path()
+            .join("runtime/task_graph_runs/test-project")
+            .join(&run.id)
+            .join("mutation_batches")
+            .join(format!("000001-{}.json", mutation_batch_id(1)));
+        assert!(batch_path.exists());
+
+        let node_state_path = tmp
+            .path()
+            .join("runtime/task_graph_runs/test-project")
+            .join(&run.id)
+            .join("nodes/dynamic.json");
+        assert!(node_state_path.exists());
+    }
+
+    fn mutation_base_graph() -> TaskGraphDefinition {
+        TaskGraphDefinition {
+            schema_version: 1,
+            id: "mutation-test".to_string(),
+            scope: TaskGraphScope::Project,
+            title: "Mutation Test".to_string(),
+            description: None,
+            version: 1,
+            readonly: false,
+            origin: None,
+            metadata: None,
+            inputs: None,
+            nodes: vec![
+                TaskGraphNode {
+                    id: "start".to_string(),
+                    node_type: NodeType::Start,
+                    label: "Start".to_string(),
+                    description: None,
+                    position: None,
+                    config: json!({}),
+                    pins: vec![],
+                },
+                TaskGraphNode {
+                    id: "mutator".to_string(),
+                    node_type: NodeType::InputVar,
+                    label: "Mutator".to_string(),
+                    description: None,
+                    position: None,
+                    config: json!({ "input_id": "mutator" }),
+                    pins: vec![],
+                },
+                TaskGraphNode {
+                    id: "end".to_string(),
+                    node_type: NodeType::End,
+                    label: "End".to_string(),
+                    description: None,
+                    position: None,
+                    config: json!({ "result": "succeeded" }),
+                    pins: vec![],
+                },
+            ],
+            edges: vec![exec_edge("start", "mutator"), exec_edge("mutator", "end")],
+            layout: None,
+        }
+    }
+
+    fn exec_edge(from: &str, to: &str) -> TaskGraphEdge {
+        TaskGraphEdge {
+            id: format!("{from}__{to}"),
+            from: from.to_string(),
+            to: to.to_string(),
+            kind: EdgeKind::Exec,
+            label: None,
+            source_handle: None,
+            target_handle: None,
+            from_pin: None,
+            to_pin: None,
+        }
+    }
+
+    fn runner_options(workspace_root: std::path::PathBuf, run_id: String) -> RunnerOptions {
+        RunnerOptions {
+            workspace_root,
+            scripts_dir: std::path::PathBuf::from("scripts"),
+            project: "test-project".to_string(),
+            run_id,
+            codex_path: "codex".to_string(),
+            codebuddy_path: "codebuddy".to_string(),
+            opencode_path: "opencode".to_string(),
+            opencode_config_content: None,
+            model: None,
+            node_timeout: std::time::Duration::from_secs(1),
+            run_timeout: std::time::Duration::from_secs(10),
+            dry_run: true,
+            custom_env: Default::default(),
+            custom_args: Vec::new(),
+            mcp_servers: Vec::new(),
+            skills: Vec::new(),
+        }
+    }
 }

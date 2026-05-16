@@ -20,15 +20,6 @@ const visibleServers = computed(() => {
   return props.servers.slice(0, maxVisible)
 })
 
-function statusClass(_server: McpServerConfig): string {
-  // No real status from backend yet; assume connected if name is present
-  return _server.name ? 'connected' : 'disconnected'
-}
-
-function statusLabel(server: McpServerConfig): string {
-  return server.name ? t('mcpServerConnected') : t('mcpServerDisconnected')
-}
-
 function addServer() {
   const updated = [...props.servers, { name: '', transport: 'stdio' as const, command: '' }]
   emit('update:servers', updated)
@@ -66,7 +57,6 @@ function updateField(index: number, field: keyof McpServerConfig, value: string)
           <tr>
             <th>{{ t('mcpServerName') }}</th>
             <th>{{ t('mcpServerType') }}</th>
-            <th>{{ t('mcpServerStatus') }}</th>
             <th v-if="editMode" />
           </tr>
         </thead>
@@ -85,10 +75,6 @@ function updateField(index: number, field: keyof McpServerConfig, value: string)
                 <option value="sse">sse</option>
               </select>
             </td>
-            <td>
-              <span :class="['aw-status-dot', statusClass(server)]" />
-              {{ statusLabel(server) }}
-            </td>
             <td v-if="editMode">
               <button type="button" class="aw-remove-btn" @click="removeServer(idx)">✕</button>
             </td>
@@ -96,13 +82,7 @@ function updateField(index: number, field: keyof McpServerConfig, value: string)
         </tbody>
       </table>
     </template>
-    <div v-else class="aw-empty-panel">
-      <div class="aw-empty-panel-icon">M</div>
-      <div class="aw-empty-panel-body">
-        <strong>{{ t('mcpServersNoneConfigured') }}</strong>
-        <p>{{ t('mcpServersNoneHint') }}</p>
-      </div>
-    </div>
+    <p v-else class="aw-empty-line">{{ t('mcpServersNoneConfigured') }}</p>
     <button
       v-if="!showAll && servers.length > maxVisible"
       type="button"

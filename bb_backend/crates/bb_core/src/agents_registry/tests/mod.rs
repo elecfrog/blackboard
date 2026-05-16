@@ -29,9 +29,6 @@ fn test_agent(id: &str, display_name: &str, kind: &str) -> AgentProfile {
         custom_env: BTreeMap::new(),
         custom_args: Vec::new(),
         max_concurrent_tasks: None,
-        org_role: None,
-        coordinator: None,
-        workers: Vec::new(),
         mcp_servers: Vec::new(),
         skills: Vec::new(),
     }
@@ -304,107 +301,6 @@ fn validate_max_concurrent_tasks_zero_rejected() {
 }
 
 #[test]
-fn parse_profile_with_org_role_coordinator() {
-    let temp = TempDir::new().unwrap();
-    write_registry(
-        temp.path(),
-        r#"
-[[agents]]
-id = "bb-pm"
-display_name = "BB PM"
-kind = "agent"
-org_role = "coordinator"
-workers = ["codex", "codebuddy"]
-
-[[agents]]
-id = "codex"
-display_name = "Codex"
-kind = "platform_agent"
-
-[[agents]]
-id = "codebuddy"
-display_name = "CodeBuddy"
-kind = "platform_agent"
-"#,
-    );
-
-    let list = list_agents(temp.path()).unwrap();
-    let pm = list.agents.iter().find(|a| a.id == "bb-pm").unwrap();
-    assert_eq!(pm.org_role.as_deref(), Some("coordinator"));
-    assert_eq!(pm.workers, vec!["codex", "codebuddy"]);
-}
-
-#[test]
-fn parse_profile_with_org_role_worker() {
-    let temp = TempDir::new().unwrap();
-    write_registry(
-        temp.path(),
-        r#"
-[[agents]]
-id = "bb-pm"
-display_name = "BB PM"
-kind = "agent"
-
-[[agents]]
-id = "codex"
-display_name = "Codex"
-kind = "platform_agent"
-org_role = "worker"
-coordinator = "bb-pm"
-"#,
-    );
-
-    let list = list_agents(temp.path()).unwrap();
-    let codex = list.agents.iter().find(|a| a.id == "codex").unwrap();
-    assert_eq!(codex.org_role.as_deref(), Some("worker"));
-    assert_eq!(codex.coordinator.as_deref(), Some("bb-pm"));
-}
-
-#[test]
-fn validate_worker_cannot_have_workers() {
-    let temp = TempDir::new().unwrap();
-    let mut agent = test_agent("codex", "Codex", "platform_agent");
-    agent.org_role = Some("worker".to_string());
-    agent.workers = vec!["other".to_string()];
-
-    let result = upsert_agent(temp.path(), agent);
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
-    assert!(
-        err.contains("worker cannot declare workers"),
-        "error: {err}"
-    );
-}
-
-#[test]
-fn validate_workers_no_self_reference() {
-    let temp = TempDir::new().unwrap();
-    let mut agent = test_agent("bb-pm", "BB PM", "agent");
-    agent.org_role = Some("coordinator".to_string());
-    agent.workers = vec!["bb-pm".to_string()];
-
-    let result = upsert_agent(temp.path(), agent);
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
-    assert!(
-        err.contains("must not contain the agent itself"),
-        "error: {err}"
-    );
-}
-
-#[test]
-fn validate_invalid_org_role_rejected() {
-    let temp = TempDir::new().unwrap();
-    let mut agent = test_agent("codex", "Codex", "platform_agent");
-    agent.org_role = Some("manager".to_string());
-
-    let result = upsert_agent(temp.path(), agent);
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
-    assert!(err.contains("invalid org_role"), "error: {err}");
-}
-
-#[test]
 fn backward_compat_no_new_fields() {
     let temp = TempDir::new().unwrap();
     write_registry(
@@ -428,9 +324,6 @@ runtime = "codex"
     assert!(agent.custom_env.is_empty());
     assert!(agent.custom_args.is_empty());
     assert!(agent.max_concurrent_tasks.is_none());
-    assert!(agent.org_role.is_none());
-    assert!(agent.coordinator.is_none());
-    assert!(agent.workers.is_empty());
 }
 
 #[test]
@@ -440,7 +333,6 @@ fn upsert_agent_with_full_profile() {
     agent.model = Some("minimax/MiniMax-M2.7-highspeed".to_string());
     agent.variant = Some("xhigh".to_string());
     agent.instructions = Some("You are BB-PM.".to_string());
-    agent.org_role = Some("coordinator".to_string());
     agent.custom_env = BTreeMap::from([("BB_DAEMON".to_string(), "1".to_string())]);
     agent.custom_args = vec!["--timeout".to_string(), "300".to_string()];
     agent.max_concurrent_tasks = Some(3);
@@ -452,7 +344,6 @@ fn upsert_agent_with_full_profile() {
     );
     assert_eq!(result.variant.as_deref(), Some("xhigh"));
     assert_eq!(result.instructions.as_deref(), Some("You are BB-PM."));
-    assert_eq!(result.org_role.as_deref(), Some("coordinator"));
     assert_eq!(result.max_concurrent_tasks, Some(3));
     assert_eq!(
         result.custom_env.get("BB_DAEMON").map(String::as_str),
@@ -468,5 +359,4 @@ fn upsert_agent_with_full_profile() {
         Some("minimax/MiniMax-M2.7-highspeed")
     );
     assert_eq!(reloaded.variant.as_deref(), Some("xhigh"));
-    assert_eq!(reloaded.org_role.as_deref(), Some("coordinator"));
 }

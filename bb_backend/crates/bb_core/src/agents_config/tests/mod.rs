@@ -7,6 +7,7 @@ fn make_bb_root(content: Option<&str>) -> TempDir {
         let agents_dir = bb_root.path().join("agents");
         fs::create_dir_all(&agents_dir).unwrap();
         fs::write(agents_dir.join("AGENTS.md"), body).unwrap();
+        fs::write(agents_dir.join("CODEX.md"), body).unwrap();
     }
     bb_root
 }
@@ -97,6 +98,36 @@ fn sync_creates_parent_dir_and_writes_target() {
     assert_eq!(synced.state, AgentConnectorState::Synced);
     let target = home.path().join(".codex/AGENTS.md");
     assert_eq!(fs::read_to_string(&target).unwrap(), "ground truth");
+}
+
+#[test]
+fn codex_connector_reads_codex_md_source_but_writes_agents_md_target() {
+    let home = TempDir::new().unwrap();
+    let bb_root = make_bb_root(Some("shared rules"));
+    fs::write(
+        bb_root.path().join("agents").join("CODEX.md"),
+        "codex rules",
+    )
+    .unwrap();
+
+    let synced = sync_with_home(bb_root.path(), "codex", Some(home.path())).unwrap();
+    assert_eq!(synced.state, AgentConnectorState::Synced);
+    let codex_source = path_for_display(&bb_root.path().join("agents").join("CODEX.md"));
+    assert_eq!(
+        synced.targets[0].source_path.as_deref(),
+        Some(codex_source.as_str())
+    );
+    assert_eq!(
+        fs::read_to_string(home.path().join(".codex/AGENTS.md")).unwrap(),
+        "codex rules"
+    );
+
+    let codebuddy = sync_with_home(bb_root.path(), "codebuddy", Some(home.path())).unwrap();
+    assert_eq!(codebuddy.state, AgentConnectorState::Synced);
+    assert_eq!(
+        fs::read_to_string(home.path().join(".codebuddy/AGENTS.md")).unwrap(),
+        "shared rules"
+    );
 }
 
 #[test]

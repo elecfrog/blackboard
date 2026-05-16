@@ -20,7 +20,7 @@ function runGraphRef(run: TaskGraphRunSummary): TaskGraphRef & { version?: numbe
 }
 
 function isActiveRun(run: TaskGraphRunSummary) {
-  return run.status === 'pending' || run.status === 'running' || run.status === 'paused'
+  return run.status === 'queued' || run.status === 'pending' || run.status === 'running' || run.status === 'paused'
 }
 
 function formatDateTime(value?: string) {
@@ -98,7 +98,12 @@ function runIdLabel(runId: string) {
             <td>{{ formatDateTime(run.started_at ?? run.created_at) }}</td>
             <td>{{ formatDateTime(run.completed_at) }}</td>
             <td>{{ durationLabel(run) }}</td>
-            <td>v{{ runGraphRef(run).version ?? '-' }}</td>
+            <td>
+              <span>v{{ runGraphRef(run).version ?? '-' }}</span>
+              <span v-if="run.current_graph_revision !== undefined" class="task-graph-run-revision">
+                rev {{ run.current_graph_revision }}
+              </span>
+            </td>
             <td>
               <button type="button" @click="emit('open', run)">{{ t('taskGraphView') }}</button>
             </td>
@@ -205,6 +210,15 @@ function runIdLabel(runId: string) {
   font-weight: 820;
 }
 
+.task-graph-run-revision {
+  display: inline-flex;
+  margin-left: 6px;
+  color: var(--bb-text-muted);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.task-graph-run-status-pill[data-status='queued'],
 .task-graph-run-status-pill[data-status='running'],
 .task-graph-run-status-pill[data-status='pending'] {
   background: color-mix(in srgb, var(--bb-focus) 12%, var(--bb-surface));

@@ -28,14 +28,7 @@ fn apply_writes_opens_branch_channels_and_tracks_seen_versions() {
     let checkpoint = initial_checkpoint(&compiled, json!({}));
     let step = prepare_next_tasks(&compiled, &checkpoint, 1);
     let task = step.tasks[0].clone();
-    let writes = writes_from_node_outcome(
-        &compiled,
-        &task,
-        None,
-        &["left".to_string(), "right".to_string()],
-        None,
-    )
-    .unwrap();
+    let writes = writes_from_node_outcome(&compiled, &task, None, &[], None, true).unwrap();
     let next = apply_writes(&compiled, &checkpoint, &step.tasks, &writes, 1).unwrap();
 
     assert_eq!(
@@ -60,14 +53,7 @@ fn prepare_next_tasks_replays_successful_pending_writes_without_rerun() {
     let checkpoint = initial_checkpoint(&compiled, json!({}));
     let step = prepare_next_tasks(&compiled, &checkpoint, 1);
     let task = step.tasks[0].clone();
-    let pending = writes_from_node_outcome(
-        &compiled,
-        &task,
-        None,
-        &["left".to_string(), "right".to_string()],
-        None,
-    )
-    .unwrap();
+    let pending = writes_from_node_outcome(&compiled, &task, None, &[], None, true).unwrap();
 
     let recovered = prepare_next_tasks_with_pending_writes(&compiled, &checkpoint, &pending, 1);
 
@@ -117,14 +103,8 @@ fn barrier_channel_waits_for_all_required_senders() {
     let compiled = compile_graph(&parallel_graph()).unwrap();
     let checkpoint = initial_checkpoint(&compiled, json!({}));
     let start_step = prepare_next_tasks(&compiled, &checkpoint, 1);
-    let start_writes = writes_from_node_outcome(
-        &compiled,
-        &start_step.tasks[0],
-        None,
-        &["left".to_string(), "right".to_string()],
-        None,
-    )
-    .unwrap();
+    let start_writes =
+        writes_from_node_outcome(&compiled, &start_step.tasks[0], None, &[], None, true).unwrap();
     let after_start =
         apply_writes(&compiled, &checkpoint, &start_step.tasks, &start_writes, 1).unwrap();
     let parallel_step = prepare_next_tasks(&compiled, &after_start, 2);
@@ -134,14 +114,8 @@ fn barrier_channel_waits_for_all_required_senders() {
         .find(|task| task.node_id == "left")
         .unwrap()
         .clone();
-    let left_writes = writes_from_node_outcome(
-        &compiled,
-        &left,
-        Some(&json!("L")),
-        &["end".to_string()],
-        None,
-    )
-    .unwrap();
+    let left_writes =
+        writes_from_node_outcome(&compiled, &left, Some(&json!("L")), &[], None, true).unwrap();
     let after_left = apply_writes(&compiled, &after_start, &[left], &left_writes, 2).unwrap();
     assert!(prepare_next_tasks(&compiled, &after_left, 3)
         .tasks
@@ -153,14 +127,8 @@ fn barrier_channel_waits_for_all_required_senders() {
         .find(|task| task.node_id == "right")
         .unwrap()
         .clone();
-    let right_writes = writes_from_node_outcome(
-        &compiled,
-        &right,
-        Some(&json!("R")),
-        &["end".to_string()],
-        None,
-    )
-    .unwrap();
+    let right_writes =
+        writes_from_node_outcome(&compiled, &right, Some(&json!("R")), &[], None, true).unwrap();
     let after_right = apply_writes(&compiled, &after_left, &[right], &right_writes, 3).unwrap();
     let end_step = prepare_next_tasks(&compiled, &after_right, 4);
     assert_eq!(end_step.tasks.len(), 1);
@@ -213,6 +181,7 @@ fn node_output_object_is_mapped_to_matching_state_channels() {
         })),
         &[],
         None,
+        false,
     )
     .unwrap();
 
@@ -251,6 +220,7 @@ fn command_output_writes_state_goto_and_send_packets() {
         })),
         &[],
         None,
+        true,
     )
     .unwrap();
 

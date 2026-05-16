@@ -10,6 +10,7 @@ pub mod pregel;
 pub mod run_state;
 pub mod runtime;
 pub mod schedules;
+pub mod topology;
 pub mod validation;
 
 #[cfg(test)]
@@ -54,21 +55,24 @@ pub use pregel::coordinator;
 pub use pregel::executor;
 pub use pregel::outcome;
 pub use pregel::outcome::{
-    ExecutionMode, NodeOutcome, ReadyNode, ReduceAction, SideEffect, SuperstepPlan,
+    ControlDirective, ExecutionMode, NodeOutcome, ReadyNode, ReduceAction, SideEffect,
+    SuperstepPlan,
 };
 pub use pregel::runner;
-pub use pregel::runner::{execute_run, resume_run, RunOutcome, RunnerOptions, RunnerStepResult};
+pub use pregel::runner::{
+    execute_run, resolve_scripts_dir, resume_run, RunOutcome, RunnerOptions, RunnerStepResult,
+};
 pub use run_state::{
-    append_node_log, append_run_event, cancel_run_cascade, clear_pending_pregel_writes, create_run,
-    list_run_events, list_runs, list_superstep_checkpoints, read_latest_superstep_checkpoint,
-    read_pending_pregel_writes, read_pregel_checkpoint_tuple, read_run, read_run_detail,
-    record_branch_decision, record_loop_iteration, set_node_output, set_run_paused, update_cursor,
-    update_node_state, update_run_status, write_artifact, write_pending_pregel_writes,
-    write_superstep_checkpoint, ArtifactContentType, BranchDecision, GraphRef, LoopFrame,
-    LoopIterationEntry, LoopIterationResult, LoopIterationState, NodeError, NodeRunStatus,
-    OutputArtifact, PausedAction, PendingWrite, RunContext, RunEvent, RunPaused, RunStatus,
-    SuperstepCheckpoint, SuperstepStatus, TaskGraphRun, TaskGraphRunDetail, TaskGraphRunNode,
-    TaskGraphRunSummary,
+    append_node_log, append_run_event, cancel_run_cascade, clear_pending_pregel_writes,
+    create_queued_run, create_run, list_run_events, list_runs, list_superstep_checkpoints,
+    read_latest_superstep_checkpoint, read_pending_pregel_writes, read_pregel_checkpoint_tuple,
+    read_run, read_run_detail, record_branch_decision, record_loop_iteration, set_node_output,
+    set_run_paused, update_node_state, update_run_status, write_artifact,
+    write_pending_pregel_writes, write_superstep_checkpoint, ArtifactContentType, BranchDecision,
+    GraphRef, LoopFrame, LoopIterationEntry, LoopIterationResult, LoopIterationState, NodeError,
+    NodeRunStatus, OutputArtifact, PausedAction, PendingWrite, RunContext, RunEvent, RunPaused,
+    RunStatus, SuperstepCheckpoint, SuperstepStatus, TaskGraphRun, TaskGraphRunDetail,
+    TaskGraphRunNode, TaskGraphRunSummary,
 };
 pub use schedules::{
     claim_schedule_fire, compute_next_run_after, create_schedule, delete_schedule,
@@ -77,6 +81,10 @@ pub use schedules::{
     TaskSchedule, TaskScheduleConcurrencyPolicy, TaskScheduleCreate, TaskScheduleGraphRef,
     TaskScheduleKind, TaskScheduleMisfirePolicy, TaskSchedulePatch, TaskScheduleSpec,
     TaskScheduleState,
+};
+pub use topology::{
+    GraphMutationBatch, GraphMutationBatchResult, GraphMutationConflict, GraphMutationOp,
+    GraphMutationRequest, GraphMutationSummary, GraphRevision,
 };
 pub use validation::{
     decode_graph_value_at, parse_json_source, prefix_validation_errors, validate_graph,

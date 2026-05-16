@@ -24,7 +24,8 @@ pub struct CodexAppServer {
 impl CodexAppServer {
     /// Spawn `codex app-server --listen stdio://` and perform the initialize handshake.
     pub fn spawn(codex_path: &str, cwd: &Path, model: Option<&str>) -> Result<Self> {
-        let mut cmd = Command::new(codex_path);
+        let codex_program = bb_core::platform::resolve_spawn_program(codex_path);
+        let mut cmd = Command::new(&codex_program);
         cmd.arg("app-server")
             .arg("--listen")
             .arg("stdio://")

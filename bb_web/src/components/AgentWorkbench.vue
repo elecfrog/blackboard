@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import type { AgentProfile } from '@/data/agents'
-import { loadAgentRegistry, upsertAgent } from '@/data/agents'
+import type { SkillInfo } from '@/data/agents'
+import { loadAgentRegistry, loadAgentSkills, upsertAgent } from '@/data/agents'
 import type { BlackboardTicket, ProjectEntry } from '@/data/tickets'
 import { isOpenTicketStatus, loadBlackboardData, loadProjects } from '@/data/tickets'
 import { t } from '@/i18n'
 import AgentListPanel from './agents/AgentListPanel.vue'
 import AgentProfileSection from './agents/AgentProfileSection.vue'
+import AgentRuntimeConfig from './agents/AgentRuntimeConfig.vue'
 import AgentMcpTable from './agents/AgentMcpTable.vue'
 import AgentSkillsTable from './agents/AgentSkillsTable.vue'
-import AgentMetricsCards from './agents/AgentMetricsCards.vue'
 import AgentAssignments from './agents/AgentAssignments.vue'
 
 interface ProjectTickets {
@@ -24,8 +25,11 @@ const props = defineProps<{
 const loading = ref(true)
 const error = ref('')
 const agents = ref<AgentProfile[]>([])
+const availableSkills = ref<SkillInfo[]>([])
 const projects = ref<ProjectTickets[]>([])
 const selectedAgent = ref('')
+const skillSaving = ref(false)
+const skillSaveError = ref('')
 
 // New agent modal
 const showNewAgent = ref(false)
@@ -41,9 +45,6 @@ const newAgentForm = ref({
   variant: '',
 })
 const newAgentSaving = ref(false)
-
-// Edit mode state (shared with profile section)
-const editMode = ref(false)
 
 const selectedAgentProfile = computed(() =>
   agents.value.find((agent) => agent.id === selectedAgent.value) ?? null,
@@ -75,7 +76,7 @@ const assignmentCountByAgent = computed(() => {
 
 function selectAgent(id: string) {
   selectedAgent.value = id
-  editMode.value = false
+  skillSaveError.value = ''
 }
 
 function onAgentUpdated(updated: AgentProfile) {
@@ -109,6 +110,24 @@ async function createNewAgent() {
   }
 }
 
+async function updateAgentSkills(skills: string[]) {
+  const agent = selectedAgentProfile.value
+  if (!agent) return
+  skillSaving.value = true
+  skillSaveError.value = ''
+  const nextSkills = Array.from(
+    new Set(skills.map((skill) => skill.trim()).filter(Boolean)),
+  )
+  try {
+    const updated = await upsertAgent({ ...agent, skills: nextSkills })
+    onAgentUpdated(updated)
+  } catch (err) {
+    skillSaveError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    skillSaving.value = false
+  }
+}
+
 function chooseDefaultAgent() {
   if (selectedAgent.value) return
   const preferred = agents.value.find((agent) => agent.id === 'codex') ?? agents.value[0]
@@ -122,6 +141,12 @@ async function reload() {
     const [registry, projectList] = await Promise.all([loadAgentRegistry(), loadProjects()])
     agents.value = registry.agents.filter((agent) => agent.status === 'active' && agent.assignable)
     chooseDefaultAgent()
+    try {
+      availableSkills.value = (await loadAgentSkills()).skills
+    } catch (err) {
+      console.error('Failed to load registered skills:', err)
+      availableSkills.value = []
+    }
     const payloads = await Promise.all(
       projectList.projects.map(async (project) => ({
         project,
@@ -168,9 +193,13 @@ onMounted(reload)
         <main class="aw-content">
           <AgentProfileSection
             :agent="selectedAgentProfile"
-            :all-agents="agents"
             @updated="onAgentUpdated"
-            @select-agent="selectAgent"
+          />
+
+          <AgentRuntimeConfig
+            v-if="selectedAgentProfile"
+            :agent="selectedAgentProfile"
+            @updated="onAgentUpdated"
           />
 
           <AgentMcpTable
@@ -182,10 +211,13 @@ onMounted(reload)
           <AgentSkillsTable
             v-if="selectedAgentProfile"
             :skills="selectedAgentProfile.skills ?? []"
-            :edit-mode="false"
+            :available-skills="availableSkills"
+            :saving="skillSaving"
+            :save-error="skillSaveError"
+            @update:skills="updateAgentSkills"
           />
 
-          <AgentMetricsCards v-if="selectedAgentProfile" />
+          <!-- TODO(ticket: agent-metrics): Re-enable AgentMetricsCards after implementing real agent metrics data. -->
 
           <AgentAssignments
             v-if="selectedAgentProfile"

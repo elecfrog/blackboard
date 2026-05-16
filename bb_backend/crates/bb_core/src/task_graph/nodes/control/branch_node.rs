@@ -7,7 +7,7 @@ use crate::task_graph::definition::types::{
 };
 use crate::task_graph::nodes::eval::evaluate_branch;
 use crate::task_graph::nodes::navigation::outgoing_edges;
-use crate::task_graph::pregel::outcome::{NodeOutcome, SideEffect};
+use crate::task_graph::pregel::outcome::{ControlDirective, NodeOutcome, SideEffect};
 use crate::task_graph::run_state::{
     BranchDecision, NodeError, NodeRunStatus, TaskGraphRun, TaskGraphRunNode,
 };
@@ -43,7 +43,6 @@ pub(crate) fn execute_branch_node(
             return Ok(NodeOutcome {
                 node_id: node.id.clone(),
                 status: NodeRunStatus::Failed,
-                next_nodes: vec![],
                 output: None,
                 node_state: TaskGraphRunNode {
                     node_id: node.id.clone(),
@@ -72,11 +71,16 @@ pub(crate) fn execute_branch_node(
                 side_effects: vec![],
                 child_run_id: None,
                 end_result: None,
+                control: vec![],
+                graph_mutations: vec![],
             });
         }
 
         // Use default edge
-        let next: Vec<String> = default_edges.iter().map(|e| e.to.clone()).collect();
+        let control = default_edges
+            .iter()
+            .map(|edge| ControlDirective::goto(edge.to.clone()))
+            .collect();
         let now = Utc::now().to_rfc3339();
         let decision = BranchDecision {
             node_id: node.id.clone(),
@@ -88,7 +92,6 @@ pub(crate) fn execute_branch_node(
         return Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Succeeded,
-            next_nodes: next,
             output: None,
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
@@ -111,11 +114,16 @@ pub(crate) fn execute_branch_node(
             side_effects: vec![SideEffect::BranchDecision(decision)],
             child_run_id: None,
             end_result: None,
+            control,
+            graph_mutations: vec![],
         });
     }
 
     // Use matched edge
-    let next: Vec<String> = matching_edges.iter().map(|e| e.to.clone()).collect();
+    let control = matching_edges
+        .iter()
+        .map(|edge| ControlDirective::goto(edge.to.clone()))
+        .collect();
     let now = Utc::now().to_rfc3339();
     let decision = BranchDecision {
         node_id: node.id.clone(),
@@ -127,7 +135,6 @@ pub(crate) fn execute_branch_node(
     Ok(NodeOutcome {
         node_id: node.id.clone(),
         status: NodeRunStatus::Succeeded,
-        next_nodes: next,
         output: None,
         node_state: TaskGraphRunNode {
             node_id: node.id.clone(),
@@ -150,5 +157,7 @@ pub(crate) fn execute_branch_node(
         side_effects: vec![SideEffect::BranchDecision(decision)],
         child_run_id: None,
         end_result: None,
+        control,
+        graph_mutations: vec![],
     })
 }

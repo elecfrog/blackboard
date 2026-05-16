@@ -149,6 +149,12 @@ export interface TicketWriteResult {
   ticket: TicketWriteTicket
 }
 
+export interface DeprecateTicketResult {
+  ticket: TicketWriteTicket
+  removed_dependency_refs: string[]
+  removed_attachment_refs: string[]
+}
+
 export interface PatchTicketInput {
   status?: string
   lane?: string
@@ -368,6 +374,21 @@ export async function patchTicket(
     throw new Error(await responseError(response, 'patch_ticket failed'))
   }
   return (await response.json()) as TicketWriteResult
+}
+
+export async function deprecateTicket(
+  project: string,
+  id: string,
+): Promise<DeprecateTicketResult> {
+  const encoded = encodeURIComponent(project)
+  const safeId = encodeURIComponent(id)
+  const response = await fetch(`/api/projects/${encoded}/tickets/${safeId}/deprecate`, {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    throw new Error(await responseError(response, 'deprecate_ticket failed'))
+  }
+  return (await response.json()) as DeprecateTicketResult
 }
 
 export async function loadInboxNotes(project: string): Promise<Loaded<InboxNoteEntry[]>> {

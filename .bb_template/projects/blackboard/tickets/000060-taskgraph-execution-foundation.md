@@ -3,8 +3,8 @@ id = "000060"
 lane = "bbt"
 title = "TaskGraph 060：Graph Compile 与 Superstep Execution Kernel"
 created_at = "2026-05-14"
-updated_at = "2026-05-15"
-status = "review"
+updated_at = "2026-05-17"
+status = "done"
 area = "TaskGraph"
 assignee = "codex"
 attachments = "[{\"kind\":\"wiki\",\"target\":\"proposal/taskgraph-superstep-agent-orchestration.md\",\"label\":\"Superstep TaskGraph Proposal\"}]"
@@ -108,6 +108,38 @@ scope = "compile-superstep-scheduler-checkpoint-event-log"
 - codex 开始执行：按产品边界修正：Pregel 才是 graph engine，将 engine/runner/coordinator/executor/outcome 并入 pregel。
 
 - codex 完成阶段工作，handoff 写入 `2026-05-15-codex-taskgraph-pregel-owns-runner-coordinator-executor-outcome.md`。
+
+- 2026-05-15：CompiledChannel 增加 LangGraph-style channel class（EphemeralValue/LastValue/Topic/NamedBarrierValue），apply_writes 按 channel class 更新而非 Blackboard kind
+
+- 2026-05-15：新增 task_graph/README.md 模块地图，说明 pregel/ LangGraph parity owner、coordinator orchestration glue 及各子模块职责
+
+- 2026-05-15：将 task_graph/node_exec/ 改名为 nodes/，内部 control_nodes→control、runtime_nodes→runtime、sub_graph_node→subgraph
+
+- 2026-05-15：收敛 task_graph 根目录文件，按职责分组为 definition/、compile/、engine/、nodes/、schedules/，保留 mod.rs 和 README.md
+
+- 2026-05-15：删除误导性的 task_graph/engine/ 模块，将 runner/coordinator/executor/outcome 并入 pregel/，Pregel 成为唯一 graph execution engine 边界
+
+- 2026-05-14：整合 LangGraphJS pregel/checkpoint/api/sdk/supervisor/swarm 模块研究，创建 wiki/proposal/taskgraph-superstep-agent-orchestration.md；新增 ticket attachments 协议（HTTP list + PATCH structured attachments）；新增 TicketDetailPanel attachments 编辑器和 BoardView optimistic save 路径
+
+- 2026-05-15：将 pregel-topology-mutation existing_truth.md 重写为中文白话文，仅保留必要技术标识符（文件路径、命令、分支名、类型名、运行时名）
+
+- 2026-05-15：新增 PregelLoop 内核，抽出 prepared/commit kernel，接入 coordinator；统一 barrier checkpoint 产出
+
+- 2026-05-15：PregelLoop 改为持有长期 state，coordinator 不再临时重建 loop；新增 recursion_limit 接入 PregelLoop.stop
+
+- 2026-05-15：完成 checkpoint recovery、interrupt semantics、Annotation/channel factory、PregelLoop industrial details、subgraph namespace 长程对齐
+
+- 2026-05-16：新增 loop validation 检查 body_entry/body_exit 非空且引用存在节点，验证 body_entry 匹配 loop node 的 body edge targets；新增 loop condition 对象形状、input_ref 存在性、condition ops/input_ref forms 验证；新增回归测试覆盖 stale body_entry/body_exit 和 stale condition node reference 场景
+
+- 2026-05-15：检查 LangGraphJS 源码确认其使用静态图编译+运行时 Send/Command 调度，未发现 Pregel paper 3.4 式的运行时增删顶点/边实现；关键源码点：constants.ts 定义 TASKS/PUSH/PULL，pregel/algo.ts 验证 Send.node in processes，pregel/index.ts 预留 TASKS 为内部 Topic
+
+- 2026-05-15：创建 pregel-topology-mutation spec_draft.md，拟定 graph revision、mutation request/batch/result/conflict 模型、reserved mutation channel、checkpoint graph revision binding、barrier apply order、conflict rules、coordinator flow、cursor cleanup targets
+
+- 2026-05-15：创建 pregel-topology-mutation existing_truth.md，记录 feature/orni vs main 分支实现事实：compiled graph IR、Pregel checkpoint/task/write 模型、PULL/PUSH 调度、barrier writes、Command/Send MVP、interrupt 支持、Shell runtime 等；明确未实现：运行时 topology mutation、GraphMutation queue、conflict handler
+
+- 2026-05-15：清理 pregel-topology-mutation research_results.md，移除 Blackboard/当前系统设计含义，仅保留 LangGraphJS/Pregel 事实：静态编译拓扑、Send/Command 运行时任务调度、源码中无运行时 topology mutation 实现
+
+- 2026-05-17:?????Graph Compile / Pregel / Superstep Execution Kernel ??? topology mutation ? KB workflow ????????????
 
 # 背景
 
@@ -342,6 +374,74 @@ NodeRun 状态：
 - 验证：`git diff --check -- bb_backend/crates/bb_core/src/task_graph bb_backend/crates/bb_cli/src/http/task_graph` passed; only CRLF conversion warnings were emitted.
 - 验证：Filesystem root directory check showed no `task_graph/engine` directory; `pregel/` now contains `runner.rs`, `coordinator.rs`, `executor.rs`, and `outcome.rs`.
 
+- 来源：inbox/2026-05-15-codex-060-incremental-langgraph-channel-state-parity.md
+- 代码位置：bb_backend/crates/bb_core/src/task_graph/compiler.rs, pregel.rs
+
+- 来源：inbox/2026-05-15-codex-taskgraph-readme-模块地图.md
+- 代码位置：bb_backend/crates/bb_core/src/task_graph/README.md
+
+- 来源：inbox/2026-05-15-codex-taskgraph-nodes-module-rename-cleanup.md
+- 代码位置：bb_backend/crates/bb_core/src/task_graph/nodes/
+
+- 来源：inbox/2026-05-15-codex-taskgraph-root-module-surface-cleanup.md
+- 代码位置：bb_backend/crates/bb_core/src/task_graph/definition/, compile/, engine/, nodes/, schedules/
+
+- 来源：inbox/2026-05-15-codex-taskgraph-pregel-owns-runner-coordinator-executor-outcome.md
+- 代码位置：bb_backend/crates/bb_core/src/task_graph/pregel/runner.rs, coordinator.rs, executor.rs, outcome.rs
+
+- 来源：inbox/2026-05-15-codex-060-langgraph-checkpoint-recovery-pending-writes-replay-increment.md
+
+- 来源：inbox/2026-05-15-codex-060-langgraph-compile-pregel-superstep-alignment.md
+
+- 来源：inbox/2026-05-15-codex-060-langgraph-state-channel-reducer-parity-increment.md
+
+- 来源：inbox/2026-05-15-codex-060-langgraph-stategraph-attachnode-command-send-parity-increment.md
+
+- 来源：inbox/2026-05-15-codex-060-pregel-cleanup-pass-拆分-monolith-并收紧-pregel-模块边界.md
+
+- 来源：inbox/2026-05-15-codex-060-pregel-push-task-model-follow-up.md
+
+- 来源：inbox/2026-05-15-codex-060-taskgraph-compile-superstep-kernel-implementation-aligned-with-langgraphjs-source.md
+
+- 来源：inbox/2026-05-15-codex-taskgraph-nodes-module-rename-cleanup-tool-audit.md
+
+- 来源：inbox/2026-05-15-codex-taskgraph-runner-命名收束.md
+
+- 来源：inbox/2026-05-15-codex-taskgraph-测试目录整理-合并-interpreter-tests-到-tests.md
+
+- 来源：inbox/2026-05-14-codex-taskgraph-superstep-orchestration-proposal-and-attachments.md
+
+- 来源：inbox/2026-05-15-codex-existing-truth-doc-language-cleanup.md
+- 文件位置：D:\Dev\blackboard\.bb_template\projects\blackboard\wiki\specs\_experiments\pregel-topology-mutation\existing_truth.md
+
+- 来源：inbox/2026-05-15-codex-pregelloop-长程推进-prepare-commit-外壳接入-coordinator.md
+- 代码位置：bb_backend/crates/bb_core/src/task_graph/pregel_loop.rs, coordinator.rs
+
+- 来源：inbox/2026-05-15-codex-pregelloop-长程推进-长期-loop-state-recursion-limit.md
+- 代码位置：bb_backend/crates/bb_core/src/task_graph/pregel_loop.rs, coordinator.rs
+
+- 来源：inbox/2026-05-15-codex-pregelloop-长程推进-checkpoint-recovery-interrupt-annotation-factory-industrial-details-namespace.md
+- 代码位置：bb_backend/crates/bb_core/src/task_graph/pregel.rs, pregel_loop.rs, coordinator.rs, interpreter.rs
+
+- 来源：inbox/2026-05-16-codex-taskgraph-loop-validation-hardening.md
+- 代码位置：bb_backend/crates/bb_core/src/task_graph/validation/config.rs, bb_backend/crates/bb_core/src/task_graph/validation/mod.rs, bb_backend/crates/bb_core/src/task_graph/tests/mod.rs
+- 相关：.bb_template/task_graphs/system/inbox-batch-cleanup.json
+
+- 来源：inbox/2026-05-15-codex-langgraphjs-pregel-topology-mutation-inspection.md
+
+- 来源：inbox/2026-05-15-codex-pregel-topology-mutation-draft-spec.md
+- 文件位置：D:\Dev\blackboard\.bb_template\projects\blackboard\wiki\specs\_experiments\pregel-topology-mutation\spec_draft.md
+
+- 来源：inbox/2026-05-15-codex-pregel-topology-mutation-existing-truth-document.md
+- 文件位置：D:\Dev\blackboard\.bb_template\projects\blackboard\wiki\specs\_experiments\pregel-topology-mutation\existing_truth.md
+
+- 来源：inbox/2026-05-15-codex-pure-langgraphjs-research-result-cleanup.md
+- 文件位置：D:\Dev\blackboard\.bb_template\projects\blackboard\wiki\specs\_experiments\pregel-topology-mutation\research_results.md
+
+- ????:Pregel-style compiled graph?checkpoint/channel/task scheduler?barrier apply?graph revision?active_nodes?mutation batch ? branch merge ????????? kb-wiki-build-workflow ??????? depends_on=000055;?? mutation follow-up ???? ?
+
+- Correction: the 000060 topology mutation follow-up ticket is 000069.
+
 # 下一步
 
 - 后续由 #000061 将 pending writes 推进为 typed channel writes；由 #000062 把业务节点输出绑定到 artifact/channel contract。
@@ -403,3 +503,7 @@ NodeRun 状态：
 
 - No frontend build was run because no `bb_web/src` files changed.
 - No staging/revert was performed; the working tree still includes broader 060 cleanup/Pregel changes from the ongoing task.
+
+- ?????????;???????????,?????,????????
+
+- 000060 is closed; topology mutation practice is tracked by completed follow-up 000069.

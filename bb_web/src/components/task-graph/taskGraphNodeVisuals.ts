@@ -36,6 +36,7 @@ export function taskGraphNodeTypes(): TaskGraphNodeVisual[] {
     businessRole('reviewer_agent', 'llm', t('taskGraphNodeTypeReviewerAgent'), '#7c3aed', categories.runtime, 'RV', t('taskGraphNodeDescReviewerAgent')),
     businessRole('handoff_writer', 'llm', t('taskGraphNodeTypeHandoffWriter'), '#84cc16', categories.artifact, 'HW', t('taskGraphNodeDescHandoffWriter')),
     { key: 'llm', type: 'llm', label: t('taskGraphNodeTypeLlm'), color: '#2563eb', category: 'runtime', categoryLabel: categories.runtime, icon: 'AI', description: t('taskGraphNodeDescLlm') },
+    { key: 'plan', type: 'plan', label: t('taskGraphNodeTypePlan'), color: '#f97316', category: 'transform', categoryLabel: categories.transform, icon: 'PL', description: t('taskGraphNodeDescPlan') },
     businessRole('local_shell', 'shell', t('taskGraphNodeTypeLocalShell'), '#0f766e', categories.runtime, '$', t('taskGraphNodeDescLocalShell')),
     { key: 'shell', type: 'shell', label: t('taskGraphNodeTypeShell'), color: '#0f766e', category: 'runtime', categoryLabel: categories.runtime, icon: '$', description: t('taskGraphNodeDescShell') },
     { key: 'sub_graph', type: 'sub_graph', label: t('taskGraphNodeTypeSubPipeline'), color: '#7c3aed', category: 'artifact', categoryLabel: categories.artifact, icon: 'G', description: t('taskGraphNodeDescSubGraph') },

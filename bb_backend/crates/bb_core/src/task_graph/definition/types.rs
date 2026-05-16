@@ -70,6 +70,58 @@ pub struct GraphMetadata {
     /// Optional LangGraph-style interruptAfter nodes. Use ["*"] for all visible nodes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interrupt_after: Option<Vec<String>>,
+    /// Graph-run admission policy. This controls whole TaskRun concurrency,
+    /// not Pregel superstep node parallelism.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_policy: Option<TaskGraphRunPolicy>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TaskGraphRunPolicy {
+    #[serde(default)]
+    pub allow_concurrent_runs: bool,
+    #[serde(default = "default_max_concurrent_runs")]
+    pub max_concurrent_runs: u32,
+    #[serde(default)]
+    pub queue_enabled: bool,
+    #[serde(default = "default_max_queue_wait_ms")]
+    pub max_queue_wait_ms: u64,
+}
+
+impl TaskGraphRunPolicy {
+    pub const DEFAULT_MAX_CONCURRENT_RUNS: u32 = 1;
+    pub const MAX_CONCURRENT_RUNS: u32 = 32;
+    pub const MIN_QUEUE_WAIT_MS: u64 = 60_000;
+    pub const DEFAULT_MAX_QUEUE_WAIT_MS: u64 = 30 * 60 * 1_000;
+    pub const MAX_QUEUE_WAIT_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+
+    pub fn effective_max_concurrent_runs(&self) -> u32 {
+        if self.allow_concurrent_runs {
+            self.max_concurrent_runs
+                .clamp(Self::DEFAULT_MAX_CONCURRENT_RUNS, Self::MAX_CONCURRENT_RUNS)
+        } else {
+            Self::DEFAULT_MAX_CONCURRENT_RUNS
+        }
+    }
+}
+
+impl Default for TaskGraphRunPolicy {
+    fn default() -> Self {
+        Self {
+            allow_concurrent_runs: false,
+            max_concurrent_runs: Self::DEFAULT_MAX_CONCURRENT_RUNS,
+            queue_enabled: false,
+            max_queue_wait_ms: Self::DEFAULT_MAX_QUEUE_WAIT_MS,
+        }
+    }
+}
+
+fn default_max_concurrent_runs() -> u32 {
+    TaskGraphRunPolicy::DEFAULT_MAX_CONCURRENT_RUNS
+}
+
+fn default_max_queue_wait_ms() -> u64 {
+    TaskGraphRunPolicy::DEFAULT_MAX_QUEUE_WAIT_MS
 }
 
 /// User-configurable graph-level input exposed before a run starts.
@@ -206,6 +258,8 @@ pub enum NodeType {
     Start,
     End,
     Llm,
+    /// 通用结构化 plan 节点：由 LLM/Agent 生成 JSON，并落盘为 artifact。
+    Plan,
     HumanGate,
     Branch,
     Loop,
@@ -215,6 +269,16 @@ pub enum NodeType {
     /// 子图调用节点：触发另一个 task graph 的执行。
     #[serde(alias = "sub_pipeline")]
     SubGraph,
+    /// 将 LLM 产出的结构化 plan 编译为确定性的 topology mutation artifact。
+    LlmMutation,
+    /// 将自然语言 intent 和 LLM draft 合并成确定性的 workflow 输入。
+    IntentExtract,
+    /// 基于 manifest 确定性生成 wiki plan 或 writer plan。
+    KbPlan,
+    /// 将并行 scout 输出合并成确定性的 wiki manifest。
+    ManifestMerge,
+    /// 通用 JSON schema 校验节点。
+    SchemaValidate,
 }
 
 // ─── Typed Node Configs (for validation) ─────────────────────────────────────

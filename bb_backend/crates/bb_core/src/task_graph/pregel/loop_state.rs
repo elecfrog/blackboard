@@ -112,6 +112,16 @@ impl PregelLoop {
         &self.pending_writes
     }
 
+    pub fn replace_compiled_and_checkpoint(
+        &mut self,
+        compiled: CompiledGraph,
+        checkpoint: PregelCheckpoint,
+    ) {
+        self.compiled = compiled;
+        self.checkpoint_previous_versions = checkpoint.channel_versions.clone();
+        self.checkpoint = checkpoint;
+    }
+
     pub fn checkpoint_previous_versions(&self) -> &BTreeMap<String, u64> {
         &self.checkpoint_previous_versions
     }
@@ -257,14 +267,8 @@ mod tests {
         assert_eq!(prepared.tasks.len(), 1);
         assert_eq!(prepared.tasks[0].node_id, "start");
 
-        let writes = writes_from_node_outcome(
-            &compiled,
-            &prepared.tasks[0],
-            None,
-            &["read".to_string()],
-            None,
-        )
-        .unwrap();
+        let writes =
+            writes_from_node_outcome(&compiled, &prepared.tasks[0], None, &[], None, true).unwrap();
         loop_state.put_writes(&prepared.tasks[0].id, writes);
         let commit = loop_state.commit_step(&prepared).unwrap();
 
@@ -283,14 +287,8 @@ mod tests {
         let compiled = compile_graph(&linear_graph()).unwrap();
         let checkpoint = initial_checkpoint(&compiled, json!({"value": "go"}));
         let prepared = prepare_next_tasks_with_pending_writes(&compiled, &checkpoint, &[], 1);
-        let pending = writes_from_node_outcome(
-            &compiled,
-            &prepared.tasks[0],
-            None,
-            &["read".to_string()],
-            None,
-        )
-        .unwrap();
+        let pending =
+            writes_from_node_outcome(&compiled, &prepared.tasks[0], None, &[], None, true).unwrap();
         let mut loop_state = PregelLoop::new(compiled, checkpoint, pending);
 
         let recovered = loop_state.prepare_next(1);

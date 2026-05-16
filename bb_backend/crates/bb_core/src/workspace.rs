@@ -64,6 +64,10 @@ impl Workspace {
             }
         }
 
+        if let Some(source) = scripts_seed_source(&seed_root) {
+            copy_dir_missing(&source, &target_root.join("scripts"))?;
+        }
+
         let source_manifest = seed_root.join(WORKSPACE_MANIFEST);
         let target_manifest = target_root.join(WORKSPACE_MANIFEST);
         if source_manifest.is_file() && !target_manifest.exists() {
@@ -999,4 +1003,18 @@ fn copy_dir_missing(source: &Path, target: &Path) -> Result<(), InboxError> {
         }
     }
     Ok(())
+}
+
+fn scripts_seed_source(seed_root: &Path) -> Option<PathBuf> {
+    let workspace_scripts = seed_root.join("scripts");
+    if workspace_scripts.join("check_ticket_ids.py").is_file() {
+        return Some(workspace_scripts);
+    }
+
+    let repo_scripts = seed_root.parent()?.join("scripts");
+    if repo_scripts.join("check_ticket_ids.py").is_file() {
+        return Some(repo_scripts);
+    }
+
+    None
 }

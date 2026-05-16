@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Plus } from 'lucide-vue-next'
 import TaskGraphEditorPanel from '@/components/TaskGraphEditorPanel.vue'
 import TaskGraphRunPanel from '@/components/TaskGraphRunPanel.vue'
@@ -42,6 +42,7 @@ const props = defineProps<{
 
 type TaskGraphFilter = 'all' | TaskGraphScope
 
+const route = useRoute()
 const router = useRouter()
 const graphs = ref<TaskGraphCatalogItem[]>([])
 const selectedGraph = ref<TaskGraphDefinition | null>(null)
@@ -185,6 +186,7 @@ async function selectFromRouteOrDefault() {
   if (props.mode === 'edit') activeRunId.value = ''
   if (validScope(props.scope) && props.graphId) {
     await loadGraph({ scope: props.scope, id: props.graphId })
+    applyRouteRunSelection()
     return
   }
   const first = graphs.value[0]
@@ -273,11 +275,6 @@ async function customizeGraph(graph: TaskGraphCatalogItem) {
 
 async function runGraph(graph: TaskGraphCatalogItem) {
   if (actionBusy.value || graph.compile_error) return
-  if (graph.last_run?.status === 'running' || graph.last_run?.status === 'pending' || graph.last_run?.status === 'paused') {
-    activeRunId.value = graph.last_run.run_id
-    router.push(graphRoute(graph))
-    return
-  }
   actionBusy.value = `run:${graph.scope}:${graph.id}`
   clearActionAlert()
   try {
@@ -422,6 +419,15 @@ function navigateToRun(runId: string) {
   activeRunId.value = runId
 }
 
+function applyRouteRunSelection() {
+  if (props.mode === 'edit') return
+  const value = route.query.run
+  const runId = Array.isArray(value) ? value[0] : value
+  if (typeof runId === 'string' && runId.trim()) {
+    activeRunId.value = runId.trim()
+  }
+}
+
 watch(
   () => props.project,
   () => reloadCatalog({ refreshSelectedGraph: true }),
@@ -432,6 +438,11 @@ watch(
   () => {
     if (!loading.value) void selectFromRouteOrDefault()
   },
+)
+
+watch(
+  () => route.query.run,
+  () => applyRouteRunSelection(),
 )
 
 watch(filter, () => {
@@ -781,11 +792,13 @@ onMounted(reloadCatalog)
   color: currentColor;
 }
 
+.task-graph-run-action[data-status='queued'] svg,
 .task-graph-run-action[data-status='running'] svg,
 .task-graph-run-action[data-status='pending'] svg {
   animation: task-graph-spin 0.95s linear infinite;
 }
 
+.task-graph-run-action[data-status='queued'],
 .task-graph-run-action[data-status='running'],
 .task-graph-run-action[data-status='pending'] {
   border-color: var(--task-graph-focus-border);
@@ -1070,6 +1083,7 @@ onMounted(reloadCatalog)
   font-weight: 820;
 }
 
+.task-graph-run-status-pill[data-status='queued'],
 .task-graph-run-status-pill[data-status='running'],
 .task-graph-run-status-pill[data-status='pending'] {
   background: color-mix(in srgb, var(--bb-focus) 12%, var(--bb-surface));

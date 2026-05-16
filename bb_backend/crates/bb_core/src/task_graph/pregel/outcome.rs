@@ -10,6 +10,7 @@ use crate::task_graph::pregel::{PregelTask, PregelTaskKind, PregelWrite};
 use crate::task_graph::run_state::{
     BranchDecision, LoopFrame, LoopIterationState, NodeRunStatus, RunPaused, TaskGraphRunNode,
 };
+use crate::task_graph::topology::GraphMutationRequest;
 
 // ─── Execution Mode ──────────────────────────────────────────────────────────
 
@@ -47,13 +48,31 @@ pub struct ReadyNode {
 #[derive(Debug, Clone)]
 pub struct SuperstepPlan {
     pub superstep: u64,
-    pub cursor_before: Vec<String>,
     pub ready_nodes: Vec<ReadyNode>,
     pub waiting_nodes: Vec<String>,
     pub pregel_tasks: Vec<PregelTask>,
     pub replayed_pregel_tasks: Vec<PregelTask>,
     pub replayed_pregel_writes: Vec<PregelWrite>,
     pub pregel_loop_status: PregelLoopStatus,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ControlDirective {
+    Goto {
+        target: String,
+    },
+    Send {
+        node: String,
+        args: serde_json::Value,
+    },
+}
+
+impl ControlDirective {
+    pub fn goto(target: impl Into<String>) -> Self {
+        Self::Goto {
+            target: target.into(),
+        }
+    }
 }
 
 // ─── Side Effect ─────────────────────────────────────────────────────────────
@@ -94,9 +113,6 @@ pub struct NodeOutcome {
     /// 节点最终状态（Succeeded / Failed / Paused）。
     pub status: NodeRunStatus,
 
-    /// 解析后的下一步节点 ID 列表（由 resolve_next_nodes 计算）。
-    pub next_nodes: Vec<String>,
-
     /// 节点输出数据（写入 node_outputs/{node_id}.json）。
     pub output: Option<serde_json::Value>,
 
@@ -111,6 +127,12 @@ pub struct NodeOutcome {
 
     /// 是否为 End 节点完成（携带 end result: "succeeded" / "failed"）。
     pub end_result: Option<String>,
+
+    /// Explicit control flow produced by control nodes.
+    pub control: Vec<ControlDirective>,
+
+    /// Topology mutation requests emitted by this node.
+    pub graph_mutations: Vec<GraphMutationRequest>,
 }
 
 // ─── Reduce Action ───────────────────────────────────────────────────────────
@@ -120,8 +142,8 @@ pub struct NodeOutcome {
 /// 用于描述一轮调度后 RunState 应该如何变化。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReduceAction {
-    /// 继续执行：更新 cursor 为新的节点列表。
-    Continue { next_cursor: Vec<String> },
+    /// 继续执行。
+    Continue,
 
     /// Run 完成（到达 End 节点）。
     Completed { node_id: String, result: String },

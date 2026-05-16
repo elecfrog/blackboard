@@ -60,6 +60,49 @@ impl Blackboard {
                 }
             }
         }
+        let deprecated_dir = self.root().join("tickets").join("_deprecated");
+        if deprecated_dir.exists() {
+            let metadata =
+                fs::symlink_metadata(&deprecated_dir).map_err(|source| InboxError::Io {
+                    path: deprecated_dir.clone(),
+                    source,
+                })?;
+            if metadata.file_type().is_symlink() {
+                return Err(InboxError::InvalidInput(
+                    "tickets/_deprecated directory is a symlink".to_string(),
+                ));
+            }
+            for entry in fs::read_dir(&deprecated_dir).map_err(|source| InboxError::Io {
+                path: deprecated_dir.clone(),
+                source,
+            })? {
+                let entry = entry.map_err(|source| InboxError::Io {
+                    path: deprecated_dir.clone(),
+                    source,
+                })?;
+                let file_type = entry.file_type().map_err(|source| InboxError::Io {
+                    path: entry.path(),
+                    source,
+                })?;
+                if !file_type.is_file() {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().to_string();
+                if super::validate_ticket_name(&name).is_err() {
+                    continue;
+                }
+                let content =
+                    fs::read_to_string(entry.path()).map_err(|source| InboxError::Io {
+                        path: entry.path(),
+                        source,
+                    })?;
+                if let Some(id) = super::ticket_entry_from_content(name, &content).id {
+                    if let Ok(value) = id.parse::<u64>() {
+                        max_id = max_id.max(value);
+                    }
+                }
+            }
+        }
         Ok(max_id)
     }
 
@@ -67,12 +110,7 @@ impl Blackboard {
     pub fn rebuild_ticket_index(&self) -> Result<(), InboxError> {
         let tickets = self.list_tickets()?.tickets;
         let current_counter = self.read_ticket_index_current_counter().unwrap_or(0);
-        let max_ticket_id = tickets
-            .iter()
-            .filter_map(|entry| entry.id.as_deref())
-            .filter_map(|id| id.parse::<u64>().ok())
-            .max()
-            .unwrap_or(0);
+        let max_ticket_id = self.max_existing_ticket_id()?;
         let effective_counter = current_counter.max(max_ticket_id);
         let counter_str = if effective_counter == 0 {
             "000000".to_string()

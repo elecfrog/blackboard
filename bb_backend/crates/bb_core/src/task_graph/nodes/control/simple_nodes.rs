@@ -3,9 +3,8 @@ use std::collections::HashMap;
 use chrono::Utc;
 
 use crate::task_graph::definition::types::{
-    EndConfig, HumanGateConfig, InputVarConfig, TaskGraphEdge, TaskGraphError, TaskGraphNode,
+    EndConfig, HumanGateConfig, InputVarConfig, TaskGraphError, TaskGraphNode,
 };
-use crate::task_graph::nodes::navigation::resolve_next_nodes;
 use crate::task_graph::pregel::outcome::{NodeOutcome, SideEffect};
 use crate::task_graph::run_state::{
     NodeRunStatus, PausedAction, RunPaused, TaskGraphRun, TaskGraphRunNode,
@@ -13,15 +12,13 @@ use crate::task_graph::run_state::{
 
 pub(crate) fn execute_start_node(
     node: &TaskGraphNode,
-    run: &TaskGraphRun,
-    edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
+    _run: &TaskGraphRun,
+    _edge_map: &HashMap<String, Vec<&crate::task_graph::definition::types::TaskGraphEdge>>,
 ) -> Result<NodeOutcome, TaskGraphError> {
     let now = Utc::now().to_rfc3339();
-    let next = resolve_next_nodes(edge_map, &node.id, node, &run.context, None)?;
     Ok(NodeOutcome {
         node_id: node.id.clone(),
         status: NodeRunStatus::Succeeded,
-        next_nodes: next,
         output: None,
         node_state: TaskGraphRunNode {
             node_id: node.id.clone(),
@@ -44,6 +41,8 @@ pub(crate) fn execute_start_node(
         side_effects: vec![],
         child_run_id: None,
         end_result: None,
+        control: vec![],
+        graph_mutations: vec![],
     })
 }
 
@@ -58,7 +57,6 @@ pub(crate) fn execute_end_node(node: &TaskGraphNode) -> Result<NodeOutcome, Task
     Ok(NodeOutcome {
         node_id: node.id.clone(),
         status: NodeRunStatus::Succeeded,
-        next_nodes: vec![],
         output: None,
         node_state: TaskGraphRunNode {
             node_id: node.id.clone(),
@@ -81,6 +79,8 @@ pub(crate) fn execute_end_node(node: &TaskGraphNode) -> Result<NodeOutcome, Task
         side_effects: vec![],
         child_run_id: None,
         end_result: Some(config.result),
+        control: vec![],
+        graph_mutations: vec![],
     })
 }
 
@@ -89,7 +89,7 @@ pub(crate) fn execute_end_node(node: &TaskGraphNode) -> Result<NodeOutcome, Task
 pub(crate) fn execute_input_var_node(
     node: &TaskGraphNode,
     run: &TaskGraphRun,
-    edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
+    _edge_map: &HashMap<String, Vec<&crate::task_graph::definition::types::TaskGraphEdge>>,
 ) -> Result<NodeOutcome, TaskGraphError> {
     let config: InputVarConfig =
         serde_json::from_value(node.config.clone()).map_err(|e| TaskGraphError::Parse {
@@ -105,12 +105,10 @@ pub(crate) fn execute_input_var_node(
         .unwrap_or(serde_json::Value::Null);
 
     let now = Utc::now().to_rfc3339();
-    let next = resolve_next_nodes(edge_map, &node.id, node, &run.context, None)?;
 
     Ok(NodeOutcome {
         node_id: node.id.clone(),
         status: NodeRunStatus::Succeeded,
-        next_nodes: next,
         output: Some(value),
         node_state: TaskGraphRunNode {
             node_id: node.id.clone(),
@@ -133,6 +131,8 @@ pub(crate) fn execute_input_var_node(
         side_effects: vec![],
         child_run_id: None,
         end_result: None,
+        control: vec![],
+        graph_mutations: vec![],
     })
 }
 
@@ -163,7 +163,6 @@ pub(crate) fn execute_human_gate_node(node: &TaskGraphNode) -> Result<NodeOutcom
     Ok(NodeOutcome {
         node_id: node.id.clone(),
         status: NodeRunStatus::Paused,
-        next_nodes: vec![],
         output: None,
         node_state: TaskGraphRunNode {
             node_id: node.id.clone(),
@@ -186,5 +185,7 @@ pub(crate) fn execute_human_gate_node(node: &TaskGraphNode) -> Result<NodeOutcom
         side_effects: vec![SideEffect::RunPaused(paused)],
         child_run_id: None,
         end_result: None,
+        control: vec![],
+        graph_mutations: vec![],
     })
 }

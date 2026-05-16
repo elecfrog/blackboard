@@ -29,38 +29,15 @@ pub(super) fn validate_registry(registry: &AgentRegistryFile) -> Result<(), Inbo
     Ok(())
 }
 
-/// Extended registry-level validation that also collects warnings (e.g. dangling org refs).
+/// Extended registry-level validation that also collects warnings.
 pub(super) fn validate_registry_with_warnings(
     registry: &AgentRegistryFile,
 ) -> Result<Vec<ValidationWarning>, InboxError> {
     validate_registry(registry)?;
 
     let mut warnings = Vec::new();
-    let known_ids: BTreeSet<&str> = registry.agents.iter().map(|a| a.id.as_str()).collect();
 
     for agent in &registry.agents {
-        // Cross-agent org reference checks
-        if let Some(coord) = &agent.coordinator {
-            if !known_ids.contains(coord.as_str()) {
-                warnings.push(ValidationWarning {
-                    message: format!(
-                        "agent `{}` references unknown coordinator `{coord}`",
-                        agent.id
-                    ),
-                });
-            }
-        }
-        for worker_id in &agent.workers {
-            if !known_ids.contains(worker_id.as_str()) {
-                warnings.push(ValidationWarning {
-                    message: format!(
-                        "agent `{}` references unknown worker `{worker_id}`",
-                        agent.id
-                    ),
-                });
-            }
-        }
-
         // custom_args safety: warn about --mcp-config
         warnings.extend(validate_custom_args_safety(&agent.id, &agent.custom_args));
 
@@ -97,9 +74,6 @@ pub(super) fn validate_agent(agent: &AgentProfile) -> Result<(), InboxError> {
     // --- New Profile field validations (Ticket #000048) ---
     validate_instructions_mutual_exclusion(agent)?;
     validate_max_concurrent_tasks(agent)?;
-    validate_org_role(agent)?;
-    validate_org_relations(agent)?;
-
     // --- MCP servers (Ticket #000049) ---
     validate_mcp_servers(agent)?;
 
@@ -161,63 +135,6 @@ fn validate_max_concurrent_tasks(agent: &AgentProfile) -> Result<(), InboxError>
             agent.id
         )));
     }
-    Ok(())
-}
-
-// ── Org role ──
-
-fn validate_org_role(agent: &AgentProfile) -> Result<(), InboxError> {
-    if let Some(ref role) = agent.org_role {
-        match role.as_str() {
-            "coordinator" | "worker" => {}
-            other => {
-                return Err(InboxError::InvalidInput(format!(
-                    "agent `{}`: invalid org_role `{other}`, must be \"coordinator\" or \"worker\"",
-                    agent.id
-                )));
-            }
-        }
-    }
-    Ok(())
-}
-
-// ── Org relations ──
-
-fn validate_org_relations(agent: &AgentProfile) -> Result<(), InboxError> {
-    // Worker cannot declare workers
-    if agent.org_role.as_deref() == Some("worker") && !agent.workers.is_empty() {
-        return Err(InboxError::InvalidInput(format!(
-            "agent `{}`: a worker cannot declare workers",
-            agent.id
-        )));
-    }
-
-    // Workers list must not contain self
-    if agent.workers.contains(&agent.id) {
-        return Err(InboxError::InvalidInput(format!(
-            "agent `{}`: workers list must not contain the agent itself",
-            agent.id
-        )));
-    }
-
-    // Validate format of referenced agent ids
-    if let Some(ref coord) = agent.coordinator {
-        validate_agent_id(coord).map_err(|_| {
-            InboxError::InvalidInput(format!(
-                "agent `{}`: coordinator `{coord}` is not a valid agent id",
-                agent.id
-            ))
-        })?;
-    }
-    for worker_id in &agent.workers {
-        validate_agent_id(worker_id).map_err(|_| {
-            InboxError::InvalidInput(format!(
-                "agent `{}`: worker `{worker_id}` is not a valid agent id",
-                agent.id
-            ))
-        })?;
-    }
-
     Ok(())
 }
 

@@ -515,6 +515,7 @@ watch(
   font-weight: 820;
 }
 
+.task-graph-schedule-status[data-status='queued'],
 .task-graph-schedule-status[data-status='pending'],
 .task-graph-schedule-status[data-status='running'],
 .task-graph-schedule-status[data-status='waiting'] {

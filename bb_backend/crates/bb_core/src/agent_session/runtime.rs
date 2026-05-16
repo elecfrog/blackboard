@@ -26,6 +26,7 @@ use super::AgentSessionError;
 #[derive(Debug, Clone)]
 pub struct AgentTurnRequest {
     pub workspace_root: PathBuf,
+    pub scripts_dir: PathBuf,
     pub execution_root: PathBuf,
     pub project: String,
     pub session_id: String,
@@ -91,7 +92,8 @@ where
     )?;
 
     let start = Instant::now();
-    let mut cmd = Command::new(&request.opencode_path);
+    let opencode_program = crate::platform::resolve_spawn_program(&request.opencode_path);
+    let mut cmd = Command::new(&opencode_program);
     cmd.arg("run").arg("--format").arg("json");
     cmd.arg("--thinking");
     if let Some(session_id) = request
@@ -133,6 +135,7 @@ where
     cmd.env("BB_AGENT_SESSION", &request.session_id);
     cmd.env("BB_WORKSPACE_ROOT", &request.workspace_root);
     cmd.env("BB_PROJECT_ROOT", &request.execution_root);
+    cmd.env("BB_SCRIPTS_DIR", &request.scripts_dir);
     if let Some(config) = request.opencode_config_content.as_ref() {
         cmd.env("OPENCODE_CONFIG_CONTENT", config);
     }
@@ -140,7 +143,7 @@ where
     cmd.stderr(Stdio::piped());
 
     let mut child = cmd.spawn().map_err(|source| AgentSessionError::Spawn {
-        program: request.opencode_path.clone(),
+        program: opencode_program.clone(),
         source,
     })?;
 
@@ -163,12 +166,8 @@ where
         .take()
         .map(|stderr| thread::spawn(move || read_pipe_to_end(stderr)));
 
-    let (status, terminal_reason) = wait_with_timeout(
-        &mut child,
-        request.timeout,
-        &request.opencode_path,
-        cancel_check,
-    )?;
+    let (status, terminal_reason) =
+        wait_with_timeout(&mut child, request.timeout, &opencode_program, cancel_check)?;
     let mut capture = join_stdout_reader(stdout_reader)?;
     let stderr = join_pipe_reader(stderr_reader)?;
     let stderr_text = String::from_utf8_lossy(&stderr).to_string();
@@ -295,7 +294,8 @@ where
     )?;
 
     let start = Instant::now();
-    let mut cmd = Command::new(&request.codex_path);
+    let codex_program = crate::platform::resolve_spawn_program(&request.codex_path);
+    let mut cmd = Command::new(&codex_program);
     cmd.arg("exec");
     if let Some(model) = request.model.as_ref().filter(|model| !model.is_empty()) {
         cmd.arg("--model").arg(model);
@@ -321,11 +321,12 @@ where
     cmd.env("BB_AGENT_SESSION", &request.session_id);
     cmd.env("BB_WORKSPACE_ROOT", &request.workspace_root);
     cmd.env("BB_PROJECT_ROOT", &request.execution_root);
+    cmd.env("BB_SCRIPTS_DIR", &request.scripts_dir);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
     let mut child = cmd.spawn().map_err(|source| AgentSessionError::Spawn {
-        program: request.codex_path.clone(),
+        program: codex_program.clone(),
         source,
     })?;
 
@@ -348,12 +349,8 @@ where
         .take()
         .map(|stderr| thread::spawn(move || read_pipe_to_end(stderr)));
 
-    let (status, terminal_reason) = wait_with_timeout(
-        &mut child,
-        request.timeout,
-        &request.codex_path,
-        cancel_check,
-    )?;
+    let (status, terminal_reason) =
+        wait_with_timeout(&mut child, request.timeout, &codex_program, cancel_check)?;
     let mut capture = join_codex_stdout_reader(stdout_reader)?;
     let stderr = join_pipe_reader(stderr_reader)?;
     let stderr_text = String::from_utf8_lossy(&stderr).to_string();
@@ -481,7 +478,7 @@ where
 
     let start = Instant::now();
     let mcp_config_path = write_codebuddy_mcp_config(&request)?;
-    let codebuddy_program = resolve_spawn_program(&request.codebuddy_path);
+    let codebuddy_program = crate::platform::resolve_spawn_program(&request.codebuddy_path);
     let mut cmd = Command::new(&codebuddy_program);
     cmd.current_dir(&request.execution_root);
     cmd.arg("-p")
@@ -517,6 +514,7 @@ where
     cmd.env("BB_AGENT_SESSION", &request.session_id);
     cmd.env("BB_WORKSPACE_ROOT", &request.workspace_root);
     cmd.env("BB_PROJECT_ROOT", &request.execution_root);
+    cmd.env("BB_SCRIPTS_DIR", &request.scripts_dir);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
@@ -770,38 +768,6 @@ fn combine_command_output(stdout: &str, stderr: &str) -> String {
         (true, false) => stderr.to_string(),
         (false, false) => format!("{stdout}\n{stderr}"),
     }
-}
-
-fn resolve_spawn_program(program: &str) -> String {
-    #[cfg(windows)]
-    {
-        let path = std::path::Path::new(program);
-        if path.extension().is_some() || program.contains('\\') || program.contains('/') {
-            return program.to_string();
-        }
-
-        let path_ext =
-            std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
-        let candidates = path_ext
-            .split(';')
-            .map(str::trim)
-            .filter(|ext| !ext.is_empty())
-            .map(|ext| format!("{program}{ext}"))
-            .collect::<Vec<_>>();
-
-        if let Some(paths) = std::env::var_os("PATH") {
-            for dir in std::env::split_paths(&paths) {
-                for candidate in &candidates {
-                    let candidate_path = dir.join(candidate);
-                    if candidate_path.is_file() {
-                        return candidate_path.to_string_lossy().to_string();
-                    }
-                }
-            }
-        }
-    }
-
-    program.to_string()
 }
 
 fn tail_str(s: &str, max: usize) -> String {

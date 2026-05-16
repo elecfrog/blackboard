@@ -4,5 +4,7 @@
 </template>
 
 <script setup lang="ts">
-import AgentChatFab from '@/components/AgentChatFab.vue'
+import { defineAsyncComponent } from 'vue'
+
+const AgentChatFab = defineAsyncComponent(() => import('@/components/AgentChatFab.vue'))
 </script>

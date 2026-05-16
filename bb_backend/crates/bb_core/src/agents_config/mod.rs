@@ -1,9 +1,10 @@
 //! Agent configuration connectors.
 //!
-//! Treats `<bb-root>/agents/AGENTS.md` as the canonical source of truth for
+//! Treats `<bb-root>/agents/AGENTS.md` as the default source of truth for
 //! cross-Agent global rules and exposes a small "connector" abstraction that
 //! lets callers inspect / sync / disconnect the per-Agent target paths
-//! (e.g. `~/.codex/AGENTS.md`).
+//! (e.g. `~/.codex/AGENTS.md`). Individual connectors may point at a
+//! specialized source file while still writing the tool-required target name.
 //! MCP server target injection is part of this connector domain as
 //! `mcp_connector`; Blackboard's own MCP server tools live in `bb_cli`.
 //!
@@ -66,10 +67,14 @@ fn resolve_connector_targets_with_mcp_url(
     let mut targets = Vec::new();
     let canonical_agents = source_path(bb_root);
     for target in spec.targets {
+        let source_path = match target.source_template {
+            Some(template) => expand_target(template, None, bb_root)?,
+            None => canonical_agents.clone(),
+        };
         targets.push(ResolvedConnectorTargetSpec {
             label: target.label.to_string(),
             target_template: target.target_template.to_string(),
-            source_path: canonical_agents.clone(),
+            source_path,
             connector_type: target.connector_type,
             mcp: None,
         });
@@ -313,12 +318,6 @@ fn inspect_connector_with_mcp_url(
     bb_root: &Path,
     mcp_remote_url: Option<&str>,
 ) -> Result<AgentConnector, InboxError> {
-    let source = source_path(bb_root);
-    let source_bytes = read_to_bytes(&source).map_err(|err| InboxError::Io {
-        path: source.clone(),
-        source: err,
-    })?;
-    let source_full = source_bytes.as_deref().map(sha256_hex);
     let resolved_targets = resolve_connector_targets_with_mcp_url(spec, bb_root, mcp_remote_url)?;
     let mut targets = Vec::with_capacity(spec.targets.len());
     for target_spec in &resolved_targets {
@@ -332,6 +331,19 @@ fn inspect_connector_with_mcp_url(
     let primary = targets.first().ok_or_else(|| {
         InboxError::InvalidInput(format!("connector {:?} has no targets", spec.id))
     })?;
+    let primary_source_full = resolved_targets
+        .first()
+        .filter(|target| target.connector_type != AgentConnectorType::McpServer)
+        .map(|target| {
+            read_to_bytes(&target.source_path)
+                .map_err(|source| InboxError::Io {
+                    path: target.source_path.clone(),
+                    source,
+                })
+                .map(|bytes| bytes.as_deref().map(sha256_hex))
+        })
+        .transpose()?
+        .flatten();
 
     Ok(AgentConnector {
         id: spec.id.to_string(),
@@ -340,7 +352,7 @@ fn inspect_connector_with_mcp_url(
         target_path: primary.target_path.clone(),
         connector_type: primary.connector_type,
         state: aggregate_target_states(&targets),
-        source_sha256_short: source_full.as_deref().map(short_hash),
+        source_sha256_short: primary_source_full.as_deref().map(short_hash),
         target_sha256_short: primary.target_sha256_short.clone(),
         target_mtime: primary.target_mtime.clone(),
         is_symlink: targets.iter().any(|target| target.is_symlink),

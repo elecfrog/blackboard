@@ -30,10 +30,6 @@ export interface AgentProfile {
   custom_env?: Record<string, string>
   custom_args?: string[]
   max_concurrent_tasks?: number
-  // ── Org relations ──
-  org_role?: 'coordinator' | 'worker'
-  coordinator?: string
-  workers?: string[]
   // ── MCP servers (Ticket #000049) ──
   mcp_servers?: McpServerConfig[]
   // ── Skills (Ticket #000050) ──
@@ -65,6 +61,16 @@ export interface AgentRegistryList {
   }>
 }
 
+export interface SkillInfo {
+  name: string
+  description?: string
+  path: string
+}
+
+export interface SkillCatalog {
+  skills: SkillInfo[]
+}
+
 export interface ProjectAgentRegistration {
   project: string
   agent: string
@@ -89,6 +95,10 @@ async function fetchJson<T>(url: string): Promise<T> {
 
 export async function loadAgentRegistry(): Promise<AgentRegistryList> {
   return fetchJson<AgentRegistryList>('/api/agents')
+}
+
+export async function loadAgentSkills(): Promise<SkillCatalog> {
+  return fetchJson<SkillCatalog>('/api/agents/skills')
 }
 
 export async function loadProjectAgents(project: string): Promise<ProjectAgentList> {

@@ -164,6 +164,48 @@ pub fn builtin_node_specs() -> Vec<NodeSpec> {
         ),
         base_spec("llm", "LLM", NodeCategory::Runtime, NodeType::Llm, &empty),
         base_spec(
+            "plan",
+            "Plan",
+            NodeCategory::Transform,
+            NodeType::Plan,
+            &empty,
+        ),
+        base_spec(
+            "llm_mutation",
+            "LLM Mutation",
+            NodeCategory::Transform,
+            NodeType::LlmMutation,
+            &empty,
+        ),
+        base_spec(
+            "intent_extract",
+            "Intent Extract",
+            NodeCategory::Transform,
+            NodeType::IntentExtract,
+            &empty,
+        ),
+        base_spec(
+            "kb_plan",
+            "KB Plan",
+            NodeCategory::Transform,
+            NodeType::KbPlan,
+            &empty,
+        ),
+        base_spec(
+            "manifest_merge",
+            "Manifest Merge",
+            NodeCategory::Transform,
+            NodeType::ManifestMerge,
+            &empty,
+        ),
+        base_spec(
+            "schema_validate",
+            "Schema Validate",
+            NodeCategory::Transform,
+            NodeType::SchemaValidate,
+            &empty,
+        ),
+        base_spec(
             "shell",
             "Shell",
             NodeCategory::Runtime,
@@ -328,6 +370,12 @@ pub fn node_category_for(node_type: NodeType) -> NodeCategory {
         NodeType::Branch | NodeType::Loop | NodeType::InputVar => NodeCategory::Control,
         NodeType::HumanGate => NodeCategory::Approval,
         NodeType::Llm | NodeType::Shell => NodeCategory::Runtime,
+        NodeType::LlmMutation
+        | NodeType::Plan
+        | NodeType::IntentExtract
+        | NodeType::KbPlan
+        | NodeType::ManifestMerge
+        | NodeType::SchemaValidate => NodeCategory::Transform,
         NodeType::SubGraph => NodeCategory::Artifact,
     }
 }
@@ -456,6 +504,54 @@ fn runtime_for_node_type(node_type: NodeType) -> Option<RuntimeBinding> {
             variant: None,
             session_resume_policy: SessionResumePolicy::ReuseByNode,
         }),
+        NodeType::Plan => Some(RuntimeBinding {
+            kind: RuntimeBindingKind::Llm,
+            provider: Some("codex".to_string()),
+            profile: Some("native".to_string()),
+            model: None,
+            variant: None,
+            session_resume_policy: SessionResumePolicy::ReuseByNode,
+        }),
+        NodeType::LlmMutation => Some(RuntimeBinding {
+            kind: RuntimeBindingKind::Blackboard,
+            provider: Some("task_graph".to_string()),
+            profile: None,
+            model: None,
+            variant: None,
+            session_resume_policy: SessionResumePolicy::None,
+        }),
+        NodeType::IntentExtract => Some(RuntimeBinding {
+            kind: RuntimeBindingKind::Blackboard,
+            provider: Some("task_graph".to_string()),
+            profile: None,
+            model: None,
+            variant: None,
+            session_resume_policy: SessionResumePolicy::None,
+        }),
+        NodeType::KbPlan => Some(RuntimeBinding {
+            kind: RuntimeBindingKind::Blackboard,
+            provider: Some("task_graph".to_string()),
+            profile: None,
+            model: None,
+            variant: None,
+            session_resume_policy: SessionResumePolicy::None,
+        }),
+        NodeType::ManifestMerge => Some(RuntimeBinding {
+            kind: RuntimeBindingKind::Blackboard,
+            provider: Some("task_graph".to_string()),
+            profile: None,
+            model: None,
+            variant: None,
+            session_resume_policy: SessionResumePolicy::None,
+        }),
+        NodeType::SchemaValidate => Some(RuntimeBinding {
+            kind: RuntimeBindingKind::Blackboard,
+            provider: Some("task_graph".to_string()),
+            profile: None,
+            model: None,
+            variant: None,
+            session_resume_policy: SessionResumePolicy::None,
+        }),
         NodeType::Shell => Some(RuntimeBinding {
             kind: RuntimeBindingKind::Shell,
             provider: Some("local".to_string()),
@@ -478,7 +574,14 @@ fn runtime_for_node_type(node_type: NodeType) -> Option<RuntimeBinding> {
 
 fn permissions_for_node_type(node_type: NodeType) -> Vec<PermissionSpec> {
     match node_type {
-        NodeType::Llm => vec![required_permission(PermissionKind::ReadProject)],
+        NodeType::Llm | NodeType::Plan => vec![required_permission(PermissionKind::ReadProject)],
+        NodeType::LlmMutation
+        | NodeType::IntentExtract
+        | NodeType::KbPlan
+        | NodeType::ManifestMerge
+        | NodeType::SchemaValidate => {
+            vec![required_permission(PermissionKind::ReadProject)]
+        }
         NodeType::Shell => vec![required_permission(PermissionKind::ReadWorktree)],
         NodeType::SubGraph => vec![required_permission(PermissionKind::ReadProject)],
         _ => Vec::new(),

@@ -3,8 +3,8 @@ id = "000052"
 lane = "bbt"
 title = "Roadmap：内置 Agent Chat 与任务下发"
 created_at = "2026-05-13"
-updated_at = "2026-05-14"
-status = "done"
+updated_at = "2026-05-16"
+status = "archived"
 assignee = "codex"
 +++
 
@@ -32,6 +32,10 @@ assignee = "codex"
 - codex 完成阶段工作，handoff 写入 `2026-05-14-codex-opencode-provider-thinking-event-mapping.md`。
 
 - codex 完成阶段工作，handoff 写入 `2026-05-14-codex-agent-chat-project-cwd.md`。
+
+- 2026-05-14：给 AgentChatFab 增加模型/变体设置区，扩展 AgentSession API 支持 model/variant，补充前端网络错误提示和 HTTP 测试
+
+- 2026-05-14：调研 TDesign ChatEngine 自定义渲染路径：useAgentToolcall+ToolCallRenderer / useAgentActivity+ActivityRenderer，ChatSender slots 可用于 Agent/模型/变体工具条
 
 # 记录
 
@@ -73,6 +77,16 @@ assignee = "codex"
 - 验证：cargo test -p bb_cli direct_chat_execution_root: passed，3 个路径解析单测通过。
 - 验证：cargo test -p bb_core -p bb_cli: passed，bb_cli 74 tests 与 bb_core 237 tests 全部通过。
 - 验证：python scripts\check_ticket_ids.py --project blackboard: passed。
+
+- 来源：inbox/2026-05-14-codex-agent-chat-续接-opencode-provider-session.md
+
+- 来源：inbox/2026-05-14-codex-opencode-provider-thinking-event-mapping.md
+
+- 来源：inbox/2026-05-14-codex-内置-agent-chat-支持模型与变体设置.md
+- 代码位置：bb_web/src/components/AgentChatFab.vue, bb_backend/crates/bb_cli/src/http/agent_sessions.rs, bb_backend/crates/bb_core/src/agent_session/
+
+- 来源：inbox/2026-05-14-codex-tdesign-chatengine-自定义渲染能力调研.md
+- 文档位置：bb_web/node_modules/@tdesign-vue-next/chat/, https://github.com/Tencent/tdesign-vue-next/blob/develop/packages/pro-components/chat/chat-engine/chat-engine.md
 
 # 下一步
 

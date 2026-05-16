@@ -4,8 +4,8 @@ use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::Json;
 use bb_core::{
-    InboxError, ProjectBoard, ProjectMeta, TicketFrontmatterPatch, TicketWriteResult,
-    UpdateTicketInput,
+    DeprecateTicketInput, DeprecateTicketResult, InboxError, ProjectBoard, ProjectMeta,
+    TicketFrontmatterPatch, TicketWriteResult, UpdateTicketInput,
 };
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
@@ -184,6 +184,14 @@ pub(super) async fn patch_ticket(
     Ok(Json(
         board.update_ticket(UpdateTicketInput { id, frontmatter })?,
     ))
+}
+
+pub(super) async fn deprecate_ticket(
+    State(state): State<AppState>,
+    Path((project, id)): Path<(String, String)>,
+) -> Result<Json<DeprecateTicketResult>, ApiError> {
+    let board = state.workspace()?.open_project(&project)?;
+    Ok(Json(board.deprecate_ticket(DeprecateTicketInput { id })?))
 }
 
 fn validate_dependency_patch(

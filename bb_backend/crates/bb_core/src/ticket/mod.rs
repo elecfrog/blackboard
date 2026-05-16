@@ -2,9 +2,9 @@
 
 use crate::{
     agents_registry, validate_lane_id, validate_ticket_lane, AppendTicketSectionsInput, Blackboard,
-    BoardSummary, CreateTicketInput, InboxError, Ticket, TicketById, TicketEntry, TicketList,
-    TicketMetadataDiagnostic, TicketSearchMatch, TicketSearchResult, TicketWriteResult,
-    TicketWriteTicket, UpdateTicketInput,
+    BoardSummary, CreateTicketInput, DeprecateTicketInput, DeprecateTicketResult, InboxError,
+    Ticket, TicketById, TicketEntry, TicketList, TicketMetadataDiagnostic, TicketSearchMatch,
+    TicketSearchResult, TicketWriteResult, TicketWriteTicket, UpdateTicketInput,
 };
 use chrono::Utc;
 use std::collections::BTreeMap;
@@ -113,6 +113,26 @@ impl Blackboard {
         if metadata.file_type().is_symlink() {
             return Err(InboxError::InvalidInput(
                 "tickets directory is a symlink".to_string(),
+            ));
+        }
+        Ok(dir)
+    }
+
+    fn deprecated_tickets_dir(&self) -> Result<PathBuf, InboxError> {
+        let dir = self.tickets_dir()?.join("_deprecated");
+        if !dir.exists() {
+            fs::create_dir_all(&dir).map_err(|source| InboxError::Io {
+                path: dir.clone(),
+                source,
+            })?;
+        }
+        let metadata = fs::symlink_metadata(&dir).map_err(|source| InboxError::Io {
+            path: dir.clone(),
+            source,
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(InboxError::InvalidInput(
+                "tickets/_deprecated directory is a symlink".to_string(),
             ));
         }
         Ok(dir)
@@ -297,6 +317,72 @@ impl Blackboard {
                 path: format!("tickets/{}", entry.name),
                 extra: extract_extra_fields(&fields),
             },
+            maintenance: self.ticket_maintenance(),
+        })
+    }
+
+    pub fn deprecate_ticket(
+        &self,
+        input: DeprecateTicketInput,
+    ) -> Result<DeprecateTicketResult, InboxError> {
+        let id = validate_ticket_id(&input.id)?;
+        let list = self.list_tickets()?;
+        let matches: Vec<TicketEntry> = list
+            .tickets
+            .iter()
+            .filter(|entry| entry.id.as_deref() == Some(id))
+            .cloned()
+            .collect();
+        let entry = match matches.as_slice() {
+            [] => return Err(InboxError::TicketIdNotFound(id.to_string())),
+            [entry] => entry.clone(),
+            many => {
+                return Err(InboxError::DuplicateTicketId {
+                    id: id.to_string(),
+                    matches: many.iter().map(|entry| entry.path.clone()).collect(),
+                })
+            }
+        };
+
+        let dir = self.tickets_dir()?;
+        let deprecated_dir = self.deprecated_tickets_dir()?;
+        let source_path = dir.join(&entry.name);
+        let canonical_source = crate::canonicalize(&source_path)?;
+        if !canonical_source.starts_with(&dir) {
+            return Err(InboxError::InvalidName(entry.name));
+        }
+
+        let deprecated_path = deprecated_dir.join(&entry.name);
+        if deprecated_path.exists() {
+            return Err(InboxError::TicketWriteConflict(format!(
+                "deprecated ticket file already exists: tickets/_deprecated/{}",
+                entry.name
+            )));
+        }
+
+        let cleanup = self.resolve_active_ticket_relationships(id, &entry.name)?;
+
+        fs::rename(&canonical_source, &deprecated_path).map_err(|source| InboxError::Io {
+            path: deprecated_path.clone(),
+            source,
+        })?;
+
+        Ok(DeprecateTicketResult {
+            ticket: TicketWriteTicket {
+                id: id.to_string(),
+                lane: entry.lane.unwrap_or_default(),
+                title: entry.title.unwrap_or_default(),
+                status: entry
+                    .status
+                    .unwrap_or_else(|| default_ticket_status().to_string()),
+                created_at: entry.created_at.unwrap_or_default(),
+                updated_at: entry.updated_at.unwrap_or_default(),
+                file_name: entry.name.clone(),
+                path: format!("tickets/_deprecated/{}", entry.name),
+                extra: entry.extra,
+            },
+            removed_dependency_refs: cleanup.removed_dependency_refs,
+            removed_attachment_refs: cleanup.removed_attachment_refs,
             maintenance: self.ticket_maintenance(),
         })
     }
@@ -501,6 +587,67 @@ impl Blackboard {
         }
     }
 
+    fn resolve_active_ticket_relationships(
+        &self,
+        deprecated_id: &str,
+        deprecated_name: &str,
+    ) -> Result<TicketRelationshipCleanup, InboxError> {
+        let mut cleanup = TicketRelationshipCleanup::default();
+        let dir = self.tickets_dir()?;
+
+        for entry in self.list_tickets()?.tickets {
+            if entry.name == deprecated_name || entry.metadata_error.is_some() {
+                continue;
+            }
+
+            let path = dir.join(&entry.name);
+            let canonical = crate::canonicalize(&path)?;
+            if !canonical.starts_with(&dir) {
+                return Err(InboxError::InvalidName(entry.name));
+            }
+
+            let original = fs::read_to_string(&canonical).map_err(|source| InboxError::Io {
+                path: canonical.clone(),
+                source,
+            })?;
+            let Ok((mut fields, body)) = split_ticket_frontmatter(&original) else {
+                continue;
+            };
+
+            let mut changed = false;
+            let mut dependency_removed = false;
+            for key in ["depends_on", "dependencies"] {
+                if remove_ticket_id_from_relation_field(&mut fields, key, deprecated_id) {
+                    changed = true;
+                    dependency_removed = true;
+                }
+            }
+
+            let attachment_removed = remove_ticket_attachment_refs(&mut fields, deprecated_id)?;
+            changed |= attachment_removed;
+
+            if changed {
+                fields.insert(
+                    "updated_at".to_string(),
+                    Utc::now().format("%Y-%m-%d").to_string(),
+                );
+                let content = render_frontmatter(&fields) + body;
+                crate::write_file_atomic(&canonical, &content)?;
+
+                if let Some(id) = entry.id.clone() {
+                    if dependency_removed {
+                        cleanup.removed_dependency_refs.push(id.clone());
+                    }
+                    if attachment_removed {
+                        cleanup.removed_attachment_refs.push(id);
+                    }
+                }
+            }
+        }
+
+        Ok(cleanup)
+    }
+
     pub fn board_summary(&self) -> Result<BoardSummary, InboxError> {
         let list = self.list_tickets()?;
         let mut by_status = BTreeMap::new();
@@ -567,6 +714,85 @@ impl Blackboard {
 
         Ok(TicketSearchResult { matches })
     }
+}
+
+#[derive(Debug, Default)]
+struct TicketRelationshipCleanup {
+    removed_dependency_refs: Vec<String>,
+    removed_attachment_refs: Vec<String>,
+}
+
+fn remove_ticket_id_from_relation_field(
+    fields: &mut BTreeMap<String, String>,
+    key: &str,
+    deprecated_id: &str,
+) -> bool {
+    let Some(value) = fields.get(key).cloned() else {
+        return false;
+    };
+
+    let tokens: Vec<String> = value
+        .split(|ch: char| ch == ',' || ch.is_whitespace())
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(ToString::to_string)
+        .collect();
+    if !tokens.iter().any(|token| token == deprecated_id) {
+        return false;
+    }
+
+    let mut kept = Vec::new();
+    for token in tokens {
+        if token != deprecated_id && !kept.iter().any(|item| item == &token) {
+            kept.push(token);
+        }
+    }
+    if kept.is_empty() {
+        fields.remove(key);
+    } else {
+        fields.insert(key.to_string(), kept.join(" "));
+    }
+    true
+}
+
+fn remove_ticket_attachment_refs(
+    fields: &mut BTreeMap<String, String>,
+    deprecated_id: &str,
+) -> Result<bool, InboxError> {
+    let Some(value) = fields.get("attachments").cloned() else {
+        return Ok(false);
+    };
+
+    let Ok(mut attachments) = serde_json::from_str::<Vec<serde_json::Value>>(&value) else {
+        return Ok(false);
+    };
+    let original_len = attachments.len();
+    attachments.retain(|attachment| {
+        let kind = attachment
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        let target = attachment
+            .get("target")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        !(kind.eq_ignore_ascii_case("ticket") && target == deprecated_id)
+    });
+
+    if attachments.len() == original_len {
+        return Ok(false);
+    }
+    if attachments.is_empty() {
+        fields.remove("attachments");
+    } else {
+        let serialized = serde_json::to_string(&attachments).map_err(|err| {
+            InboxError::InvalidInput(format!("attachments could not be serialized: {err}"))
+        })?;
+        fields.insert("attachments".to_string(), serialized);
+    }
+    Ok(true)
 }
 
 pub fn validate_ticket_status(status: &str) -> Result<&'static str, InboxError> {

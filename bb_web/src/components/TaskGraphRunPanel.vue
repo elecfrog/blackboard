@@ -11,6 +11,7 @@ import {
 } from 'lucide-vue-next'
 import GraphCanvas, { type GraphCanvasEdge, type GraphCanvasNode } from '@/components/GraphCanvas.vue'
 import TaskGraphNodeShape from '@/components/task-graph/TaskGraphNodeShape.vue'
+import TaskGraphMutationTimeline from '@/components/task-graph/TaskGraphMutationTimeline.vue'
 import {
   taskGraphNodeMetaLabel,
   taskGraphNodeVisualForNode,
@@ -24,14 +25,21 @@ import {
 import {
   cancelTaskGraphRun,
   readTaskGraphRun,
+  readTaskGraphRunCheckpoints,
+  readTaskGraphRunEventLog,
+  resumeTaskGraphGate,
   watchTaskGraphRun,
   nodeToCanvasPins,
   nodeHeightForPins,
+  type GraphMutationBatchResult,
   type TaskGraphEdge,
   type TaskGraphNode,
   type TaskGraphOutputArtifact,
   type TaskGraphRunDetail,
+  type TaskGraphRunEvent,
   type TaskGraphRunNode,
+  type TaskGraphSuperstepCheckpoint,
+  type TopologyMutationEventPayload,
 } from '@/data/taskGraphs'
 import { t } from '@/i18n'
 
@@ -48,12 +56,19 @@ const emit = defineEmits<{
 const run = ref<TaskGraphRunDetail | null>(null)
 const loading = ref(true)
 const error = ref('')
+const streamError = ref('')
 const selectedNodeId = ref('')
 const cancelling = ref(false)
+const runEvents = ref<TaskGraphRunEvent[]>([])
+const checkpoints = ref<TaskGraphSuperstepCheckpoint[]>([])
+const runArtifactsError = ref('')
+const resumingActionId = ref('')
+const resumeError = ref('')
 const agentSessionEvents = ref<AgentEvent[]>([])
 const agentSessionError = ref('')
 let stopRunEvents: (() => void) | null = null
 let stopAgentSessionEvents: (() => void) | null = null
+let runArtifactsTimer: number | null = null
 const runNodeFooterHeight = 26
 
 const nodeById = computed(() =>
@@ -72,10 +87,51 @@ const activeEdgeIds = computed(() => {
   return ids
 })
 
+const latestCheckpoint = computed(() =>
+  [...checkpoints.value].sort((left, right) => {
+    const leftTime = Date.parse(left.completed_at ?? left.created_at)
+    const rightTime = Date.parse(right.completed_at ?? right.created_at)
+    return right.superstep - left.superstep || rightTime - leftTime
+  })[0] ?? null,
+)
+
+const revisionLabel = computed(() => {
+  const checkpoint = latestCheckpoint.value
+  if (checkpoint && checkpoint.graph_revision_before !== checkpoint.graph_revision_after) {
+    return `${checkpoint.graph_revision_before} -> ${checkpoint.graph_revision_after}`
+  }
+  return String(run.value?.current_graph_revision ?? 0)
+})
+
+const latestAppliedMutationEdgeIds = computed(() => {
+  const ids = new Set<string>()
+  const event = [...runEvents.value]
+    .filter((item) => item.kind === 'topology_mutation')
+    .sort((left, right) => right.superstep - left.superstep || Date.parse(right.created_at) - Date.parse(left.created_at))
+    .find((item) => topologyMutationPayload(item.payload)?.result.status === 'applied')
+  const result = topologyMutationPayload(event?.payload)?.result
+  if (result?.status === 'applied') {
+    for (const edgeId of result.summary.added_edges) ids.add(edgeId)
+  }
+  return ids
+})
+
+const nodeAddedRevisionById = computed(() => {
+  const revisions = new Map<string, number>()
+  for (const event of runEvents.value) {
+    const payload = topologyMutationPayload(event.payload)
+    if (!payload || payload.result.status !== 'applied') continue
+    for (const nodeId of payload.result.summary.added_nodes) {
+      revisions.set(nodeId, payload.graph_revision_after)
+    }
+  }
+  return revisions
+})
+
 const canvasNodes = computed<GraphCanvasNode[]>(() =>
   (run.value?.graph_snapshot.nodes ?? []).map((node) => {
     const state = runNodeById.value.get(node.id)
-    const status = state?.status ?? 'idle'
+    const status = visualRunNodeStatus(node.id, state)
     return {
       id: node.id,
       x: node.position?.x ?? 80,
@@ -93,7 +149,7 @@ const canvasNodes = computed<GraphCanvasNode[]>(() =>
         `task-node-${node.type}`,
         `run-node-${status}`,
         ...(selectedNodeId.value === node.id ? ['run-selected'] : []),
-        ...(run.value?.cursor.includes(node.id) ? ['run-cursor'] : []),
+        ...(run.value?.active_nodes.includes(node.id) ? ['run-active-node'] : []),
       ],
     }
   }),
@@ -109,11 +165,16 @@ const canvasEdges = computed<GraphCanvasEdge[]>(() =>
     targetHandle: edge.to_pin ?? edge.target_handle,
     removable: false,
     dashed: edge.kind === 'data',
-    color: activeEdgeIds.value.has(edge.id) ? '#0f766e' : undefined,
+    color: activeEdgeIds.value.has(edge.id)
+      ? '#0f766e'
+      : latestAppliedMutationEdgeIds.value.has(edge.id)
+        ? '#2563eb'
+        : undefined,
     classes: [
       edge.from_pin ? `task-edge-source-${edge.from_pin.replace(/[^a-z0-9-]/gi, '-')}` : '',
       edge.to_pin ? `task-edge-target-${edge.to_pin.replace(/[^a-z0-9-]/gi, '-')}` : '',
       ...(activeEdgeIds.value.has(edge.id) ? ['run-edge-active'] : []),
+      ...(latestAppliedMutationEdgeIds.value.has(edge.id) ? ['run-edge-mutated'] : []),
     ].filter((item): item is string => Boolean(item)),
   })),
 )
@@ -152,6 +213,10 @@ const selectedOutput = computed(() =>
   selectedNodeId.value ? run.value?.context.node_outputs[selectedNodeId.value] : undefined,
 )
 
+const selectedAddedRevision = computed(() =>
+  selectedNodeId.value ? nodeAddedRevisionById.value.get(selectedNodeId.value) : undefined,
+)
+
 const selectedAgentSessionId = computed(() => selectedRunNode.value?.agent_session_id ?? '')
 
 const elapsedLabel = computed(() => {
@@ -163,13 +228,10 @@ const elapsedLabel = computed(() => {
   return formatDuration(Math.max(0, end.getTime() - start.getTime()))
 })
 
-const currentNodeSummary = computed(() => {
+const activeNodeSummary = computed(() => {
   const item = run.value
   if (!item) return ''
-  const ids = item.cursor.length > 0
-    ? item.cursor
-    : item.nodes.filter((node) => node.status === 'running').map((node) => node.node_id)
-  return ids
+  return item.active_nodes
     .map((id) => {
       const graphNode = nodeById.value.get(id)
       return graphNode ? `${graphNode.label} · ${nodeTypeLabel(graphNode)}` : ''
@@ -201,15 +263,18 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stopRunStream()
   stopAgentSessionStream()
+  clearRunArtifactsTimer()
 })
 
 async function loadRun() {
   loading.value = true
   error.value = ''
+  streamError.value = ''
   try {
     const result = await readTaskGraphRun(props.project, props.runId)
     run.value = result.run
     selectDefaultNode(true)
+    await refreshRunArtifacts()
   } catch (err) {
     run.value = null
     error.value = err instanceof Error ? err.message : String(err)
@@ -226,11 +291,13 @@ function startRunStream() {
     (nextRun) => {
       run.value = nextRun
       loading.value = false
+      streamError.value = ''
       selectDefaultNode(false)
+      scheduleRunArtifactsRefresh(['succeeded', 'failed', 'cancelled'].includes(nextRun.status) ? 0 : 500)
     },
     (message) => {
-      if (run.value && ['pending', 'running', 'paused'].includes(run.value.status)) {
-        error.value = message
+      if (run.value && ['queued', 'pending', 'running', 'paused'].includes(run.value.status)) {
+        streamError.value = message
       }
     },
   )
@@ -239,6 +306,34 @@ function startRunStream() {
 function stopRunStream() {
   stopRunEvents?.()
   stopRunEvents = null
+}
+
+function clearRunArtifactsTimer() {
+  if (!runArtifactsTimer) return
+  window.clearTimeout(runArtifactsTimer)
+  runArtifactsTimer = null
+}
+
+function scheduleRunArtifactsRefresh(delayMs: number) {
+  clearRunArtifactsTimer()
+  runArtifactsTimer = window.setTimeout(() => {
+    runArtifactsTimer = null
+    void refreshRunArtifacts()
+  }, delayMs)
+}
+
+async function refreshRunArtifacts() {
+  runArtifactsError.value = ''
+  try {
+    const [events, nextCheckpoints] = await Promise.all([
+      readTaskGraphRunEventLog(props.project, props.runId),
+      readTaskGraphRunCheckpoints(props.project, props.runId),
+    ])
+    runEvents.value = events
+    checkpoints.value = nextCheckpoints
+  } catch (err) {
+    runArtifactsError.value = err instanceof Error ? err.message : String(err)
+  }
 }
 
 async function startAgentSessionStream() {
@@ -287,13 +382,36 @@ function selectDefaultNode(resetSelection = false) {
     return
   }
   if (!resetSelection && selectedNodeId.value && nodeById.value.has(selectedNodeId.value)) return
+  const visibleNodeIds = new Set(item.graph_snapshot.nodes.map((node) => node.id))
+  const firstByStatus = (statuses: TaskGraphRunNode['status'][]) =>
+    item.nodes.find((node) => statuses.includes(node.status) && visibleNodeIds.has(node.node_id))?.node_id
   selectedNodeId.value =
-    item.nodes.find((node) => node.status === 'failed')?.node_id
-    ?? item.paused?.node_id
-    ?? item.cursor[0]
-    ?? item.nodes.find((node) => node.status === 'running')?.node_id
-    ?? item.nodes[0]?.node_id
+    firstByStatus(['failed'])
+    ?? (item.paused?.node_id && visibleNodeIds.has(item.paused.node_id) ? item.paused.node_id : undefined)
+    ?? item.active_nodes.find((id) => visibleNodeIds.has(id))
+    ?? firstByStatus(['running', 'queued'])
+    ?? item.graph_snapshot.nodes[0]?.id
     ?? ''
+}
+
+function visualRunNodeStatus(nodeId: string, state?: TaskGraphRunNode): TaskGraphRunNode['status'] {
+  if (state?.status === 'failed') return 'failed'
+  if (state?.status === 'paused' || run.value?.paused?.node_id === nodeId) return 'paused'
+  if (state?.status === 'running' || state?.status === 'queued') return state.status
+  if (run.value?.active_nodes.includes(nodeId)) return 'queued'
+  if (state?.status === 'succeeded') return 'succeeded'
+  return state?.status ?? 'idle'
+}
+
+function topologyMutationPayload(value: unknown): TopologyMutationEventPayload | null {
+  if (!value || typeof value !== 'object') return null
+  const payload = value as Partial<TopologyMutationEventPayload>
+  if (typeof payload.batch_id !== 'string') return null
+  if (typeof payload.graph_revision_before !== 'number' || typeof payload.graph_revision_after !== 'number') return null
+  if (!payload.result || typeof payload.result !== 'object') return null
+  const result = payload.result as Partial<GraphMutationBatchResult>
+  if (result.status !== 'applied' && result.status !== 'rejected') return null
+  return payload as TopologyMutationEventPayload
 }
 
 function openNode(id: string) {
@@ -307,7 +425,7 @@ function openChildRun(childRunId: string) {
 
 const isRunActive = computed(() => {
   const status = run.value?.status
-  return status === 'pending' || status === 'running' || status === 'paused'
+  return status === 'queued' || status === 'pending' || status === 'running' || status === 'paused'
 })
 
 async function cancelRun() {
@@ -320,6 +438,22 @@ async function cancelRun() {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
     cancelling.value = false
+  }
+}
+
+async function resumeGate(actionId: string) {
+  const item = run.value
+  if (!item?.paused || resumingActionId.value) return
+  resumingActionId.value = actionId
+  resumeError.value = ''
+  try {
+    await resumeTaskGraphGate(props.project, item.id, item.paused.node_id, actionId)
+    await loadRun()
+    scheduleRunArtifactsRefresh(0)
+  } catch (err) {
+    resumeError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    resumingActionId.value = ''
   }
 }
 
@@ -408,9 +542,10 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
           <span>{{ t('update') }} {{ formatDate(run.updated_at) }}</span>
           <span>{{ t('taskGraphDuration') }} {{ elapsedLabel }}</span>
           <span>{{ t('taskGraphSuperstep') }} {{ run.current_superstep ?? 0 }}</span>
+          <span>{{ t('taskGraphRevision') }} {{ revisionLabel }}</span>
           <span v-if="run.last_checkpoint_id">{{ t('taskGraphCheckpoint') }} {{ run.last_checkpoint_id }}</span>
-          <span v-if="currentNodeSummary" class="task-graph-run-current-node">
-            {{ t('taskGraphCurrentNode') }} {{ currentNodeSummary }}
+          <span v-if="activeNodeSummary" class="task-graph-run-current-node">
+            {{ t('taskGraphActiveNodes') }} {{ activeNodeSummary }}
           </span>
         </div>
       </div>
@@ -449,6 +584,8 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
     <div v-else-if="error" class="bb-state-panel bb-error">{{ error }}</div>
 
     <template v-else-if="run">
+      <div v-if="streamError" class="bb-state-panel task-graph-run-stream-warning">{{ streamError }}</div>
+
       <section v-if="run.paused" class="task-graph-run-paused">
         <PauseCircle aria-hidden="true" />
         <div>
@@ -460,11 +597,13 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
             v-for="action in run.paused.actions"
             :key="action.id"
             type="button"
-            disabled
+            :disabled="Boolean(resumingActionId)"
+            @click="resumeGate(action.id)"
           >
-            {{ action.label }}
+            {{ resumingActionId === action.id ? t('taskGraphResuming') : action.label }}
           </button>
         </div>
+        <p v-if="resumeError" class="task-graph-run-resume-error">{{ resumeError }}</p>
       </section>
 
       <div class="task-graph-run-grid">
@@ -500,6 +639,21 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
         </main>
 
         <aside class="task-graph-run-drawer">
+          <section class="task-graph-run-detail-block task-graph-run-level">
+            <TaskGraphMutationTimeline :events="runEvents" :checkpoints="checkpoints" />
+            <p v-if="runArtifactsError" class="task-graph-run-artifacts-error">{{ runArtifactsError }}</p>
+            <dl class="task-graph-run-level-state">
+              <div>
+                <dt>{{ t('taskGraphRevision') }}</dt>
+                <dd>{{ run.current_graph_revision }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('taskGraphActiveNodes') }}</dt>
+                <dd>{{ run.active_nodes.length > 0 ? run.active_nodes.join(', ') : '-' }}</dd>
+              </div>
+            </dl>
+          </section>
+
           <header>
             <FileText aria-hidden="true" />
             <div>
@@ -536,6 +690,10 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
             <div v-if="selectedRunNode.model">
               <dt>{{ t('taskGraphModel') }}</dt>
               <dd>{{ selectedRunNode.model }}</dd>
+            </div>
+            <div v-if="selectedAddedRevision !== undefined">
+              <dt>{{ t('taskGraphAddedInRevision') }}</dt>
+              <dd>{{ selectedAddedRevision }}</dd>
             </div>
           </dl>
 
@@ -705,6 +863,13 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
   white-space: nowrap;
 }
 
+.task-graph-run-stream-warning {
+  margin-inline: var(--task-graph-run-inset);
+  border-color: color-mix(in srgb, var(--bb-warning) 24%, transparent);
+  background: color-mix(in srgb, var(--bb-warning) 8%, var(--bb-surface));
+  color: var(--bb-warning);
+}
+
 .task-graph-node-state {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -751,6 +916,11 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
   font-size: 12px;
 }
 
+.task-graph-run-resume-error {
+  grid-column: 1 / -1;
+  color: var(--bb-error) !important;
+}
+
 .task-graph-run-paused > div:last-child {
   display: flex;
   gap: 6px;
@@ -765,6 +935,10 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
   color: var(--bb-warning);
   font-size: 12px;
   font-weight: 760;
+}
+
+.task-graph-run-paused button:disabled {
+  opacity: 0.62;
 }
 
 .task-graph-run-grid {
@@ -801,13 +975,18 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
   stroke-width: 2;
 }
 
-.task-graph-run-canvas :deep(.graph-node.run-cursor > rect:first-child) {
+.task-graph-run-canvas :deep(.graph-node.run-active-node > rect:first-child) {
   stroke-dasharray: 8 5;
 }
 
 .task-graph-run-canvas :deep(.graph-edge.run-edge-active > path) {
   stroke-width: 4;
   filter: drop-shadow(0 8px 12px color-mix(in srgb, var(--bb-accent) 18%, transparent));
+}
+
+.task-graph-run-canvas :deep(.graph-edge.run-edge-mutated > path) {
+  stroke-width: 4;
+  filter: drop-shadow(0 8px 12px color-mix(in srgb, var(--bb-focus) 18%, transparent));
 }
 
 .task-graph-run-edge-label {
@@ -852,6 +1031,41 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
 
 .task-graph-node-state {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.task-graph-run-level {
+  padding-bottom: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--bb-hairline) 72%, transparent);
+}
+
+.task-graph-run-level-state {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.task-graph-run-level-state > div {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--bb-hairline) 72%, transparent);
+  border-radius: 8px;
+  background: var(--bb-surface-soft);
+}
+
+.task-graph-run-level-state dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--bb-text-strong);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.task-graph-run-artifacts-error {
+  margin: 0;
+  color: var(--bb-error) !important;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .task-graph-run-error {

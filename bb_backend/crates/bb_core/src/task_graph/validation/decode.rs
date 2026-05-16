@@ -104,6 +104,9 @@ fn validate_graph_shape(value: &Value, path: &str, errors: &mut Vec<TaskGraphVal
     require_u64(object, path, "version", errors);
     require_bool(object, path, "readonly", errors);
 
+    if let Some(metadata) = object.get("metadata") {
+        validate_metadata(metadata, &join_path(path, "metadata"), errors);
+    }
     if let Some(inputs) = object.get("inputs") {
         validate_inputs(inputs, &join_path(path, "inputs"), errors);
     }
@@ -117,6 +120,27 @@ fn validate_graph_shape(value: &Value, path: &str, errors: &mut Vec<TaskGraphVal
     } else {
         missing_field(path, "edges", errors);
     }
+}
+
+fn validate_metadata(value: &Value, path: &str, errors: &mut Vec<TaskGraphValidationError>) {
+    let Some(object) = expect_object(value, path, "graph metadata", errors) else {
+        return;
+    };
+
+    if let Some(run_policy) = object.get("run_policy") {
+        validate_run_policy(run_policy, &join_path(path, "run_policy"), errors);
+    }
+}
+
+fn validate_run_policy(value: &Value, path: &str, errors: &mut Vec<TaskGraphValidationError>) {
+    let Some(object) = expect_object(value, path, "graph run policy", errors) else {
+        return;
+    };
+
+    optional_bool(object, path, "allow_concurrent_runs", errors);
+    optional_u64(object, path, "max_concurrent_runs", errors);
+    optional_bool(object, path, "queue_enabled", errors);
+    optional_u64(object, path, "max_queue_wait_ms", errors);
 }
 
 fn validate_inputs(value: &Value, path: &str, errors: &mut Vec<TaskGraphValidationError>) {
@@ -160,6 +184,7 @@ fn validate_nodes(value: &Value, path: &str, errors: &mut Vec<TaskGraphValidatio
                 "start",
                 "end",
                 "llm",
+                "plan",
                 "human_gate",
                 "branch",
                 "loop",
@@ -167,6 +192,11 @@ fn validate_nodes(value: &Value, path: &str, errors: &mut Vec<TaskGraphValidatio
                 "input_var",
                 "sub_graph",
                 "sub_pipeline",
+                "llm_mutation",
+                "intent_extract",
+                "kb_plan",
+                "manifest_merge",
+                "schema_validate",
             ],
             errors,
         );
@@ -379,6 +409,19 @@ fn optional_number(
     if let Some(value) = object.get(field) {
         if !value.is_null() && !value.is_number() {
             invalid_field_type(path, field, "number", value, errors);
+        }
+    }
+}
+
+fn optional_u64(
+    object: &Map<String, Value>,
+    path: &str,
+    field: &str,
+    errors: &mut Vec<TaskGraphValidationError>,
+) {
+    if let Some(value) = object.get(field) {
+        if !value.is_null() && value.as_u64().is_none() {
+            invalid_field_type(path, field, "unsigned integer", value, errors);
         }
     }
 }

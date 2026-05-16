@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { Badge } from 'tdesign-vue-next/es/badge'
 import {
@@ -18,17 +18,9 @@ import {
   Sun,
   Workflow,
 } from 'lucide-vue-next'
-import AgentConnectorPanel from '@/components/AgentConnectorPanel.vue'
-import AgentWorkbench from '@/components/AgentWorkbench.vue'
 import BbDropdown, { type BbDropdownOption } from '@/components/BbDropdown.vue'
-import InboxPanel from '@/components/InboxPanel.vue'
-import LaneManager from '@/components/LaneManager.vue'
 import ProjectSwitcher from '@/components/ProjectSwitcher.vue'
 import TicketCard from '@/components/TicketCard.vue'
-import TicketDependencyGraph from '@/components/TicketDependencyGraph.vue'
-import TicketDetailPanel from '@/components/TicketDetailPanel.vue'
-import TaskGraphCatalogPanel from '@/components/TaskGraphCatalogPanel.vue'
-import WikiPanel from '@/components/WikiPanel.vue'
 import blackboardIconUrl from '@/assets/blackboard-icon.png'
 import { loadProjectAgents, type ProjectAgentProfile } from '@/data/agents'
 import type {
@@ -42,6 +34,7 @@ import type {
 } from '@/data/tickets'
 import {
   attachmentsFromExtra,
+  deprecateTicket,
   extractProgressText,
   isOpenTicketStatus,
   loadBlackboardData,
@@ -64,6 +57,15 @@ import {
   hiddenStatusesFromVisible,
   visibleStatusesFromHidden,
 } from './boardViewUtils'
+
+const AgentConnectorPanel = defineAsyncComponent(() => import('@/components/AgentConnectorPanel.vue'))
+const AgentWorkbench = defineAsyncComponent(() => import('@/components/AgentWorkbench.vue'))
+const InboxPanel = defineAsyncComponent(() => import('@/components/InboxPanel.vue'))
+const LaneManager = defineAsyncComponent(() => import('@/components/LaneManager.vue'))
+const TicketDependencyGraph = defineAsyncComponent(() => import('@/components/TicketDependencyGraph.vue'))
+const TicketDetailPanel = defineAsyncComponent(() => import('@/components/TicketDetailPanel.vue'))
+const TaskGraphCatalogPanel = defineAsyncComponent(() => import('@/components/TaskGraphCatalogPanel.vue'))
+const WikiPanel = defineAsyncComponent(() => import('@/components/WikiPanel.vue'))
 
 type WorkspaceKey = 'tickets' | 'taskGraphs' | 'inbox' | 'agents' | 'settings' | 'wiki'
 type WorkspaceIconKey = WorkspaceKey
@@ -104,6 +106,7 @@ const assigneeSavingId = ref<string | null>(null)
 const statusSavingId = ref<string | null>(null)
 const dependencySavingId = ref<string | null>(null)
 const attachmentsSavingId = ref<string | null>(null)
+const deprecatingTicketId = ref<string | null>(null)
 const boardViewSaving = ref(false)
 const mutationError = ref('')
 const kanbanArea = ref<HTMLElement | null>(null)
@@ -776,6 +779,31 @@ async function updateTicketStatus(ticket: BlackboardTicket, status: string) {
     statusSavingId.value = null
   }
 }
+
+async function deprecateSelectedTicket(ticket: BlackboardTicket) {
+  if (!payload.value || deprecatingTicketId.value) return
+  deprecatingTicketId.value = ticket.id
+  mutationError.value = ''
+  try {
+    await deprecateTicket(props.project, ticket.id)
+    selectedTicketId.value = null
+    detailReturnWorkspace.value = null
+    const [liveData, summaryResult] = await Promise.all([
+      loadBlackboardData(props.project),
+      loadBoardSummary(props.project),
+    ])
+    payload.value = liveData
+    summary.value = summaryResult.data
+    router.push(ticketViewRoute(activeTicketView.value))
+  } catch (err) {
+    mutationError.value =
+      err instanceof Error
+        ? `${err.message}。${t('ticketDeprecateFailed')}`
+        : t('ticketDeprecateFailed')
+  } finally {
+    deprecatingTicketId.value = null
+  }
+}
 </script>
 
 <template>
@@ -1091,10 +1119,12 @@ async function updateTicketStatus(ticket: BlackboardTicket, status: string) {
       :assignee-saving="assigneeSavingId === selectedTicket.id"
       :status-saving="statusSavingId === selectedTicket.id"
       :attachments-saving="attachmentsSavingId === selectedTicket.id"
+      :deprecating="deprecatingTicketId === selectedTicket.id"
       @close="closeTicket"
       @assignee-change="updateTicketAssignee(selectedTicket, $event)"
       @status-change="updateTicketStatus(selectedTicket, $event)"
       @attachments-change="updateTicketAttachments(selectedTicket, $event)"
+      @deprecate="deprecateSelectedTicket(selectedTicket)"
     />
 
     <LaneManager

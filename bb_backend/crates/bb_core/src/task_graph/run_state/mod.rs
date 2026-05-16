@@ -21,8 +21,8 @@ pub use fork_join::{
     count_exec_in_edges, detect_join_nodes, is_join_ready, record_branch_completion,
 };
 pub use lifecycle::{
-    cancel_run_cascade, create_run, list_runs, read_run, read_run_detail, resolve_graph_input,
-    set_run_paused, update_cursor, update_run_status, write_run_json,
+    cancel_run_cascade, create_queued_run, create_run, list_runs, read_run, read_run_detail,
+    resolve_graph_input, set_run_paused, update_run_status, write_run_json,
 };
 pub use model::*;
 pub use node_io::{
@@ -31,7 +31,8 @@ pub use node_io::{
 };
 pub use superstep::{
     append_run_event, clear_pending_pregel_writes, list_run_events, list_superstep_checkpoints,
-    read_latest_superstep_checkpoint, read_pending_pregel_writes, read_pregel_checkpoint_tuple,
+    read_graph_revision, read_latest_superstep_checkpoint, read_pending_pregel_writes,
+    read_pregel_checkpoint_tuple, write_graph_revision, write_mutation_batch,
     write_pending_pregel_writes, write_superstep_checkpoint,
 };
 
@@ -82,6 +83,22 @@ fn run_events_path(dir: &Path) -> PathBuf {
 
 fn pending_pregel_writes_path(dir: &Path) -> PathBuf {
     dir.join("pending_pregel_writes.json")
+}
+
+fn graph_revisions_dir(dir: &Path) -> PathBuf {
+    dir.join("graph_revisions")
+}
+
+fn graph_revision_path(dir: &Path, revision: u64) -> PathBuf {
+    graph_revisions_dir(dir).join(format!("{revision:06}.json"))
+}
+
+fn mutation_batches_dir(dir: &Path) -> PathBuf {
+    dir.join("mutation_batches")
+}
+
+fn mutation_batch_path(dir: &Path, superstep: u64, batch_id: &str) -> PathBuf {
+    mutation_batches_dir(dir).join(format!("{superstep:06}-{batch_id}.json"))
 }
 
 fn node_output_path(dir: &Path, node_id: &str) -> PathBuf {

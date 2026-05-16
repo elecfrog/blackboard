@@ -37,6 +37,7 @@ import {
   type TaskGraphEdge,
   type TaskGraphInputParam,
   type TaskGraphNode,
+  type TaskGraphRunPolicy,
   type TaskGraphValidationError,
 } from '@/data/taskGraphs'
 import { loadProjectAgents, type ProjectAgentProfile, type McpServerConfig } from '@/data/agents'
@@ -81,6 +82,14 @@ type GraphInputPatch = Partial<Omit<TaskGraphInputParam, 'default'>> & {
 const promptFileContent = ref('')
 const llmRuntimes = ['codex', 'opencode', 'codebuddy']
 const branchOps = ['always', 'exists', 'equals', 'not_equals', '>', '>=', '<', '<=', 'contains', 'is_empty', 'not_empty', 'truthy', 'falsy']
+const DEFAULT_GRAPH_RUN_POLICY: TaskGraphRunPolicy = {
+  allow_concurrent_runs: false,
+  max_concurrent_runs: 1,
+  queue_enabled: false,
+  max_queue_wait_ms: 30 * 60 * 1000,
+}
+const MIN_QUEUE_WAIT_MINUTES = 1
+const MAX_QUEUE_WAIT_MINUTES = 7 * 24 * 60
 
 const localGraph = ref<TaskGraphDefinition>(cloneGraph(props.graph))
 const originalVersion = ref(props.graph.version)
@@ -193,11 +202,21 @@ const graphInputSummary = computed(() =>
     ? t('taskGraphEditorNoInputs')
     : t('taskGraphEditorInputsCount', { count: graphInputs.value.length }),
 )
-const graphSettingsSummary = computed(() =>
-  (localGraph.value.title || localGraph.value.description)
-    ? t('taskGraphEditorSettingsConfigured')
-    : t('taskGraphEditorSettingsMissing'),
+const graphRunPolicy = computed<TaskGraphRunPolicy>(() => ({
+  ...DEFAULT_GRAPH_RUN_POLICY,
+  ...(localGraph.value.metadata?.run_policy ?? {}),
+}))
+const graphRunPolicyQueueWaitMinutes = computed(() =>
+  Math.max(MIN_QUEUE_WAIT_MINUTES, Math.round(graphRunPolicy.value.max_queue_wait_ms / 60000)),
 )
+const graphSettingsSummary = computed(() => {
+  const policy = graphRunPolicy.value
+  const concurrency = policy.allow_concurrent_runs
+    ? t('taskGraphRunPolicyConcurrent', { count: policy.max_concurrent_runs })
+    : t('taskGraphRunPolicySerial')
+  const queue = policy.queue_enabled ? t('taskGraphRunPolicyQueueOn') : t('taskGraphRunPolicyQueueOff')
+  return `${concurrency} · ${queue}`
+})
 
 const selectedEdge = computed(() =>
   localGraph.value.edges.find((edge) => edge.id === selectedEdgeId.value) ?? null,
@@ -306,6 +325,66 @@ function inputValue(event: Event) {
 
 function numberValue(event: Event) {
   return Number(inputValue(event))
+}
+
+function checkboxValue(event: Event) {
+  return event.target instanceof HTMLInputElement ? event.target.checked : false
+}
+
+function clampNumber(value: number, min: number, max: number, fallback: number) {
+  if (!Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(min, Math.round(value)))
+}
+
+function updateGraphRunPolicy(patch: Partial<TaskGraphRunPolicy>) {
+  const next: TaskGraphRunPolicy = {
+    ...graphRunPolicy.value,
+    ...patch,
+  }
+  next.max_concurrent_runs = clampNumber(next.max_concurrent_runs, 1, 32, 1)
+  next.max_queue_wait_ms = clampNumber(
+    next.max_queue_wait_ms,
+    MIN_QUEUE_WAIT_MINUTES * 60 * 1000,
+    MAX_QUEUE_WAIT_MINUTES * 60 * 1000,
+    DEFAULT_GRAPH_RUN_POLICY.max_queue_wait_ms,
+  )
+  if (!next.allow_concurrent_runs) {
+    next.max_concurrent_runs = 1
+  }
+
+  localGraph.value = {
+    ...localGraph.value,
+    metadata: {
+      ...(localGraph.value.metadata ?? {}),
+      run_policy: next,
+    },
+  }
+}
+
+function updateAllowConcurrentRuns(event: Event) {
+  const enabled = checkboxValue(event)
+  updateGraphRunPolicy({
+    allow_concurrent_runs: enabled,
+    max_concurrent_runs: enabled ? Math.max(2, graphRunPolicy.value.max_concurrent_runs) : 1,
+  })
+}
+
+function updateMaxConcurrentRuns(event: Event) {
+  updateGraphRunPolicy({ max_concurrent_runs: clampNumber(numberValue(event), 1, 32, 1) })
+}
+
+function updateQueueEnabled(event: Event) {
+  updateGraphRunPolicy({ queue_enabled: checkboxValue(event) })
+}
+
+function updateMaxQueueWaitMinutes(event: Event) {
+  const minutes = clampNumber(
+    numberValue(event),
+    MIN_QUEUE_WAIT_MINUTES,
+    MAX_QUEUE_WAIT_MINUTES,
+    graphRunPolicyQueueWaitMinutes.value,
+  )
+  updateGraphRunPolicy({ max_queue_wait_ms: minutes * 60 * 1000 })
 }
 
 function kebab(value: string, fallback: string) {
@@ -1372,6 +1451,49 @@ function cancelClose() {
                 <span>{{ t('description') }}</span>
                 <textarea :value="localGraph.description ?? ''" @input="localGraph = { ...localGraph, description: inputValue($event) }" />
               </label>
+              <div class="task-graph-settings-section">
+                <h5>{{ t('taskGraphRunPolicy') }}</h5>
+                <label class="task-graph-settings-checkbox">
+                  <input
+                    type="checkbox"
+                    :checked="graphRunPolicy.allow_concurrent_runs"
+                    @change="updateAllowConcurrentRuns"
+                  />
+                  <span>{{ t('taskGraphAllowConcurrentRuns') }}</span>
+                </label>
+                <label class="task-graph-settings-number">
+                  <span>{{ t('taskGraphMaxConcurrentRuns') }}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="32"
+                    step="1"
+                    :disabled="!graphRunPolicy.allow_concurrent_runs"
+                    :value="graphRunPolicy.max_concurrent_runs"
+                    @input="updateMaxConcurrentRuns"
+                  />
+                </label>
+                <label class="task-graph-settings-checkbox">
+                  <input
+                    type="checkbox"
+                    :checked="graphRunPolicy.queue_enabled"
+                    @change="updateQueueEnabled"
+                  />
+                  <span>{{ t('taskGraphQueueEnabled') }}</span>
+                </label>
+                <label class="task-graph-settings-number">
+                  <span>{{ t('taskGraphMaxQueueWaitMinutes') }}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10080"
+                    step="1"
+                    :disabled="!graphRunPolicy.queue_enabled"
+                    :value="graphRunPolicyQueueWaitMinutes"
+                    @input="updateMaxQueueWaitMinutes"
+                  />
+                </label>
+              </div>
             </section>
           </section>
         </Transition>
@@ -1644,6 +1766,7 @@ function cancelClose() {
 
 .task-graph-palette h4,
 .task-graph-settings h4,
+.task-graph-settings h5,
 .task-graph-node-card h4 {
   margin: 0;
 }
@@ -2050,14 +2173,46 @@ function cancelClose() {
   gap: 8px;
 }
 
+.task-graph-settings-section {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--bb-border-warm);
+}
+
+.task-graph-settings-section h5 {
+  color: var(--bb-text-strong);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .task-graph-settings label {
   grid-template-columns: 76px minmax(0, 1fr);
   align-items: start;
   gap: 8px;
 }
 
+.task-graph-settings .task-graph-settings-checkbox {
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+}
+
+.task-graph-settings .task-graph-settings-checkbox input {
+  min-height: 16px;
+  width: 16px;
+  padding: 0;
+}
+
+.task-graph-settings input:disabled {
+  opacity: 0.55;
+}
+
 .task-graph-settings label span {
   padding-top: 8px;
+}
+
+.task-graph-settings .task-graph-settings-checkbox span {
+  padding-top: 0;
 }
 
 .task-graph-settings textarea {

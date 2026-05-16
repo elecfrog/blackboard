@@ -10,6 +10,12 @@ pub fn default_pins_for(node_type: NodeType, config: &serde_json::Value) -> Vec<
         NodeType::Start => pins_start(),
         NodeType::End => pins_end(),
         NodeType::Llm => pins_llm(),
+        NodeType::Plan => pins_plan(),
+        NodeType::LlmMutation => pins_llm_mutation(),
+        NodeType::IntentExtract
+        | NodeType::KbPlan
+        | NodeType::ManifestMerge
+        | NodeType::SchemaValidate => pins_json_transform(),
         NodeType::Shell => pins_shell(),
         NodeType::Branch => pins_branch(config),
         NodeType::Loop => pins_loop(),
@@ -48,6 +54,115 @@ fn pins_end() -> Vec<NodePin> {
 // ─── Llm ─────────────────────────────────────────────────────────────────────
 
 fn pins_llm() -> Vec<NodePin> {
+    vec![
+        NodePin {
+            id: "exec_in".into(),
+            label: "In".into(),
+            direction: PinDirection::In,
+            category: PinCategory::Exec,
+            value_type: None,
+            required: true,
+        },
+        NodePin {
+            id: "exec_out".into(),
+            label: "Out".into(),
+            direction: PinDirection::Out,
+            category: PinCategory::Exec,
+            value_type: None,
+            required: false,
+        },
+        NodePin {
+            id: "output".into(),
+            label: "Output".into(),
+            direction: PinDirection::Out,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Json),
+            required: false,
+        },
+    ]
+}
+
+// ─── Plan ──────────────────────────────────────────────────────────────────
+
+fn pins_plan() -> Vec<NodePin> {
+    vec![
+        NodePin {
+            id: "exec_in".into(),
+            label: "In".into(),
+            direction: PinDirection::In,
+            category: PinCategory::Exec,
+            value_type: None,
+            required: true,
+        },
+        NodePin {
+            id: "plan_input".into(),
+            label: "Plan Input".into(),
+            direction: PinDirection::In,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Json),
+            required: false,
+        },
+        NodePin {
+            id: "exec_out".into(),
+            label: "Out".into(),
+            direction: PinDirection::Out,
+            category: PinCategory::Exec,
+            value_type: None,
+            required: false,
+        },
+        NodePin {
+            id: "output".into(),
+            label: "Output".into(),
+            direction: PinDirection::Out,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Json),
+            required: false,
+        },
+    ]
+}
+
+// ─── LlmMutation ────────────────────────────────────────────────────────────
+
+fn pins_llm_mutation() -> Vec<NodePin> {
+    vec![
+        NodePin {
+            id: "exec_in".into(),
+            label: "In".into(),
+            direction: PinDirection::In,
+            category: PinCategory::Exec,
+            value_type: None,
+            required: true,
+        },
+        NodePin {
+            id: "plan_input".into(),
+            label: "Plan Input".into(),
+            direction: PinDirection::In,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Json),
+            required: false,
+        },
+        NodePin {
+            id: "exec_out".into(),
+            label: "Out".into(),
+            direction: PinDirection::Out,
+            category: PinCategory::Exec,
+            value_type: None,
+            required: false,
+        },
+        NodePin {
+            id: "mutation_artifact".into(),
+            label: "Mutation Artifact".into(),
+            direction: PinDirection::Out,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Json),
+            required: false,
+        },
+    ]
+}
+
+// ─── Json Transform ─────────────────────────────────────────────────────────
+
+fn pins_json_transform() -> Vec<NodePin> {
     vec![
         NodePin {
             id: "exec_in".into(),
@@ -311,6 +426,50 @@ mod tests {
     fn test_shell_pins() {
         let pins = default_pins_for(
             NodeType::Shell,
+            &serde_json::Value::Object(Default::default()),
+        );
+        assert_eq!(pins.len(), 3);
+        assert_eq!(pins[0].id, "exec_in");
+        assert_eq!(pins[1].id, "exec_out");
+        assert_eq!(pins[2].id, "output");
+        assert_eq!(pins[2].category, PinCategory::Data);
+        assert_eq!(pins[2].value_type, Some(PinValueType::Json));
+    }
+
+    #[test]
+    fn test_llm_mutation_pins() {
+        let pins = default_pins_for(
+            NodeType::LlmMutation,
+            &serde_json::Value::Object(Default::default()),
+        );
+        assert_eq!(pins.len(), 4);
+        assert_eq!(pins[0].id, "exec_in");
+        assert_eq!(pins[1].id, "plan_input");
+        assert_eq!(pins[1].direction, PinDirection::In);
+        assert_eq!(pins[2].id, "exec_out");
+        assert_eq!(pins[3].id, "mutation_artifact");
+        assert_eq!(pins[3].category, PinCategory::Data);
+        assert_eq!(pins[3].value_type, Some(PinValueType::Json));
+    }
+
+    #[test]
+    fn test_plan_pins() {
+        let pins = default_pins_for(
+            NodeType::Plan,
+            &serde_json::Value::Object(Default::default()),
+        );
+        assert_eq!(pins.len(), 4);
+        assert_eq!(pins[0].id, "exec_in");
+        assert_eq!(pins[1].id, "plan_input");
+        assert_eq!(pins[1].category, PinCategory::Data);
+        assert_eq!(pins[2].id, "exec_out");
+        assert_eq!(pins[3].id, "output");
+    }
+
+    #[test]
+    fn test_intent_extract_pins() {
+        let pins = default_pins_for(
+            NodeType::IntentExtract,
             &serde_json::Value::Object(Default::default()),
         );
         assert_eq!(pins.len(), 3);

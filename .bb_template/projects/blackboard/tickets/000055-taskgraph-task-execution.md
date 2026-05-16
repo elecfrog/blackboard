@@ -3,8 +3,8 @@ id = "000055"
 lane = "bbt"
 title = "TaskGraph Task Execution：运行态、Runtime Session 与验收闭环"
 created_at = "2026-05-14"
-updated_at = "2026-05-14"
-status = "todo"
+updated_at = "2026-05-17"
+status = "in_progress"
 area = "TaskGraph"
 depends_on = "000053"
 kind = "platform-track"
@@ -19,6 +19,8 @@ scope = "task-execution"
 
 - 2026-05-14：已拆出 6 个执行增强子单：Execution 基建、数据流类型系统、节点模型、Shell 节点、前端 Run UI、第三方生态。
 
+- 2026-05-15：新增 node_registry 模块，定义 NodeCategory/NodeRole/RuntimeBinding/PermissionSpec/ArtifactOutputSpec/NodeSpec，内置 explorer_agent/implementer_agent/verifier_agent/reviewer_agent/handoff_writer/opencode_session/codex_session/local_shell/write_wiki_doc 业务角色，复用 llm/shell/sub_graph 执行器
+
 # 记录
 
 - 目标：负责 TaskRun 的启动、节点执行、Runtime Session 绑定、事件时间线、Artifact 归档、失败修复循环、权限中断、取消/恢复/验收。
@@ -31,6 +33,9 @@ scope = "task-execution"
 - 子单：#000063 TaskGraph Shell 与本地工具节点：编译、测试、Git 与命令执行闭环。
 - 子单：#000064 TaskGraph 前端 Graph 与 Run UI：节点编辑、状态覆盖与 Artifact 面板。
 - 子单：#000065 TaskGraph 第三方生态：飞书通知、Webhook、本地工具与插件接入。
+
+- 来源：inbox/2026-05-15-codex-taskgraph-062-business-node-taxonomy-and-runtime-binding.md
+- 代码位置：bb_backend/crates/bb_core/src/task_graph/node_registry.rs, bb_backend/crates/bb_core/src/task_graph/mod.rs, bb_web/src/components/task-graph/taskGraphNodeVisuals.ts, bb_web/src/components/task-graph/TaskGraphNodePalette.vue, bb_web/src/components/TaskGraphEditorPanel.vue
 
 # 下一步
 

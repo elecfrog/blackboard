@@ -1,7 +1,8 @@
 use bb_core::{
     agents_config, agents_registry, AgentProfile, AppendTicketSectionsInput, CreateTicketInput,
-    InboxError, InboxNoteInput, LaneDef, ProjectAgentRegistration, ReadTicketByIdInput,
-    ReadTicketInput, SearchInput, TicketFrontmatterPatch, UpdateTicketInput, Workspace,
+    DeprecateTicketInput, InboxError, InboxNoteInput, LaneDef, ProjectAgentRegistration,
+    ReadTicketByIdInput, ReadTicketInput, SearchInput, TicketFrontmatterPatch, UpdateTicketInput,
+    Workspace,
 };
 use chrono::{SecondsFormat, Utc};
 use serde::Deserialize;
@@ -124,6 +125,11 @@ pub(crate) fn handle_tool_call(
             let input: UpdateTicketInput = serde_json::from_value(rest)
                 .map_err(|err| (-32602, format!("invalid update_ticket arguments: {err}")))?;
             to_tool_result(board.update_ticket(input))
+        }
+        "deprecate_ticket" => {
+            let input: DeprecateTicketInput = serde_json::from_value(rest)
+                .map_err(|err| (-32602, format!("invalid deprecate_ticket arguments: {err}")))?;
+            to_tool_result(board.deprecate_ticket(input))
         }
         "append_ticket_sections" => {
             let input: AppendTicketSectionsInput = serde_json::from_value(rest).map_err(|err| {

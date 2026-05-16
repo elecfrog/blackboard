@@ -314,6 +314,48 @@ mod tests {
     }
 
     #[test]
+    fn test_graph_run_policy_defaults_to_serial_without_queue() {
+        let policy = TaskGraphRunPolicy::default();
+        assert!(!policy.allow_concurrent_runs);
+        assert_eq!(policy.max_concurrent_runs, 1);
+        assert_eq!(policy.effective_max_concurrent_runs(), 1);
+        assert!(!policy.queue_enabled);
+        assert_eq!(
+            policy.max_queue_wait_ms,
+            TaskGraphRunPolicy::DEFAULT_MAX_QUEUE_WAIT_MS
+        );
+    }
+
+    #[test]
+    fn test_validate_graph_run_policy_ranges() {
+        let mut graph = minimal_valid_graph();
+        graph.metadata = Some(GraphMetadata {
+            tags: None,
+            related_tickets: None,
+            owner: None,
+            created_by: None,
+            updated_by: None,
+            recursion_limit: None,
+            interrupt_before: None,
+            interrupt_after: None,
+            run_policy: Some(TaskGraphRunPolicy {
+                allow_concurrent_runs: true,
+                max_concurrent_runs: 33,
+                queue_enabled: true,
+                max_queue_wait_ms: 59_000,
+            }),
+        });
+
+        let errors = validate_graph(&graph);
+        assert!(errors.iter().any(|error| {
+            error.path == "metadata.run_policy.max_concurrent_runs" && error.code == "out_of_range"
+        }));
+        assert!(errors.iter().any(|error| {
+            error.path == "metadata.run_policy.max_queue_wait_ms" && error.code == "out_of_range"
+        }));
+    }
+
+    #[test]
     fn test_validate_system_graph_fixture() {
         let fixture =
             include_str!("../../../../../../.bb_template/task_graphs/system/frontend-smoke.json");
@@ -621,6 +663,180 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_loop_rejects_stale_body_refs_and_condition_node() {
+        let mut graph = minimal_valid_graph();
+        graph.nodes.push(TaskGraphNode {
+            id: "cleanup-loop".to_string(),
+            node_type: NodeType::Loop,
+            label: "Cleanup Loop".to_string(),
+            description: None,
+            position: None,
+            config: serde_json::json!({
+                "max_iterations": 3,
+                "body_entry": "old-body-node",
+                "body_exit": "old-body-node",
+                "condition": {
+                    "input_ref": "$.nodes.old-body-node.output",
+                    "op": "equals",
+                    "path": "$.continue",
+                    "value": true
+                },
+                "on_max_iterations": "succeed"
+            }),
+            pins: vec![],
+        });
+        graph.nodes.push(TaskGraphNode {
+            id: "body-llm".to_string(),
+            node_type: NodeType::Llm,
+            label: "Body".to_string(),
+            description: None,
+            position: None,
+            config: serde_json::json!({
+                "runtime": "opencode",
+                "agent": "bb-pm",
+                "prompt": { "mode": "inline", "template": "cleanup" }
+            }),
+            pins: vec![],
+        });
+        graph.edges = vec![
+            TaskGraphEdge {
+                id: "start__cleanup-loop".to_string(),
+                from: "start".to_string(),
+                to: "cleanup-loop".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: None,
+                target_handle: None,
+                from_pin: None,
+                to_pin: None,
+            },
+            TaskGraphEdge {
+                id: "cleanup-loop__body-llm".to_string(),
+                from: "cleanup-loop".to_string(),
+                to: "body-llm".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: Some("body".to_string()),
+                target_handle: None,
+                from_pin: None,
+                to_pin: None,
+            },
+            TaskGraphEdge {
+                id: "cleanup-loop__end-success".to_string(),
+                from: "cleanup-loop".to_string(),
+                to: "end-success".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: Some("exit".to_string()),
+                target_handle: None,
+                from_pin: None,
+                to_pin: None,
+            },
+        ];
+
+        let errors = validate_graph(&graph);
+        assert!(
+            errors.iter().any(|e| e.code == "loop_endpoint_not_found"),
+            "Expected missing loop endpoint error, got: {:?}",
+            errors
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.code == "loop_body_entry_edge_mismatch"),
+            "Expected body_entry edge mismatch error, got: {:?}",
+            errors
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.code == "loop_condition_node_not_found"),
+            "Expected stale condition node error, got: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn test_validate_loop_accepts_body_exit_hidden_return_config() {
+        let mut graph = minimal_valid_graph();
+        graph.nodes.push(TaskGraphNode {
+            id: "cleanup-loop".to_string(),
+            node_type: NodeType::Loop,
+            label: "Cleanup Loop".to_string(),
+            description: None,
+            position: None,
+            config: serde_json::json!({
+                "max_iterations": 3,
+                "body_entry": "body-llm",
+                "body_exit": "body-llm",
+                "condition": {
+                    "input_ref": "$.nodes.body-llm.output",
+                    "op": "equals",
+                    "path": "$.continue",
+                    "value": true
+                },
+                "on_max_iterations": "succeed"
+            }),
+            pins: vec![],
+        });
+        graph.nodes.push(TaskGraphNode {
+            id: "body-llm".to_string(),
+            node_type: NodeType::Llm,
+            label: "Body".to_string(),
+            description: None,
+            position: None,
+            config: serde_json::json!({
+                "runtime": "opencode",
+                "agent": "bb-pm",
+                "prompt": { "mode": "inline", "template": "cleanup" }
+            }),
+            pins: vec![],
+        });
+        graph.edges = vec![
+            TaskGraphEdge {
+                id: "start__cleanup-loop".to_string(),
+                from: "start".to_string(),
+                to: "cleanup-loop".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: None,
+                target_handle: None,
+                from_pin: None,
+                to_pin: None,
+            },
+            TaskGraphEdge {
+                id: "cleanup-loop__body-llm".to_string(),
+                from: "cleanup-loop".to_string(),
+                to: "body-llm".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: Some("body".to_string()),
+                target_handle: None,
+                from_pin: None,
+                to_pin: None,
+            },
+            TaskGraphEdge {
+                id: "cleanup-loop__end-success".to_string(),
+                from: "cleanup-loop".to_string(),
+                to: "end-success".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: Some("exit".to_string()),
+                target_handle: None,
+                from_pin: None,
+                to_pin: None,
+            },
+        ];
+
+        let errors = validate_graph(&graph);
+        assert!(
+            !errors.iter().any(|e| e.code.starts_with("loop_")),
+            "Expected no loop validation errors, got: {:?}",
+            errors
+        );
+    }
+
+    #[test]
     fn test_validate_branch_missing_edge() {
         let mut graph = minimal_valid_graph();
         graph.nodes.push(TaskGraphNode {
@@ -880,13 +1096,15 @@ mod run_state_tests {
             status: SuperstepStatus::Succeeded,
             created_at: "2026-05-15T00:00:00Z".to_string(),
             completed_at: Some("2026-05-15T00:00:01Z".to_string()),
-            cursor_before: Vec::new(),
-            cursor_after: vec!["end-success".to_string()],
+            graph_revision_before: 0,
+            graph_revision_after: 0,
+            mutation_batch_id: None,
             ready_nodes: vec!["start".to_string()],
             waiting_nodes: Vec::new(),
             node_statuses: BTreeMap::new(),
             context: run.context.clone(),
             pending_writes: Vec::new(),
+            pending_effects: Vec::new(),
             pregel_checkpoint: Some(checkpoint.clone()),
             pregel_parent_config: Some(parent_config.clone()),
             pregel_checkpoint_metadata: Some(metadata.clone()),
@@ -934,6 +1152,118 @@ mod run_state_tests {
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].id, run.id);
         assert_eq!(runs[0].status, RunStatus::Pending);
+    }
+
+    #[test]
+    fn test_create_queued_run_sets_queue_metadata() {
+        let tmp = TempDir::new().unwrap();
+        let graph = minimal_graph();
+        let graph_ref = GraphRef {
+            scope: TaskGraphScope::Project,
+            id: "test-graph".to_string(),
+            version: 1,
+        };
+        let queued = create_queued_run(
+            tmp.path(),
+            "test-project",
+            graph_ref,
+            &graph,
+            serde_json::json!({}),
+            "2026-05-16T00:30:00Z".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(queued.status, RunStatus::Queued);
+        assert!(queued.queued_at.is_some());
+        assert_eq!(
+            queued.queue_deadline_at.as_deref(),
+            Some("2026-05-16T00:30:00Z")
+        );
+
+        let runs = list_runs(tmp.path(), "test-project").unwrap();
+        assert_eq!(runs[0].status, RunStatus::Queued);
+        assert!(runs[0].queued_at.is_some());
+        assert_eq!(
+            runs[0].queue_deadline_at.as_deref(),
+            Some("2026-05-16T00:30:00Z")
+        );
+    }
+
+    #[test]
+    fn test_status_transition_queued_to_pending_and_failed() {
+        let tmp = TempDir::new().unwrap();
+        let graph = minimal_graph();
+        let graph_ref = GraphRef {
+            scope: TaskGraphScope::Project,
+            id: "test-graph".to_string(),
+            version: 1,
+        };
+        let queued = create_queued_run(
+            tmp.path(),
+            "test-project",
+            graph_ref,
+            &graph,
+            serde_json::json!({}),
+            "2026-05-16T00:30:00Z".to_string(),
+        )
+        .unwrap();
+
+        let pending =
+            update_run_status(tmp.path(), "test-project", &queued.id, RunStatus::Pending).unwrap();
+        assert_eq!(pending.status, RunStatus::Pending);
+
+        let queued = create_queued_run(
+            tmp.path(),
+            "test-project",
+            GraphRef {
+                scope: TaskGraphScope::Project,
+                id: "test-graph".to_string(),
+                version: 1,
+            },
+            &graph,
+            serde_json::json!({}),
+            "2026-05-16T00:30:00Z".to_string(),
+        )
+        .unwrap();
+        let failed =
+            update_run_status(tmp.path(), "test-project", &queued.id, RunStatus::Failed).unwrap();
+        assert_eq!(failed.status, RunStatus::Failed);
+        assert!(failed.completed_at.is_some());
+    }
+
+    #[test]
+    fn test_queued_run_timeout_event_is_durable() {
+        let tmp = TempDir::new().unwrap();
+        let graph = minimal_graph();
+        let queued = create_queued_run(
+            tmp.path(),
+            "test-project",
+            GraphRef {
+                scope: TaskGraphScope::Project,
+                id: "test-graph".to_string(),
+                version: 1,
+            },
+            &graph,
+            serde_json::json!({}),
+            "2026-05-16T00:30:00Z".to_string(),
+        )
+        .unwrap();
+
+        update_run_status(tmp.path(), "test-project", &queued.id, RunStatus::Failed).unwrap();
+        append_run_event(
+            tmp.path(),
+            "test-project",
+            &queued.id,
+            0,
+            "run_queue_timeout",
+            None,
+            "Queued run exceeded max queue wait and was failed",
+            serde_json::json!({ "queue_deadline_at": queued.queue_deadline_at }),
+        )
+        .unwrap();
+
+        let events = list_run_events(tmp.path(), "test-project", &queued.id).unwrap();
+        assert!(events.iter().any(|event| event.kind == "run_queue_timeout"));
     }
 
     // ── Read run ─────────────────────────────────────────────────────────────
@@ -1385,25 +1715,6 @@ mod run_state_tests {
         assert!(updated.paused.is_some());
         assert_eq!(updated.paused.as_ref().unwrap().node_id, "human-approval");
         assert_eq!(updated.paused.as_ref().unwrap().actions.len(), 2);
-    }
-
-    // ── Cursor ───────────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_update_cursor() {
-        let tmp = TempDir::new().unwrap();
-        let run = create_test_run(&tmp);
-
-        update_cursor(
-            tmp.path(),
-            "test-project",
-            &run.id,
-            vec!["start".to_string()],
-        )
-        .unwrap();
-
-        let loaded = read_run(tmp.path(), "test-project", &run.id).unwrap();
-        assert_eq!(loaded.cursor, vec!["start"]);
     }
 
     // ── Full detail aggregation ──────────────────────────────────────────────

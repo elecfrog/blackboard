@@ -20,7 +20,7 @@
     }
   },
   "machines": {
-    "CURRENT": "ORNIZHOU-PC0",
+    "CURRENT": "USER-20251102XC",
     "ORNIZHOU-PC0": {
       "OS": "Windows",
       "OS_VERSION": "11"

@@ -91,17 +91,6 @@ pub struct AgentProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_concurrent_tasks: Option<u32>,
 
-    // ── Org relations (Ticket #000048) ──
-    /// Organisational role: "coordinator" or "worker".
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub org_role: Option<String>,
-    /// For a worker: the id of its coordinator agent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub coordinator: Option<String>,
-    /// For a coordinator: ids of its worker agents.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub workers: Vec<String>,
-
     // ── MCP servers (Ticket #000049) ──
     /// Per-agent MCP server declarations. Daemon injects these based on runtime type.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

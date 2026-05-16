@@ -72,7 +72,7 @@ const activePreviewPanel = ref<'inputs' | ''>('')
 const selectedActiveRun = computed(() =>
   props.selectedRef ? props.runHistory.find((run) =>
     run.id === props.activeRunId ||
-    (run.graph_ref?.scope === props.selectedRef?.scope && run.graph_ref?.id === props.selectedRef?.id && (run.status === 'running' || run.status === 'pending'))
+    (run.graph_ref?.scope === props.selectedRef?.scope && run.graph_ref?.id === props.selectedRef?.id && (run.status === 'queued' || run.status === 'running' || run.status === 'pending' || run.status === 'paused'))
   ) ?? null : null,
 )
 

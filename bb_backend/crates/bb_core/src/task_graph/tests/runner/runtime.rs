@@ -235,6 +235,7 @@ fn run_shell_graph(
     let run = run_state::create_run(root, "test-project", graph_ref, &graph, json!({})).unwrap();
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path: "codex".to_string(),
@@ -411,6 +412,7 @@ fn run_codex_agent_session_graph(
     let run = run_state::create_run(root, "test-project", graph_ref, graph, json!({})).unwrap();
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path,
@@ -452,6 +454,7 @@ fn run_codebuddy_agent_session_graph(
     let run = run_state::create_run(root, "test-project", graph_ref, graph, json!({})).unwrap();
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path: "codex".to_string(),

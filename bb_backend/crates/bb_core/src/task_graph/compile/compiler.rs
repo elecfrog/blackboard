@@ -11,8 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::task_graph::definition::types::{
-    EdgeKind, NodeType, TaskGraphDefinition, TaskGraphEdge, TaskGraphError, TaskGraphInputParam,
-    TaskGraphNode, TaskGraphValidationError,
+    EdgeKind, LoopConfig, NodeType, TaskGraphDefinition, TaskGraphEdge, TaskGraphError,
+    TaskGraphInputParam, TaskGraphNode, TaskGraphValidationError,
 };
 use crate::task_graph::definition::upgrade::upgrade_graph;
 use crate::task_graph::pregel::reserved_runtime_channels;
@@ -222,9 +222,15 @@ pub fn compile_graph(graph: &TaskGraphDefinition) -> Result<CompiledGraph, TaskG
     }
     data_edges.sort_by(|a, b| a.id.cmp(&b.id));
 
+    let node_types = graph
+        .nodes
+        .iter()
+        .map(|node| (node.id.clone(), node.node_type))
+        .collect::<BTreeMap<_, _>>();
+
     let join_nodes = exec_incoming
         .iter()
-        .filter(|(_, edges)| edges.len() > 1)
+        .filter(|(_, edges)| edges.len() > 1 && !has_branch_source(edges, &node_types))
         .map(|(node_id, _)| node_id.clone())
         .collect();
 
@@ -255,7 +261,9 @@ pub fn compile_graph(graph: &TaskGraphDefinition) -> Result<CompiledGraph, TaskG
         &mut channels,
         &exec_outgoing,
         &exec_incoming,
+        &node_types,
     );
+    attach_loop_return_channels(&mut processes, &mut channels, graph);
     attach_data_channels(&mut processes, &mut channels, &data_edges);
     attach_output_channels(&mut processes, &mut channels);
     let trigger_to_nodes = compile_trigger_to_nodes(&processes);
@@ -325,7 +333,11 @@ fn compile_processes(
 
         let has_runtime_io = matches!(
             node.node_type,
-            NodeType::Llm | NodeType::Shell | NodeType::SubGraph
+            NodeType::Llm
+                | NodeType::Plan
+                | NodeType::LlmMutation
+                | NodeType::Shell
+                | NodeType::SubGraph
         );
         processes.insert(
             node.id.clone(),
@@ -413,9 +425,10 @@ fn attach_exec_writers_and_triggers(
     channels: &mut BTreeMap<String, CompiledChannel>,
     exec_outgoing: &BTreeMap<String, Vec<CompiledEdge>>,
     exec_incoming: &BTreeMap<String, Vec<CompiledEdge>>,
+    node_types: &BTreeMap<String, NodeType>,
 ) {
     for (target, incoming) in exec_incoming {
-        if incoming.len() > 1 {
+        if incoming.len() > 1 && !has_branch_source(incoming, node_types) {
             let mut starts = incoming
                 .iter()
                 .map(|edge| edge.from.clone())
@@ -448,7 +461,7 @@ fn attach_exec_writers_and_triggers(
                     });
                 }
             }
-        } else if let Some(edge) = incoming.first() {
+        } else if !incoming.is_empty() {
             let channel = branch_channel(target);
             channels.entry(channel.clone()).or_insert(CompiledChannel {
                 name: channel.clone(),
@@ -462,14 +475,16 @@ fn attach_exec_writers_and_triggers(
                 dedupe_sorted(&mut process.triggers);
                 dedupe_sorted(&mut process.read_channels);
             }
-            if let Some(process) = processes.get_mut(&edge.from) {
-                process.writers.push(CompiledWriter {
-                    channel,
-                    value: CompiledWriteValue::SourceNode {
-                        node_id: edge.from.clone(),
-                    },
-                    hidden: true,
-                });
+            for edge in incoming {
+                if let Some(process) = processes.get_mut(&edge.from) {
+                    process.writers.push(CompiledWriter {
+                        channel: channel.clone(),
+                        value: CompiledWriteValue::SourceNode {
+                            node_id: edge.from.clone(),
+                        },
+                        hidden: true,
+                    });
+                }
             }
         }
     }
@@ -477,6 +492,61 @@ fn attach_exec_writers_and_triggers(
     for source in exec_outgoing.keys() {
         if let Some(process) = processes.get_mut(source) {
             process.writers.sort_by(|a, b| a.channel.cmp(&b.channel));
+        }
+    }
+}
+
+fn has_branch_source(edges: &[CompiledEdge], node_types: &BTreeMap<String, NodeType>) -> bool {
+    edges
+        .iter()
+        .any(|edge| node_types.get(&edge.from) == Some(&NodeType::Branch))
+}
+
+fn attach_loop_return_channels(
+    processes: &mut BTreeMap<String, CompiledProcess>,
+    channels: &mut BTreeMap<String, CompiledChannel>,
+    graph: &TaskGraphDefinition,
+) {
+    for node in &graph.nodes {
+        if node.node_type != NodeType::Loop {
+            continue;
+        }
+        let Ok(config) = serde_json::from_value::<LoopConfig>(node.config.clone()) else {
+            continue;
+        };
+
+        let channel = branch_channel(&node.id);
+        channels.entry(channel.clone()).or_insert(CompiledChannel {
+            name: channel.clone(),
+            kind: CompiledChannelKind::Ephemeral,
+            class: CompiledChannelClass::EphemeralValue { guard: false },
+            required_senders: Vec::new(),
+        });
+
+        if let Some(loop_process) = processes.get_mut(&node.id) {
+            loop_process.triggers.push(channel.clone());
+            loop_process.read_channels.push(channel.clone());
+            dedupe_sorted(&mut loop_process.triggers);
+            dedupe_sorted(&mut loop_process.read_channels);
+        }
+
+        if let Some(body_exit_process) = processes.get_mut(&config.body_exit) {
+            if !body_exit_process
+                .writers
+                .iter()
+                .any(|writer| writer.channel == channel)
+            {
+                body_exit_process.writers.push(CompiledWriter {
+                    channel,
+                    value: CompiledWriteValue::SourceNode {
+                        node_id: config.body_exit.clone(),
+                    },
+                    hidden: true,
+                });
+                body_exit_process
+                    .writers
+                    .sort_by(|a, b| a.channel.cmp(&b.channel));
+            }
         }
     }
 }
@@ -882,6 +952,72 @@ mod tests {
             .contains(&"node_outputs.left".to_string()));
     }
 
+    #[test]
+    fn compile_branch_merge_uses_any_edge_trigger_not_join_barrier() {
+        let mut route = node("route", NodeType::Branch);
+        route.config = json!({
+            "mode": "condition",
+            "input_ref": "$.input.ok",
+            "rules": [
+                { "id": "valid", "label": "Valid", "when": { "op": "truthy" } },
+                { "id": "invalid", "label": "Invalid", "when": { "op": "always" } }
+            ],
+            "default_rule_id": "invalid"
+        });
+        route.pins = vec![
+            exec_pin("exec_in", PinDirection::In, true),
+            exec_pin("rule:valid", PinDirection::Out, false),
+            exec_pin("rule:invalid", PinDirection::Out, false),
+        ];
+        let mut route_final = edge("route-final", "route", "final", EdgeKind::Exec);
+        route_final.from_pin = Some("rule:valid".to_string());
+        let mut route_repair = edge("route-repair", "route", "repair", EdgeKind::Exec);
+        route_repair.from_pin = Some("rule:invalid".to_string());
+
+        let graph = TaskGraphDefinition {
+            schema_version: 1,
+            id: "branch-merge-test".to_string(),
+            scope: TaskGraphScope::Project,
+            title: "Branch Merge Test".to_string(),
+            description: None,
+            version: 1,
+            readonly: false,
+            origin: None,
+            metadata: None,
+            inputs: None,
+            nodes: vec![
+                node("start", NodeType::Start),
+                route,
+                node("repair", NodeType::InputVar),
+                node("final", NodeType::End),
+            ],
+            edges: vec![
+                edge("start-route", "start", "route", EdgeKind::Exec),
+                route_final,
+                route_repair,
+                edge("repair-final", "repair", "final", EdgeKind::Exec),
+            ],
+            layout: None,
+        };
+
+        let compiled = compile_graph(&graph).unwrap();
+
+        assert!(!compiled.join_nodes.contains("final"));
+        assert!(!compiled.channels.contains_key("join:repair+route:final"));
+        assert_eq!(
+            compiled.processes["final"].triggers,
+            vec!["branch:to:final".to_string()]
+        );
+        assert!(compiled.processes["route"]
+            .writers
+            .iter()
+            .any(|writer| writer.channel == "branch:to:final"));
+        assert!(compiled.processes["repair"]
+            .writers
+            .iter()
+            .any(|writer| writer.channel == "branch:to:final"));
+    }
+
     fn node(id: &str, node_type: NodeType) -> TaskGraphNode {
         let config = match node_type {
             NodeType::InputVar => json!({ "input_id": id }),
@@ -910,6 +1046,17 @@ mod tests {
             to_pin: None,
             source_handle: None,
             target_handle: None,
+        }
+    }
+
+    fn exec_pin(id: &str, direction: PinDirection, required: bool) -> NodePin {
+        NodePin {
+            id: id.to_string(),
+            label: id.to_string(),
+            direction,
+            category: PinCategory::Exec,
+            value_type: None,
+            required,
         }
     }
 

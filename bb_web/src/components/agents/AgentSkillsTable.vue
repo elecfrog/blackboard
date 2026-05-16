@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { Trash2, X } from 'lucide-vue-next'
+import type { SkillInfo } from '@/data/agents'
 import { t } from '@/i18n'
 
 const props = defineProps<{
   skills: string[]
-  editMode: boolean
+  availableSkills: SkillInfo[]
+  saving?: boolean
+  saveError?: string
 }>()
 
 const emit = defineEmits<{
@@ -12,64 +16,46 @@ const emit = defineEmits<{
 }>()
 
 const showAll = ref(false)
+const adding = ref(false)
+const pendingSkill = ref('')
 const maxVisible = 4
 
-interface SkillDisplay {
-  name: string
-  category: string
-  level: string
-  levelPercent: number
-}
+const configuredSkills = computed(() => new Set(props.skills))
 
-function parseSkill(skill: string): SkillDisplay {
-  // Skills are stored as simple strings; derive category/level heuristically
-  const categories: Record<string, string> = {
-    triage: 'Operations',
-    'code-review': 'Engineering',
-    coding: 'Engineering',
-    planning: 'Management',
-    testing: 'QA',
-    documentation: 'Knowledge',
-    architecture: 'Engineering',
-    devops: 'Operations',
-    design: 'Design',
-  }
-  const cat = categories[skill.toLowerCase()] || 'General'
-  // Assign level based on position (first skills = expert)
-  const idx = props.skills.indexOf(skill)
-  const levels = ['Expert', 'Advanced', 'Intermediate', 'Beginner']
-  const level = levels[Math.min(idx, levels.length - 1)]
-  const percents: Record<string, number> = { Expert: 95, Advanced: 75, Intermediate: 55, Beginner: 30 }
-  return { name: skill, category: cat, level, levelPercent: percents[level] }
-}
-
-const displaySkills = computed(() => props.skills.map(parseSkill))
+const availableOptions = computed(() =>
+  props.availableSkills.filter((skill) => !configuredSkills.value.has(skill.name)),
+)
 
 const visibleSkills = computed(() => {
-  if (showAll.value || displaySkills.value.length <= maxVisible) return displaySkills.value
-  return displaySkills.value.slice(0, maxVisible)
+  const entries = props.skills.map((skill, index) => ({ skill, index }))
+  if (showAll.value || entries.length <= maxVisible) return entries
+  return entries.slice(0, maxVisible)
 })
 
 function addSkill() {
-  emit('update:skills', [...props.skills, ''])
+  if (props.saving) return
+  adding.value = true
+  pendingSkill.value = ''
+  showAll.value = true
 }
 
 function removeSkill(index: number) {
+  if (props.saving) return
   emit('update:skills', props.skills.filter((_, i) => i !== index))
 }
 
-function updateSkill(index: number, value: string) {
-  const updated = [...props.skills]
-  updated[index] = value
-  emit('update:skills', updated)
+function cancelAdd() {
+  adding.value = false
+  pendingSkill.value = ''
 }
 
-function levelColor(level: string): string {
-  if (level === 'Expert') return '#22c55e'
-  if (level === 'Advanced') return '#3b82f6'
-  if (level === 'Intermediate') return '#f59e0b'
-  return '#94a3b8'
+function addSelectedSkill(value: string) {
+  if (!value || props.saving || configuredSkills.value.has(value)) return
+  emit('update:skills', [...props.skills, value])
+  cancelAdd()
 }
+
+watch(() => props.skills, cancelAdd)
 </script>
 
 <template>
@@ -77,48 +63,75 @@ function levelColor(level: string): string {
     <div class="aw-section-header">
       <h4>{{ t('skillsSectionTitle') }}</h4>
       <div class="aw-section-actions">
-        <button v-if="editMode" type="button" class="aw-add-btn" @click="addSkill">+ {{ t('agentProfileAdd') }}</button>
+        <button
+          type="button"
+          class="aw-add-btn"
+          :disabled="saving || adding"
+          @click="addSkill"
+        >
+          + {{ saving ? t('saving') : t('skillsAdd') }}
+        </button>
       </div>
     </div>
-    <template v-if="skills.length > 0">
+    <template v-if="skills.length > 0 || adding">
       <table class="aw-table">
         <thead>
           <tr>
             <th>{{ t('skillsSkill') }}</th>
-            <th>{{ t('skillsCategory') }}</th>
-            <th>{{ t('skillsLevel') }}</th>
-            <th v-if="editMode" />
+            <th class="aw-table-action-col" />
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(skill, idx) in visibleSkills" :key="idx">
+          <tr v-for="item in visibleSkills" :key="item.index">
             <td>
-              <template v-if="!editMode">{{ skill.name }}</template>
-              <input v-else :value="skills[idx]" type="text" class="aw-table-input" :placeholder="t('skillsSkillPlaceholder')" @input="updateSkill(idx, ($event.target as HTMLInputElement).value)" />
+              {{ item.skill }}
             </td>
-            <td>{{ skill.category }}</td>
+            <td class="aw-table-action-cell">
+              <button
+                type="button"
+                class="aw-remove-btn"
+                :disabled="saving"
+                :aria-label="t('skillsRemove')"
+                @click="removeSkill(item.index)"
+              >
+                <Trash2 aria-hidden="true" />
+              </button>
+            </td>
+          </tr>
+          <tr v-if="adding" class="aw-skill-draft-row">
             <td>
-              <div class="aw-level-cell">
-                <div class="aw-level-bar">
-                  <div class="aw-level-fill" :style="{ width: skill.levelPercent + '%', background: levelColor(skill.level) }" />
-                </div>
-                <span class="aw-level-label" :style="{ color: levelColor(skill.level) }">{{ skill.level }}</span>
-              </div>
+              <select
+                v-model="pendingSkill"
+                class="aw-table-select aw-skill-select"
+                :disabled="saving || availableOptions.length === 0"
+                @change="addSelectedSkill(($event.target as HTMLSelectElement).value)"
+              >
+                <option value="" disabled>{{ t('skillsSelectPlaceholder') }}</option>
+                <option v-if="availableOptions.length === 0" value="" disabled>
+                  {{ t('skillsNoAvailable') }}
+                </option>
+                <option v-for="skill in availableOptions" :key="skill.name" :value="skill.name">
+                  {{ skill.name }}
+                </option>
+              </select>
             </td>
-            <td v-if="editMode">
-              <button type="button" class="aw-remove-btn" @click="removeSkill(idx)">✕</button>
+            <td class="aw-table-action-cell">
+              <button
+                type="button"
+                class="aw-remove-btn"
+                :disabled="saving"
+                :aria-label="t('cancel')"
+                @click="cancelAdd"
+              >
+                <X aria-hidden="true" />
+              </button>
             </td>
           </tr>
         </tbody>
       </table>
     </template>
-    <div v-else class="aw-empty-panel">
-      <div class="aw-empty-panel-icon">S</div>
-      <div class="aw-empty-panel-body">
-        <strong>{{ t('skillsNoConfigured') }}</strong>
-        <p>{{ t('skillsAddHint') }}</p>
-      </div>
-    </div>
+    <p v-else class="aw-empty-line">{{ t('skillsNoConfigured') }}</p>
+    <p v-if="saveError" class="aw-inline-error">{{ saveError }}</p>
     <button
       v-if="!showAll && skills.length > maxVisible"
       type="button"

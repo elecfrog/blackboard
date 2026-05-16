@@ -14,7 +14,6 @@ use crate::task_graph::definition::types::{
     LlmConfig, TaskGraphEdge, TaskGraphError, TaskGraphNode,
 };
 use crate::task_graph::nodes::llm::{resolve_llm_invocation, ResolvedLlmInvocation};
-use crate::task_graph::nodes::navigation::resolve_next_nodes;
 use crate::task_graph::pregel::outcome::NodeOutcome;
 use crate::task_graph::pregel::runner::RunnerOptions;
 use crate::task_graph::run_state::{
@@ -31,7 +30,7 @@ pub(crate) fn execute_llm_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
     run: &TaskGraphRun,
-    edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
+    _edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
 ) -> Result<NodeOutcome, TaskGraphError> {
     let ws = &opts.workspace_root;
     let project = &opts.project;
@@ -94,11 +93,9 @@ pub(crate) fn execute_llm_node(
     if opts.dry_run {
         let end_time = Utc::now().to_rfc3339();
         let dry_output = serde_json::json!({ "dry_run": true, "prompt": invocation.prompt });
-        let next = resolve_next_nodes(edge_map, &node.id, node, &run.context, None)?;
         return Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Succeeded,
-            next_nodes: next,
             output: Some(dry_output),
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
@@ -121,6 +118,8 @@ pub(crate) fn execute_llm_node(
             side_effects: vec![],
             child_run_id: None,
             end_result: None,
+            control: vec![],
+            graph_mutations: vec![],
         });
     }
 
@@ -128,7 +127,7 @@ pub(crate) fn execute_llm_node(
 
     if runtime_uses_agent_session(&invocation.runtime) {
         return execute_agent_session_node(
-            opts, node, run, edge_map, &config, invocation, start_time,
+            opts, node, run, _edge_map, &config, invocation, start_time,
         );
     }
 
@@ -170,12 +169,13 @@ pub(crate) fn execute_llm_node(
                 return Ok(NodeOutcome {
                     node_id: node.id.clone(),
                     status: NodeRunStatus::Failed,
-                    next_nodes: vec![],
                     output: None,
                     node_state,
                     side_effects: vec![],
                     child_run_id: None,
                     end_result: None,
+                    control: vec![],
+                    graph_mutations: vec![],
                 });
             }
 
@@ -227,12 +227,13 @@ pub(crate) fn execute_llm_node(
                 return Ok(NodeOutcome {
                     node_id: node.id.clone(),
                     status: NodeRunStatus::Failed,
-                    next_nodes: vec![],
                     output: None,
                     node_state,
                     side_effects: vec![],
                     child_run_id: None,
                     end_result: None,
+                    control: vec![],
+                    graph_mutations: vec![],
                 });
             }
 
@@ -245,12 +246,10 @@ pub(crate) fn execute_llm_node(
                 write_node_artifact(ws, project, run_id, &node.id, &artifact_content, &config)?;
 
             let log_tail = tail_str(&capture.log, 4096);
-            let next = resolve_next_nodes(edge_map, &node.id, node, &run.context, None)?;
 
             Ok(NodeOutcome {
                 node_id: node.id.clone(),
                 status: NodeRunStatus::Succeeded,
-                next_nodes: next,
                 output: Some(output_value),
                 node_state: TaskGraphRunNode {
                     node_id: node.id.clone(),
@@ -273,6 +272,8 @@ pub(crate) fn execute_llm_node(
                 side_effects: vec![],
                 child_run_id: None,
                 end_result: None,
+                control: vec![],
+                graph_mutations: vec![],
             })
         }
         Err(e) => {
@@ -300,12 +301,13 @@ pub(crate) fn execute_llm_node(
             Ok(NodeOutcome {
                 node_id: node.id.clone(),
                 status: NodeRunStatus::Failed,
-                next_nodes: vec![],
                 output: None,
                 node_state,
                 side_effects: vec![],
                 child_run_id: None,
                 end_result: None,
+                control: vec![],
+                graph_mutations: vec![],
             })
         }
     }
@@ -315,8 +317,8 @@ pub(crate) fn execute_llm_node(
 fn execute_agent_session_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
-    run: &TaskGraphRun,
-    edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
+    _run: &TaskGraphRun,
+    _edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
     config: &LlmConfig,
     invocation: ResolvedLlmInvocation,
     start_time: String,
@@ -368,6 +370,7 @@ fn execute_agent_session_node(
     let outcome = agent_session::run_turn(
         AgentTurnRequest {
             workspace_root: ws.clone(),
+            scripts_dir: opts.scripts_dir.clone(),
             execution_root: ws.clone(),
             project: project.clone(),
             session_id: session.id.clone(),
@@ -423,12 +426,13 @@ fn execute_agent_session_node(
         return Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Failed,
-            next_nodes: vec![],
             output: None,
             node_state,
             side_effects: vec![],
             child_run_id: None,
             end_result: None,
+            control: vec![],
+            graph_mutations: vec![],
         });
     }
 
@@ -461,12 +465,13 @@ fn execute_agent_session_node(
         return Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Failed,
-            next_nodes: vec![],
             output: None,
             node_state,
             side_effects: vec![],
             child_run_id: None,
             end_result: None,
+            control: vec![],
+            graph_mutations: vec![],
         });
     }
 
@@ -474,12 +479,10 @@ fn execute_agent_session_node(
     let artifact_content =
         artifact_content_for_llm_config(config, &outcome.artifact, &output_value);
     let artifact = write_node_artifact(ws, project, run_id, &node.id, &artifact_content, config)?;
-    let next = resolve_next_nodes(edge_map, &node.id, node, &run.context, None)?;
 
     Ok(NodeOutcome {
         node_id: node.id.clone(),
         status: NodeRunStatus::Succeeded,
-        next_nodes: next,
         output: Some(output_value),
         node_state: node_state_with_session(
             node,
@@ -500,6 +503,8 @@ fn execute_agent_session_node(
         side_effects: vec![],
         child_run_id: None,
         end_result: None,
+        control: vec![],
+        graph_mutations: vec![],
     })
 }
 

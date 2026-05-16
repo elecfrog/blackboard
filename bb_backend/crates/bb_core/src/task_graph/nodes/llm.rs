@@ -241,6 +241,7 @@ fn resolve_inline_llm_invocation(
         &prompt_template,
         &opts.project,
         &opts.workspace_root,
+        &opts.scripts_dir,
         context,
         config.inputs.as_ref(),
     );
@@ -295,6 +296,7 @@ fn resolve_agent_invocation(
         &prompt_template,
         &opts.project,
         &opts.workspace_root,
+        &opts.scripts_dir,
         context,
         config.inputs.as_ref(),
     );
@@ -612,6 +614,7 @@ mod tests {
     fn opts(root: &Path, project: &str) -> RunnerOptions {
         RunnerOptions {
             workspace_root: root.to_path_buf(),
+            scripts_dir: root.join("scripts"),
             project: project.to_string(),
             run_id: "run-1".to_string(),
             codex_path: "codex".to_string(),

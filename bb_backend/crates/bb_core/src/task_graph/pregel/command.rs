@@ -10,6 +10,7 @@ use crate::task_graph::compile::compiler::{
 use crate::task_graph::definition::types::{NodeType, TaskGraphError};
 
 use super::model::{PregelSend, PregelTask, PregelWrite};
+use super::outcome::ControlDirective;
 use super::runtime_channels::TASKS_CHANNEL;
 
 pub fn send_packet(node: impl Into<String>, args: Value) -> Value {
@@ -22,8 +23,9 @@ pub fn writes_from_node_outcome(
     compiled: &CompiledGraph,
     task: &PregelTask,
     output: Option<&Value>,
-    next_nodes: &[String],
+    control: &[ControlDirective],
     end_result: Option<&str>,
+    default_exec: bool,
 ) -> Result<Vec<PregelWrite>, TaskGraphError> {
     let mut writes = Vec::new();
     let source = task.node_id.clone();
@@ -53,15 +55,12 @@ pub fn writes_from_node_outcome(
         append_command_control_writes(compiled, task, &source, output, &mut writes);
     }
 
-    for next_node in next_nodes {
-        if let Some(channel) = next_node_channel(compiled, &source, next_node) {
-            writes.push(PregelWrite {
-                task_id: task.id.clone(),
-                source_node_id: source.clone(),
-                channel,
-                value: Value::String(source.clone()),
-            });
-        }
+    for directive in control {
+        append_control_directive_write(compiled, task, &source, directive, &mut writes);
+    }
+
+    if default_exec && control.is_empty() && !output.is_some_and(has_command_control) {
+        append_default_exec_writes(compiled, task, &source, &mut writes);
     }
 
     if compiled
@@ -79,6 +78,59 @@ pub fn writes_from_node_outcome(
     }
 
     Ok(writes)
+}
+fn append_control_directive_write(
+    compiled: &CompiledGraph,
+    task: &PregelTask,
+    source: &str,
+    directive: &ControlDirective,
+    writes: &mut Vec<PregelWrite>,
+) {
+    match directive {
+        ControlDirective::Goto { target } => {
+            if let Some(channel) = next_node_channel(compiled, source, target) {
+                writes.push(PregelWrite {
+                    task_id: task.id.clone(),
+                    source_node_id: source.to_string(),
+                    channel,
+                    value: Value::String(source.to_string()),
+                });
+            }
+        }
+        ControlDirective::Send { node, args } => {
+            writes.push(PregelWrite {
+                task_id: task.id.clone(),
+                source_node_id: source.to_string(),
+                channel: TASKS_CHANNEL.to_string(),
+                value: send_packet(node.clone(), args.clone()),
+            });
+        }
+    }
+}
+
+fn append_default_exec_writes(
+    compiled: &CompiledGraph,
+    task: &PregelTask,
+    source: &str,
+    writes: &mut Vec<PregelWrite>,
+) {
+    let Some(process) = compiled.processes.get(source) else {
+        return;
+    };
+    for writer in &process.writers {
+        if matches!(writer.value, CompiledWriteValue::SourceNode { .. }) {
+            writes.push(PregelWrite {
+                task_id: task.id.clone(),
+                source_node_id: source.to_string(),
+                channel: writer.channel.clone(),
+                value: Value::String(source.to_string()),
+            });
+        }
+    }
+}
+
+fn has_command_control(output: &Value) -> bool {
+    !control_destinations(output).is_empty()
 }
 fn append_state_update_writes(
     compiled: &CompiledGraph,
