@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { MarkdownRenderer, TableOfContents } from '@/ui/markdown'
-import { ExternalLink, GitFork, Plus, Trash2, X } from 'lucide-vue-next'
+import { Archive, ExternalLink, GitFork, Menu, Plus, Trash2, X } from 'lucide-vue-next'
 import UnifiedPopupSelect from '@/components/UnifiedPopupSelect.vue'
 import type { ProjectAgentProfile } from '@/data/agents'
 import type { BlackboardTicket, LaneDef, TicketAttachment } from '@/data/tickets'
@@ -25,6 +25,7 @@ const props = defineProps<{
   assigneeSaving?: boolean
   statusSaving?: boolean
   attachmentsSaving?: boolean
+  deprecating?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -32,6 +33,7 @@ const emit = defineEmits<{
   assigneeChange: [value: string]
   statusChange: [value: string]
   attachmentsChange: [value: TicketAttachment[]]
+  deprecate: []
 }>()
 
 const router = useRouter()
@@ -44,6 +46,8 @@ const currentAssignee = computed(() => props.ticket.extra.assignee?.trim() || ''
 // When the detail panel opens (or the ticket changes), fetch the content.
 const ticketContent = ref('')
 const contentLoading = ref(false)
+const deprecateConfirmVisible = ref(false)
+const ticketMenuOpen = ref(false)
 
 async function fetchContent() {
   contentLoading.value = true
@@ -58,7 +62,11 @@ async function fetchContent() {
 
 watch(
   () => props.ticket.id,
-  () => { fetchContent() },
+  () => {
+    deprecateConfirmVisible.value = false
+    ticketMenuOpen.value = false
+    fetchContent()
+  },
   { immediate: true },
 )
 /// Workflow status options. Kept in lockstep with bb-pm's allowed workflow
@@ -130,6 +138,32 @@ function openRelated(id: string) {
 
 function openGraph() {
   router.push(`/projects/${props.project}/graph?focus=${props.ticket.id}`)
+}
+
+function toggleTicketMenu() {
+  if (props.deprecating) return
+  ticketMenuOpen.value = !ticketMenuOpen.value
+}
+
+function closeTicketMenu() {
+  ticketMenuOpen.value = false
+}
+
+function openDeprecateConfirm() {
+  if (props.deprecating) return
+  ticketMenuOpen.value = false
+  deprecateConfirmVisible.value = true
+}
+
+function cancelDeprecate() {
+  if (props.deprecating) return
+  deprecateConfirmVisible.value = false
+}
+
+function confirmDeprecate() {
+  if (props.deprecating) return
+  deprecateConfirmVisible.value = false
+  emit('deprecate')
 }
 
 function onStatusChange(next: string) {
@@ -248,6 +282,37 @@ function openAttachment(attachment: TicketAttachment) {
             <GitFork class="bb-top-action-svg" aria-hidden="true" />
             {{ t('graph') }}
           </button>
+          <div class="ticket-detail-menu-wrap">
+            <button
+              class="bb-icon-button ticket-detail-menu-trigger"
+              type="button"
+              :aria-label="t('ticketActions')"
+              :aria-expanded="ticketMenuOpen"
+              :disabled="deprecating"
+              @click="toggleTicketMenu"
+            >
+              <Menu class="bb-icon-glyph" aria-hidden="true" />
+            </button>
+            <button
+              v-if="ticketMenuOpen"
+              class="ticket-detail-menu-backdrop"
+              type="button"
+              :aria-label="t('close')"
+              @click="closeTicketMenu"
+            />
+            <div v-if="ticketMenuOpen" class="ticket-detail-menu-popover" role="menu">
+              <button
+                class="ticket-detail-menu-item danger"
+                type="button"
+                role="menuitem"
+                :disabled="deprecating"
+                @click="openDeprecateConfirm"
+              >
+                <Trash2 class="bb-top-action-svg" aria-hidden="true" />
+                <span>{{ t('ticketDelete') }}</span>
+              </button>
+            </div>
+          </div>
           <button class="bb-icon-button" type="button" :aria-label="t('close')" @click="$emit('close')">
             <X class="bb-icon-glyph" aria-hidden="true" />
           </button>
@@ -384,6 +449,37 @@ function openAttachment(attachment: TicketAttachment) {
             <TableOfContents :content="ticketContent" :locale="locale" />
           </aside>
         </template>
+      </div>
+
+      <div
+        v-if="deprecateConfirmVisible"
+        class="ticket-deprecate-confirm-backdrop"
+        @click.self="cancelDeprecate"
+      >
+        <section class="ticket-deprecate-confirm-dialog" role="alertdialog" aria-modal="true">
+          <header>
+            <Archive class="bb-top-action-svg" aria-hidden="true" />
+            <div>
+              <h3>{{ t('ticketDeprecateTitle') }}</h3>
+              <p>{{ ticket.id }} · {{ ticket.title }}</p>
+            </div>
+          </header>
+          <p>{{ t('ticketDeprecateConfirm', { id: ticket.id }) }}</p>
+          <footer>
+            <button class="bb-top-action-button" type="button" :disabled="deprecating" @click="cancelDeprecate">
+              {{ t('cancel') }}
+            </button>
+            <button
+              class="bb-top-action-button ticket-deprecate-confirm-submit"
+              type="button"
+              :disabled="deprecating"
+              @click="confirmDeprecate"
+            >
+              <Archive class="bb-top-action-svg" aria-hidden="true" />
+              {{ deprecating ? t('saving') : t('ticketDeprecateConfirmAction') }}
+            </button>
+          </footer>
+        </section>
       </div>
     </aside>
   </div>

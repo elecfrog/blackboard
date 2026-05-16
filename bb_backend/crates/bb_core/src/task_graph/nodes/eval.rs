@@ -8,7 +8,7 @@ use std::path::Path;
 use crate::task_graph::definition::types::{BranchConfig, LoopConfig};
 use crate::task_graph::run_state::RunContext;
 
-type NodeInputs = serde_json::Map<String, serde_json::Value>;
+pub(in crate::task_graph::nodes) type NodeInputs = serde_json::Map<String, serde_json::Value>;
 
 // ─── Branch condition evaluation ─────────────────────────────────────────────
 
@@ -111,10 +111,11 @@ pub(in crate::task_graph) fn render_prompt_template(
     template: &str,
     project: &str,
     root: &Path,
+    scripts_dir: &Path,
     context: &RunContext,
     node_inputs: Option<&serde_json::Value>,
 ) -> String {
-    let node_inputs = resolve_node_inputs(node_inputs, project, root, context);
+    let node_inputs = resolve_node_inputs(node_inputs, project, root, scripts_dir, context);
 
     // 使用正则匹配所有 {{...}} 占位符并替换
     let mut rendered = String::with_capacity(template.len());
@@ -125,7 +126,8 @@ pub(in crate::task_graph) fn render_prompt_template(
         let after_open = &rest[start + 2..];
         if let Some(end) = after_open.find("}}") {
             let expr = after_open[..end].trim();
-            let replacement = resolve_template_expr(expr, project, root, context, &node_inputs);
+            let replacement =
+                resolve_template_expr(expr, project, root, scripts_dir, context, &node_inputs);
             rendered.push_str(&replacement);
             rest = &after_open[end + 2..];
         } else {
@@ -142,16 +144,20 @@ pub(in crate::task_graph) fn render_prompt_template(
 /// 支持的表达式：
 /// - `env.project` — 系统环境变量 project
 /// - `env.root` — 系统环境变量 workspace root
+/// - `env.scripts_dir` — Blackboard scripts directory
 /// - `inputs.xxx` — graph input 变量
+/// - `data.<node-id>.output` — 当前 Pull task 注入的 data edge 输入
+/// - `data.<node-id>.artifact_path` — 上游 data output 中的 artifact_path
 /// - `nodes.xxx.output` — 上游节点输出（JSONPath 风格）
 fn resolve_template_expr(
     expr: &str,
     project: &str,
     root: &Path,
+    scripts_dir: &Path,
     context: &RunContext,
     node_inputs: &NodeInputs,
 ) -> String {
-    resolve_template_expr_value(expr, project, root, context, Some(node_inputs))
+    resolve_template_expr_value(expr, project, root, scripts_dir, context, Some(node_inputs))
         .map(|value| prompt_value(&value))
         .unwrap_or_default()
 }
@@ -160,13 +166,15 @@ fn resolve_template_expr_value(
     expr: &str,
     project: &str,
     root: &Path,
+    scripts_dir: &Path,
     context: &RunContext,
     node_inputs: Option<&NodeInputs>,
 ) -> Option<serde_json::Value> {
     if let Some(env_key) = expr.strip_prefix("env.") {
         return match env_key {
             "project" => Some(serde_json::Value::String(project.to_string())),
-            "root" => Some(serde_json::Value::String(root.display().to_string())),
+            "root" => Some(serde_json::Value::String(path_template_string(root))),
+            "scripts_dir" => Some(serde_json::Value::String(path_template_string(scripts_dir))),
             _ => None,
         };
     }
@@ -181,6 +189,13 @@ fn resolve_template_expr_value(
         ));
     }
 
+    if let Some(data_path) = expr.strip_prefix("data.") {
+        return Some(resolve_json_path(
+            &format!("$.input.__data.{}", data_path),
+            context,
+        ));
+    }
+
     if let Some(node_path) = expr.strip_prefix("nodes.") {
         return Some(resolve_json_path(
             &format!("$.nodes.{}", node_path),
@@ -191,10 +206,11 @@ fn resolve_template_expr_value(
     None
 }
 
-fn resolve_node_inputs(
+pub(in crate::task_graph::nodes) fn resolve_node_inputs(
     bindings: Option<&serde_json::Value>,
     project: &str,
     root: &Path,
+    scripts_dir: &Path,
     context: &RunContext,
 ) -> NodeInputs {
     let Some(serde_json::Value::Object(map)) = bindings else {
@@ -205,7 +221,7 @@ fn resolve_node_inputs(
         .map(|(key, value)| {
             (
                 key.clone(),
-                resolve_node_input_value(value, project, root, context),
+                resolve_node_input_value(value, project, root, scripts_dir, context),
             )
         })
         .collect()
@@ -215,21 +231,36 @@ fn resolve_node_input_value(
     value: &serde_json::Value,
     project: &str,
     root: &Path,
+    scripts_dir: &Path,
     context: &RunContext,
 ) -> serde_json::Value {
     match value {
         serde_json::Value::String(raw) => {
             let trimmed = raw.trim();
             if let Some(expr) = full_mustache_expr(trimmed) {
-                return resolve_template_expr_value(expr, project, root, context, None)
-                    .unwrap_or(serde_json::Value::Null);
+                return resolve_template_expr_value(
+                    expr,
+                    project,
+                    root,
+                    scripts_dir,
+                    context,
+                    None,
+                )
+                .unwrap_or(serde_json::Value::Null);
             }
-            serde_json::Value::String(render_prompt_template(raw, project, root, context, None))
+            serde_json::Value::String(render_prompt_template(
+                raw,
+                project,
+                root,
+                scripts_dir,
+                context,
+                None,
+            ))
         }
         serde_json::Value::Array(values) => serde_json::Value::Array(
             values
                 .iter()
-                .map(|value| resolve_node_input_value(value, project, root, context))
+                .map(|value| resolve_node_input_value(value, project, root, scripts_dir, context))
                 .collect(),
         ),
         serde_json::Value::Object(map) => serde_json::Value::Object(
@@ -237,7 +268,7 @@ fn resolve_node_input_value(
                 .map(|(key, value)| {
                     (
                         key.clone(),
-                        resolve_node_input_value(value, project, root, context),
+                        resolve_node_input_value(value, project, root, scripts_dir, context),
                     )
                 })
                 .collect(),
@@ -267,6 +298,10 @@ fn full_mustache_expr(raw: &str) -> Option<&str> {
     } else {
         None
     }
+}
+
+fn path_template_string(path: &Path) -> String {
+    path.display().to_string().replace('\\', "/")
 }
 
 pub(super) fn resolve_loop_max_iterations(config: &LoopConfig, context: &RunContext) -> u32 {

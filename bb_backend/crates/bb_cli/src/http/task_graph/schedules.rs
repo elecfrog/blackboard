@@ -11,7 +11,10 @@ use serde_json::{json, Value};
 use std::time::Duration;
 
 use super::dto::{is_active_run_status, TaskGraphApiError, TgGraphRef, TgRunResponse};
-use super::{create_task_graph_run, current_workspace_root, spawn_task_graph_run};
+use super::{
+    create_task_graph_run, current_workspace_root, dispatch_queued_task_graph_runs,
+    graph_run_policy, spawn_task_graph_run,
+};
 use crate::http::AppState;
 
 #[derive(Debug, Serialize)]
@@ -72,7 +75,7 @@ pub(crate) async fn tg_run_schedule_now(
     let planned_fire_at = Utc::now();
     let input = schedule_run_input(&schedule, planned_fire_at, "manual");
     let graph = graph_ref_for_schedule(&schedule);
-    let created = create_task_graph_run(&root, &project, &graph, input, false)?;
+    let created = create_task_graph_run(&root, &project, &graph, input, None, false)?;
     task_graph::mark_schedule_triggered(
         &root,
         &project,
@@ -82,7 +85,7 @@ pub(crate) async fn tg_run_schedule_now(
         &run_status_label(created.run.status),
         Utc::now(),
     )?;
-    if created.created {
+    if created.created && created.run.status != task_graph::RunStatus::Queued {
         spawn_task_graph_run(root, project, created.run.id.clone());
     }
     Ok((created.status, Json(TgRunResponse { run: created.run })))
@@ -116,6 +119,7 @@ pub(crate) fn dispatch_due_schedules(workspace: &Workspace) -> Result<usize, Tas
         )))
     })? {
         dispatched += dispatch_project_due_schedules(&root, &project.name, now)?;
+        dispatched += dispatch_queued_task_graph_runs(&root, &project.name)?;
     }
     Ok(dispatched)
 }
@@ -139,7 +143,9 @@ fn dispatch_project_due_schedules(
 
         if let Some(run_id) = schedule.state.last_run_id.as_deref() {
             if let Ok(run) = task_graph::read_run(root, project, run_id) {
-                if is_active_run_status(run.status) {
+                if is_active_run_status(run.status)
+                    && !schedule_graph_queue_enabled(root, project, &schedule)?
+                {
                     task_graph::mark_schedule_skipped(
                         root,
                         project,
@@ -155,7 +161,7 @@ fn dispatch_project_due_schedules(
 
         let graph = graph_ref_for_schedule(&schedule);
         let input = schedule_run_input(&schedule, planned_fire_at, "schedule");
-        match create_task_graph_run(root, project, &graph, input, false) {
+        match create_task_graph_run(root, project, &graph, input, None, false) {
             Ok(created) => {
                 task_graph::mark_schedule_triggered(
                     root,
@@ -166,7 +172,7 @@ fn dispatch_project_due_schedules(
                     &run_status_label(created.run.status),
                     Utc::now(),
                 )?;
-                if created.created {
+                if created.created && created.run.status != task_graph::RunStatus::Queued {
                     spawn_task_graph_run(
                         root.to_path_buf(),
                         project.to_string(),
@@ -222,6 +228,22 @@ fn graph_ref_for_schedule(schedule: &TaskSchedule) -> TgGraphRef {
     }
 }
 
+fn schedule_graph_queue_enabled(
+    root: &std::path::Path,
+    project: &str,
+    schedule: &TaskSchedule,
+) -> Result<bool, TaskGraphApiError> {
+    let graph = match schedule.graph_ref.scope {
+        task_graph::TaskGraphScope::System => {
+            task_graph::read_system_graph(root, &schedule.graph_ref.id)?
+        }
+        task_graph::TaskGraphScope::Project => {
+            task_graph::read_project_graph(root, project, &schedule.graph_ref.id)?
+        }
+    };
+    Ok(graph_run_policy(&graph).queue_enabled)
+}
+
 fn schedule_run_input(
     schedule: &TaskSchedule,
     planned_fire_at: DateTime<Utc>,
@@ -246,6 +268,7 @@ fn schedule_run_input(
 
 fn run_status_label(status: task_graph::RunStatus) -> String {
     match status {
+        task_graph::RunStatus::Queued => "queued",
         task_graph::RunStatus::Pending => "pending",
         task_graph::RunStatus::Running => "running",
         task_graph::RunStatus::Paused => "paused",

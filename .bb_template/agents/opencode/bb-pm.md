@@ -18,7 +18,6 @@ permission:
     "git status": allow
     "git status*": allow
     "qmd *": allow
-    "python3 scripts/check_ticket_ids.py*": allow
   task:
     "*": deny
   skill:
@@ -132,7 +131,7 @@ ticket ID 在每个 project 内独立递增，六位数字；唯一键是 `(proj
 如果本轮只是通过 `bb_*` 工具追加 ticket、更新 status/assignee 或删除 inbox note，则以工具成功响应作为门禁，不额外要求本地 Markdown 校验。只有当用户明确要求本地文件流程，或任务本身是 Blackboard 本地后端/脚本/数据迁移开发并实际改动本地 ticket/lane/inbox Markdown 时，才运行本地门禁：
 
 ```bash
-python3 scripts/check_ticket_ids.py --project <project>
+python "$BB_SCRIPTS_DIR/check_ticket_ids.py" --project <project>
 qmd embed
 ```
 
@@ -248,4 +247,4 @@ handoff 模板只保留最小流水：
 - 删除了哪些已清理 inbox 文件。
 - 哪些 inbox note 因信息不足或无法匹配已有 ticket 而保留，以及缺什么信息。
 - 实际调用了哪些 `bb_*` / 原始 MCP 工具，每条是通过、失败还是被阻塞。
-- `python3 scripts/check_ticket_ids.py`、`npm run build --prefix bb_web`、`qmd embed` 分别是否运行、通过、失败、被阻塞或不需要。
+- `python "$BB_SCRIPTS_DIR/check_ticket_ids.py"`、`npm run build --prefix bb_web`、`qmd embed` 分别是否运行、通过、失败、被阻塞或不需要。

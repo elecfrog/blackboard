@@ -39,6 +39,20 @@ export function getDefaultPins(nodeType: TaskGraphNode['type'], config: Record<s
         { id: 'exec_out', label: 'Out', direction: 'out', category: 'exec' },
         { id: 'output', label: 'Output', direction: 'out', category: 'data', value_type: 'json' },
       ]
+    case 'plan':
+      return [
+        { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },
+        { id: 'plan_input', label: 'Plan Input', direction: 'in', category: 'data', value_type: 'json' },
+        { id: 'exec_out', label: 'Out', direction: 'out', category: 'exec' },
+        { id: 'output', label: 'Output', direction: 'out', category: 'data', value_type: 'json' },
+      ]
+    case 'llm_mutation':
+      return [
+        { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },
+        { id: 'plan_input', label: 'Plan Input', direction: 'in', category: 'data', value_type: 'json' },
+        { id: 'exec_out', label: 'Out', direction: 'out', category: 'exec' },
+        { id: 'mutation_artifact', label: 'Mutation Artifact', direction: 'out', category: 'data', value_type: 'json' },
+      ]
     case 'shell':
       return [
         { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },

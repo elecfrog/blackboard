@@ -34,12 +34,6 @@ const pagedAgents = computed(() => {
   return filteredAgents.value.slice(start, start + pageSize)
 })
 
-function statusClass(agent: AgentProfile): string {
-  if (agent.status === 'active') return 'online'
-  if (agent.status === 'inactive') return 'idle'
-  return 'offline'
-}
-
 function agentInitial(agent: AgentProfile): string {
   return (agent.display_name || agent.id || '?').slice(0, 1).toUpperCase()
 }
@@ -89,9 +83,8 @@ function goPage(page: number) {
           <strong>{{ agent.display_name }}</strong>
           <small>{{ agent.description || agent.kind }}</small>
         </span>
-        <span class="aw-list-meta">
-          <span :class="['aw-status-dot', statusClass(agent)]" />
-          <em v-if="assignmentCounts.get(agent.id)">{{ assignmentCounts.get(agent.id) }}</em>
+        <span v-if="assignmentCounts.get(agent.id)" class="aw-list-meta">
+          <em>{{ assignmentCounts.get(agent.id) }}</em>
         </span>
       </button>
       <div v-if="pagedAgents.length === 0" class="aw-list-empty">{{ t('agentNoResults') }}</div>

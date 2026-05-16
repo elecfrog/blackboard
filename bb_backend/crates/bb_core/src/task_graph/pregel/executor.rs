@@ -9,6 +9,8 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
+use serde_json::{Map, Value};
+
 use super::outcome::{ExecutionMode, NodeOutcome, ReadyNode};
 use super::runner::RunnerOptions;
 use crate::task_graph::definition::types::{
@@ -139,13 +141,64 @@ pub(super) fn execute_ready_nodes(
 }
 
 fn run_for_ready_node<'a>(run: &'a TaskGraphRun, ready_node: &ReadyNode) -> Cow<'a, TaskGraphRun> {
-    if ready_node.task_kind != PregelTaskKind::Push {
+    if ready_node.task_kind == PregelTaskKind::Push {
+        let mut task_run = run.clone();
+        task_run.context.input = ready_node.task_input.clone();
+        return Cow::Owned(task_run);
+    }
+
+    let data_inputs = project_data_inputs(&ready_node.task_input);
+    if data_inputs.is_null() {
         return Cow::Borrowed(run);
     }
 
     let mut task_run = run.clone();
-    task_run.context.input = ready_node.task_input.clone();
+    let mut input = task_run
+        .context
+        .input
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+    input.insert("__task_input".to_string(), ready_node.task_input.clone());
+    input.insert("__data".to_string(), data_inputs);
+    task_run.context.input = Value::Object(input);
     Cow::Owned(task_run)
+}
+
+fn project_data_inputs(task_input: &Value) -> Value {
+    let Some(map) = task_input.as_object() else {
+        return Value::Null;
+    };
+
+    let mut data = Map::new();
+    for (channel, value) in map {
+        let mut parts = channel.splitn(3, ':');
+        if parts.next() != Some("data") {
+            continue;
+        }
+        let Some(source_node_id) = parts.next() else {
+            continue;
+        };
+        if parts.next().is_none() {
+            continue;
+        }
+
+        let mut projected = Map::new();
+        projected.insert("output".to_string(), value.clone());
+        if let Some(artifact_path) = value.get("artifact_path") {
+            projected.insert("artifact_path".to_string(), artifact_path.clone());
+        }
+        if let Some(data_value) = value.get("data") {
+            projected.insert("data".to_string(), data_value.clone());
+        }
+        data.insert(source_node_id.to_string(), Value::Object(projected));
+    }
+
+    if data.is_empty() {
+        Value::Null
+    } else {
+        Value::Object(data)
+    }
 }
 
 #[cfg(test)]
@@ -201,9 +254,40 @@ mod tests {
         assert_eq!(outcomes[0].output, Some(json!("original")));
     }
 
+    #[test]
+    fn pull_task_projects_data_channels_into_template_inputs() {
+        let opts = options();
+        let node = llm_node("read-data", "{{data.source.artifact_path}}");
+        let run = run(json!({ "value": "original" }));
+        let ready_nodes = vec![ReadyNode {
+            node_id: "read-data".to_string(),
+            execution_mode: ExecutionMode::Inline,
+            task_kind: PregelTaskKind::Pull,
+            task_input: json!({
+                "data:source:read-data": {
+                    "data": { "kind": "plan" },
+                    "artifact_path": "D:/tmp/plan.json",
+                    "artifact_type": "json"
+                }
+            }),
+        }];
+        let edge_map = HashMap::new();
+        let mut node_map = HashMap::new();
+        node_map.insert("read-data".to_string(), &node);
+
+        let outcomes =
+            execute_ready_nodes(&opts, &ready_nodes, &run, &edge_map, &node_map).unwrap();
+
+        assert_eq!(
+            outcomes[0].output.as_ref().unwrap()["prompt"],
+            "D:/tmp/plan.json"
+        );
+    }
+
     fn options() -> RunnerOptions {
         RunnerOptions {
             workspace_root: std::env::temp_dir(),
+            scripts_dir: std::env::temp_dir().join("scripts"),
             project: "blackboard".to_string(),
             run_id: "run-test".to_string(),
             codex_path: "codex".to_string(),
@@ -232,14 +316,17 @@ mod tests {
             },
             status: RunStatus::Running,
             created_at: "2026-05-15T00:00:00Z".to_string(),
+            queued_at: None,
+            queue_deadline_at: None,
             started_at: None,
             updated_at: "2026-05-15T00:00:00Z".to_string(),
             completed_at: None,
             current_superstep: 0,
             last_checkpoint_id: None,
             pregel_checkpoint: None,
+            current_graph_revision: 0,
+            active_nodes: vec!["read".to_string()],
             paused: None,
-            cursor: vec!["read".to_string()],
             context: RunContext {
                 input,
                 node_outputs: Map::new(),
@@ -261,6 +348,25 @@ mod tests {
             description: None,
             position: None,
             config: json!({ "input_id": input_id }),
+            pins: vec![],
+        }
+    }
+
+    fn llm_node(id: &str, prompt: &str) -> TaskGraphNode {
+        TaskGraphNode {
+            id: id.to_string(),
+            node_type: NodeType::Llm,
+            label: id.to_string(),
+            description: None,
+            position: None,
+            config: json!({
+                "runtime": "opencode",
+                "agent": "native",
+                "prompt": {
+                    "mode": "inline",
+                    "template": prompt
+                }
+            }),
             pins: vec![],
         }
     }

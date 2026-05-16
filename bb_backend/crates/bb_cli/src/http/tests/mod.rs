@@ -78,6 +78,85 @@ async fn healthz_returns_ok() {
 }
 
 #[tokio::test]
+async fn agent_tools_list_returns_static_catalog() {
+    let (_temp, workspace) = fixture();
+    let app = app(workspace);
+
+    let response = app
+        .oneshot(
+            Request::get("/api/agents/tools")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_response(response).await;
+    let tools = body["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 3);
+    assert!(tools.iter().any(|tool| {
+        tool["id"] == "codebuddy" && tool["npm_package"] == "@tencent-ai/codebuddy-code"
+    }));
+    assert!(tools
+        .iter()
+        .any(|tool| tool["id"] == "opencode" && tool["target_version"] == "1.15.0"));
+}
+
+#[tokio::test]
+async fn agent_skills_list_returns_registered_skill_dirs() {
+    let (_temp, workspace) = fixture();
+    let root = workspace.root().to_path_buf();
+    let skill_dir = root.join("skills/triage");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: triage\ndescription: Inbox triage skill\n---\n\n# Triage",
+    )
+    .unwrap();
+    let app = app(workspace);
+
+    let response = app
+        .oneshot(
+            Request::get("/api/agents/skills")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_response(response).await;
+    assert_eq!(body["skills"][0]["name"], "triage");
+    assert_eq!(body["skills"][0]["description"], "Inbox triage skill");
+}
+
+#[tokio::test]
+async fn agent_tool_install_unknown_id_is_rejected_before_npm() {
+    let (_temp, workspace) = fixture();
+    let app = app(workspace);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/agents/tools/unknown/install")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_response(response).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+    assert!(body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("unknown agent tool id"));
+}
+
+#[tokio::test]
 async fn static_dir_serves_assets_and_spa_fallback_without_masking_api() {
     let temp = TempDir::new().unwrap();
     let static_dir = temp.path().join("dist");
@@ -1122,6 +1201,76 @@ async fn rest_patch_ticket_updates_status() {
 }
 
 #[tokio::test]
+async fn rest_deprecate_ticket_moves_file_and_resolves_relationships() {
+    let (temp, workspace) = fixture();
+    let tickets_dir = temp.path().join("blackboard/projects/demo/tickets");
+    fs::remove_file(tickets_dir.join("sentinel.md")).unwrap();
+    fs::write(
+            tickets_dir.join("000001-deprecated.md"),
+            "+++\nid = \"000001\"\nlane = \"bbd\"\ntitle = \"Deprecated\"\ncreated_at = \"2026-05-04\"\nupdated_at = \"2026-05-05\"\nstatus = \"todo\"\n+++\n\n# 当前进展\n\nbody\n",
+        )
+        .unwrap();
+    fs::write(
+            tickets_dir.join("000002-dependent.md"),
+            "+++\nid = \"000002\"\nlane = \"bbd\"\ntitle = \"Dependent\"\ncreated_at = \"2026-05-04\"\nupdated_at = \"2026-05-05\"\nstatus = \"todo\"\ndepends_on = \"000001\"\n+++\n\n# 当前进展\n\nbody\n",
+        )
+        .unwrap();
+    fs::write(
+            tickets_dir.join("000003-attachment.md"),
+            "+++\nid = \"000003\"\nlane = \"bbd\"\ntitle = \"Attachment\"\ncreated_at = \"2026-05-04\"\nupdated_at = \"2026-05-05\"\nstatus = \"todo\"\nattachments = \"[{\\\"kind\\\":\\\"ticket\\\",\\\"target\\\":\\\"000001\\\"},{\\\"kind\\\":\\\"wiki\\\",\\\"target\\\":\\\"keep.md\\\"}]\"\n+++\n\n# 当前进展\n\nbody\n",
+        )
+        .unwrap();
+    fs::write(
+        temp.path()
+            .join("blackboard/projects/demo/__tickets__.json"),
+        r#"{"current_counter":"000003","tickets":[]}"#,
+    )
+    .unwrap();
+
+    let app_built = app(workspace);
+    let response = app_built
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/projects/demo/tickets/000001/deprecate")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_response(response).await;
+    assert_eq!(body["ticket"]["id"], "000001");
+    assert_eq!(
+        body["ticket"]["path"],
+        "tickets/_deprecated/000001-deprecated.md"
+    );
+    assert!(tickets_dir
+        .join("_deprecated/000001-deprecated.md")
+        .exists());
+    assert!(!tickets_dir.join("000001-deprecated.md").exists());
+    let dependent = fs::read_to_string(tickets_dir.join("000002-dependent.md")).unwrap();
+    assert!(!dependent.contains("depends_on ="));
+    let attachment = fs::read_to_string(tickets_dir.join("000003-attachment.md")).unwrap();
+    assert!(!attachment.contains(r#"\"target\":\"000001\""#));
+    assert!(attachment.contains("keep.md"));
+
+    let response = app_built
+        .oneshot(
+            Request::get("/api/projects/demo/tickets")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_response(response).await;
+    assert_eq!(body["tickets"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
 async fn rest_patch_ticket_updates_assignee_extra() {
     let (temp, workspace) = fixture();
     let tickets_dir = temp.path().join("blackboard/projects/demo/tickets");
@@ -1809,6 +1958,28 @@ fn minimal_project_graph_json() -> Value {
 
 async fn create_minimal_project_graph(app: axum::Router) {
     let body = json!({ "graph": minimal_project_graph_json() });
+    create_project_graph(app, body).await;
+}
+
+fn project_graph_with_run_policy_json(
+    allow_concurrent_runs: bool,
+    max_concurrent_runs: u32,
+    queue_enabled: bool,
+    max_queue_wait_ms: u64,
+) -> Value {
+    let mut graph = minimal_project_graph_json();
+    graph["metadata"] = json!({
+        "run_policy": {
+            "allow_concurrent_runs": allow_concurrent_runs,
+            "max_concurrent_runs": max_concurrent_runs,
+            "queue_enabled": queue_enabled,
+            "max_queue_wait_ms": max_queue_wait_ms
+        }
+    });
+    graph
+}
+
+async fn create_project_graph(app: axum::Router, body: Value) {
     let response = app
         .oneshot(
             Request::post("/api/projects/demo/task-graphs")
@@ -1819,6 +1990,25 @@ async fn create_minimal_project_graph(app: axum::Router) {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+async fn create_dry_task_graph_run(app: axum::Router, graph_id: &str) -> (StatusCode, Value) {
+    let run_body = json!({
+        "graph": { "scope": "project", "id": graph_id },
+        "input": {},
+        "dry_run": true
+    });
+    let response = app
+        .oneshot(
+            Request::post("/api/projects/demo/task-graph-runs")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&run_body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, json_response(response).await)
 }
 
 fn e2e_smoke_project_graph_json() -> Value {
@@ -2374,6 +2564,7 @@ async fn tg_e2e_smoke_exposes_supersteps_event_log_and_resume() {
     );
 
     let opts = bb_core::task_graph::RunnerOptions {
+        scripts_dir: root.join("scripts"),
         workspace_root: root,
         project: "demo".to_string(),
         run_id: run_id.clone(),
@@ -2550,7 +2741,134 @@ async fn tg_schedule_crud_routes() {
 }
 
 #[tokio::test]
-async fn tg_schedule_run_now_does_not_reuse_active_graph_run() {
+async fn tg_graph_run_policy_queues_when_capacity_full() {
+    let (_temp, workspace) = tg_fixture();
+    let app = app(workspace.clone());
+    create_project_graph(
+        app.clone(),
+        json!({
+            "graph": project_graph_with_run_policy_json(false, 1, true, 60_000)
+        }),
+    )
+    .await;
+
+    let (first_status, first_body) = create_dry_task_graph_run(app.clone(), "my-test-graph").await;
+    assert_eq!(first_status, StatusCode::CREATED);
+    assert_eq!(first_body["run"]["status"], "pending");
+
+    let (second_status, second_body) =
+        create_dry_task_graph_run(app.clone(), "my-test-graph").await;
+    assert_eq!(second_status, StatusCode::ACCEPTED);
+    assert_eq!(second_body["run"]["status"], "queued");
+    assert!(second_body["run"]["queued_at"].is_string());
+    assert!(second_body["run"]["queue_deadline_at"].is_string());
+
+    let run_id = second_body["run"]["id"].as_str().unwrap();
+    let events = bb_core::task_graph::list_run_events(workspace.root(), "demo", run_id).unwrap();
+    assert!(events.iter().any(|event| event.kind == "run_queued"));
+}
+
+#[tokio::test]
+async fn tg_graph_run_policy_allows_max_two_then_queues() {
+    let (_temp, _workspace) = tg_fixture();
+    let app = app(_workspace);
+    create_project_graph(
+        app.clone(),
+        json!({
+            "graph": project_graph_with_run_policy_json(true, 2, true, 60_000)
+        }),
+    )
+    .await;
+
+    let (first_status, first_body) = create_dry_task_graph_run(app.clone(), "my-test-graph").await;
+    let (second_status, second_body) =
+        create_dry_task_graph_run(app.clone(), "my-test-graph").await;
+    let (third_status, third_body) = create_dry_task_graph_run(app, "my-test-graph").await;
+
+    assert_eq!(first_status, StatusCode::CREATED);
+    assert_eq!(second_status, StatusCode::CREATED);
+    assert_eq!(third_status, StatusCode::ACCEPTED);
+    assert_eq!(first_body["run"]["status"], "pending");
+    assert_eq!(second_body["run"]["status"], "pending");
+    assert_eq!(third_body["run"]["status"], "queued");
+}
+
+#[tokio::test]
+async fn tg_queued_dispatcher_expires_deadline_and_writes_event() {
+    let (_temp, workspace) = tg_fixture();
+    let app = app(workspace.clone());
+    create_project_graph(
+        app.clone(),
+        json!({
+            "graph": project_graph_with_run_policy_json(false, 1, true, 60_000)
+        }),
+    )
+    .await;
+
+    let _ = create_dry_task_graph_run(app.clone(), "my-test-graph").await;
+    let (_, queued_body) = create_dry_task_graph_run(app, "my-test-graph").await;
+    let queued_id = queued_body["run"]["id"].as_str().unwrap().to_string();
+    let run_path = workspace
+        .root()
+        .join(format!("runtime/task_graph_runs/demo/{queued_id}/run.json"));
+    let mut run_json: Value =
+        serde_json::from_str(&fs::read_to_string(&run_path).unwrap()).unwrap();
+    run_json["queue_deadline_at"] = json!((Utc::now() - ChronoDuration::minutes(1)).to_rfc3339());
+    fs::write(&run_path, serde_json::to_string_pretty(&run_json).unwrap()).unwrap();
+
+    let dispatched = task_graph::dispatch_queued_task_graph_runs(workspace.root(), "demo").unwrap();
+    assert_eq!(dispatched, 0);
+
+    let run = bb_core::task_graph::read_run(workspace.root(), "demo", &queued_id).unwrap();
+    assert_eq!(run.status, bb_core::task_graph::RunStatus::Failed);
+    let events =
+        bb_core::task_graph::list_run_events(workspace.root(), "demo", &queued_id).unwrap();
+    assert!(events.iter().any(|event| event.kind == "run_queue_timeout"));
+}
+
+#[tokio::test]
+async fn tg_schedule_dispatcher_enqueues_when_graph_queue_enabled() {
+    let (_temp, workspace) = tg_fixture();
+    let app = app(workspace.clone());
+    create_project_graph(
+        app.clone(),
+        json!({
+            "graph": project_graph_with_run_policy_json(false, 1, true, 60_000)
+        }),
+    )
+    .await;
+    create_task_schedule(app.clone(), "queue-check").await;
+
+    let (_, active_body) = create_dry_task_graph_run(app, "my-test-graph").await;
+    let active_run = active_body["run"]["id"].as_str().unwrap().to_string();
+
+    let planned = (Utc::now() - ChronoDuration::minutes(5)).to_rfc3339();
+    let path = workspace
+        .root()
+        .join("runtime/task_graph_schedules/demo/queue-check.json");
+    let mut schedule: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    schedule["state"]["last_run_id"] = json!(active_run);
+    schedule["state"]["next_run_at"] = json!(planned);
+    fs::write(&path, serde_json::to_string_pretty(&schedule).unwrap()).unwrap();
+
+    let dispatched = task_graph::dispatch_due_schedules(&workspace).unwrap();
+    assert_eq!(dispatched, 1);
+
+    let schedules = bb_core::task_graph::list_schedules(workspace.root(), "demo").unwrap();
+    let schedule = schedules
+        .iter()
+        .find(|item| item.id == "queue-check")
+        .unwrap();
+    assert_eq!(schedule.state.last_status.as_deref(), Some("queued"));
+    let runs = bb_core::task_graph::list_runs(workspace.root(), "demo").unwrap();
+    assert_eq!(runs.len(), 2);
+    assert!(runs
+        .iter()
+        .any(|run| run.status == bb_core::task_graph::RunStatus::Queued));
+}
+
+#[tokio::test]
+async fn tg_schedule_run_now_respects_graph_run_capacity() {
     let (_temp, workspace) = tg_fixture();
     let app = app(workspace);
     create_minimal_project_graph(app.clone()).await;
@@ -2596,9 +2914,9 @@ async fn tg_schedule_run_now_does_not_reuse_active_graph_run() {
         )
         .await
         .unwrap();
-    assert_eq!(scheduled.status(), StatusCode::CREATED);
+    assert_eq!(scheduled.status(), StatusCode::OK);
     let scheduled_run = json_response(scheduled).await["run"].clone();
-    assert_ne!(first_run["id"], scheduled_run["id"]);
+    assert_eq!(first_run["id"], scheduled_run["id"]);
 }
 
 #[tokio::test]

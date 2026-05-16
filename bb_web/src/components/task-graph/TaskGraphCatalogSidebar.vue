@@ -44,10 +44,6 @@ const catalogStats = computed(() => ({
   project: props.graphs.filter((graph) => graph.scope === 'project').length,
 }))
 
-function isActiveRun(graph: TaskGraphCatalogItem) {
-  return graph.last_run?.status === 'running' || graph.last_run?.status === 'pending' || graph.last_run?.status === 'paused'
-}
-
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -67,7 +63,7 @@ function lastRunLabel(graph: TaskGraphCatalogItem) {
 }
 
 function runActionText(graph: TaskGraphCatalogItem) {
-  return isActiveRun(graph) ? t('taskGraphOpenRun') : t('taskGraphRun')
+  return graph.compile_error ? t('taskGraphCompileError') : t('taskGraphRun')
 }
 
 function runActionStatus(graph: TaskGraphCatalogItem) {
@@ -78,7 +74,7 @@ function runActionStatus(graph: TaskGraphCatalogItem) {
 function runActionIcon(graph: TaskGraphCatalogItem) {
   const status = runActionStatus(graph)
   if (status === 'compile_error') return AlertCircle
-  if (status === 'pending' || status === 'running') return LoaderCircle
+  if (status === 'queued' || status === 'pending' || status === 'running') return LoaderCircle
   if (status === 'paused') return CirclePause
   if (status === 'succeeded') return CircleCheck
   if (status === 'failed' || status === 'cancelled') return CircleX
@@ -382,11 +378,13 @@ function runActionIcon(graph: TaskGraphCatalogItem) {
   color: currentColor;
 }
 
+.task-graph-run-action[data-status='queued'] svg,
 .task-graph-run-action[data-status='running'] svg,
 .task-graph-run-action[data-status='pending'] svg {
   animation: task-graph-spin 0.95s linear infinite;
 }
 
+.task-graph-run-action[data-status='queued'],
 .task-graph-run-action[data-status='running'],
 .task-graph-run-action[data-status='pending'] {
   border-color: var(--task-graph-focus-border);

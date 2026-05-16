@@ -7,13 +7,15 @@ use chrono::Utc;
 use super::lifecycle::update_run_checkpoint_pointer;
 use super::model::{RunEvent, SuperstepCheckpoint, TaskGraphRun};
 use super::{
-    checkpoints_dir, pending_pregel_writes_path, read_json, run_dir, run_events_path, write_json,
+    checkpoints_dir, graph_revision_path, mutation_batch_path, pending_pregel_writes_path,
+    read_json, run_dir, run_events_path, write_json,
 };
 use crate::task_graph::definition::types::TaskGraphError;
 use crate::task_graph::pregel::{
     checkpoint_config, checkpoint_metadata, checkpoint_tuple, PregelCheckpointConfig,
     PregelCheckpointTuple, PregelWrite,
 };
+use crate::task_graph::topology::{GraphMutationBatch, GraphRevision};
 
 pub fn write_superstep_checkpoint(
     workspace_root: &Path,
@@ -40,6 +42,42 @@ pub fn write_superstep_checkpoint(
         checkpoint.id.clone(),
     )?;
     Ok(())
+}
+
+pub fn write_graph_revision(
+    workspace_root: &Path,
+    project: &str,
+    run_id: &str,
+    revision: &GraphRevision,
+) -> Result<(), TaskGraphError> {
+    let dir = run_dir(workspace_root, project, run_id);
+    let path = graph_revision_path(&dir, revision.revision);
+    write_json(&path, revision)
+}
+
+pub fn read_graph_revision(
+    workspace_root: &Path,
+    project: &str,
+    run_id: &str,
+    revision: u64,
+) -> Result<Option<GraphRevision>, TaskGraphError> {
+    let dir = run_dir(workspace_root, project, run_id);
+    let path = graph_revision_path(&dir, revision);
+    if !path.exists() {
+        return Ok(None);
+    }
+    read_json(&path).map(Some)
+}
+
+pub fn write_mutation_batch(
+    workspace_root: &Path,
+    project: &str,
+    run_id: &str,
+    batch: &GraphMutationBatch,
+) -> Result<(), TaskGraphError> {
+    let dir = run_dir(workspace_root, project, run_id);
+    let path = mutation_batch_path(&dir, batch.superstep, &batch.id);
+    write_json(&path, batch)
 }
 
 pub fn list_superstep_checkpoints(

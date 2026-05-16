@@ -89,6 +89,7 @@ pub fn initial_checkpoint(compiled: &CompiledGraph, input: Value) -> PregelCheck
     PregelCheckpoint {
         id: "pregel-checkpoint-000000".to_string(),
         superstep: 0,
+        graph_revision: 0,
         channel_values,
         channel_versions,
         versions_seen: BTreeMap::new(),

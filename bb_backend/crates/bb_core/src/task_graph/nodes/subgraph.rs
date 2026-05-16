@@ -7,7 +7,6 @@ use crate::task_graph::definition::types::{
     SubGraphConfig, TaskGraphEdge, TaskGraphError, TaskGraphNode, TaskGraphScope,
 };
 use crate::task_graph::nodes::eval::render_prompt_template;
-use crate::task_graph::nodes::navigation::resolve_next_nodes;
 use crate::task_graph::pregel::outcome::NodeOutcome;
 use crate::task_graph::pregel::runner::{execute_run, RunOutcome, RunnerOptions};
 use crate::task_graph::pregel::{child_checkpoint_namespace, DEFAULT_CHECKPOINT_NAMESPACE};
@@ -22,7 +21,7 @@ pub(super) fn execute_subgraph(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
     run: &TaskGraphRun,
-    edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
+    _edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
 ) -> Result<NodeOutcome, TaskGraphError> {
     let ws = &opts.workspace_root;
     let project = &opts.project;
@@ -65,7 +64,6 @@ pub(super) fn execute_subgraph(
             return Ok(NodeOutcome {
                 node_id: node.id.clone(),
                 status: NodeRunStatus::Failed,
-                next_nodes: vec![],
                 output: None,
                 node_state: TaskGraphRunNode {
                     node_id: node.id.clone(),
@@ -91,12 +89,15 @@ pub(super) fn execute_subgraph(
                 side_effects: vec![],
                 child_run_id: None,
                 end_result: None,
+                control: vec![],
+                graph_mutations: vec![],
             });
         }
     };
 
     // 2. Resolve input bindings
-    let child_input = resolve_sub_graph_input(&config, &run.context, project, ws);
+    let child_input =
+        resolve_sub_graph_input(&config, &run.context, project, ws, &opts.scripts_dir);
 
     // 3. Create child run
     let graph_ref = GraphRef {
@@ -160,6 +161,7 @@ pub(super) fn execute_subgraph(
     // 子 run 是一个独立的 Coordinator 实例
     let child_opts = RunnerOptions {
         workspace_root: opts.workspace_root.clone(),
+        scripts_dir: opts.scripts_dir.clone(),
         project: project.clone(),
         run_id: child_run_id.clone(),
         codex_path: opts.codex_path.clone(),
@@ -187,12 +189,9 @@ pub(super) fn execute_subgraph(
             let child_detail = run_state::read_run_detail(ws, project, &child_run_id)?;
             let child_output = collect_child_output(&child_detail);
 
-            let next = resolve_next_nodes(edge_map, &node.id, node, &run.context, None)?;
-
             Ok(NodeOutcome {
                 node_id: node.id.clone(),
                 status: NodeRunStatus::Succeeded,
-                next_nodes: next,
                 output: if !child_output.is_null() {
                     Some(child_output)
                 } else {
@@ -219,6 +218,8 @@ pub(super) fn execute_subgraph(
                 side_effects: vec![],
                 child_run_id: Some(child_run_id),
                 end_result: None,
+                control: vec![],
+                graph_mutations: vec![],
             })
         }
         RunOutcome::Failed {
@@ -227,7 +228,6 @@ pub(super) fn execute_subgraph(
         } => Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Failed,
-            next_nodes: vec![],
             output: None,
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
@@ -256,13 +256,14 @@ pub(super) fn execute_subgraph(
             side_effects: vec![],
             child_run_id: Some(child_run_id),
             end_result: None,
+            control: vec![],
+            graph_mutations: vec![],
         }),
         RunOutcome::Paused {
             node_id: paused_node,
         } => Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Paused,
-            next_nodes: vec![],
             output: None,
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
@@ -288,11 +289,12 @@ pub(super) fn execute_subgraph(
             side_effects: vec![],
             child_run_id: Some(child_run_id),
             end_result: None,
+            control: vec![],
+            graph_mutations: vec![],
         }),
         RunOutcome::Cancelled => Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Failed,
-            next_nodes: vec![],
             output: None,
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
@@ -318,6 +320,8 @@ pub(super) fn execute_subgraph(
             side_effects: vec![],
             child_run_id: Some(child_run_id),
             end_result: None,
+            control: vec![],
+            graph_mutations: vec![],
         }),
     }
 }
@@ -330,6 +334,7 @@ fn resolve_sub_graph_input(
     context: &run_state::RunContext,
     project: &str,
     ws: &std::path::Path,
+    scripts_dir: &std::path::Path,
 ) -> serde_json::Value {
     let Some(ref bindings) = config.input_bindings else {
         return serde_json::Value::Object(serde_json::Map::new());
@@ -341,7 +346,8 @@ fn resolve_sub_graph_input(
             for (key, value) in map {
                 let resolved = match value {
                     serde_json::Value::String(s) => {
-                        let rendered = render_prompt_template(s, project, ws, context, None);
+                        let rendered =
+                            render_prompt_template(s, project, ws, scripts_dir, context, None);
                         serde_json::from_str(&rendered)
                             .unwrap_or(serde_json::Value::String(rendered))
                     }

@@ -9,11 +9,18 @@
 
 mod control;
 pub mod eval;
+mod intent_extract;
+mod kb_plan;
+mod kb_staging;
 pub mod llm;
+mod manifest_merge;
 mod navigation;
+mod plan;
 pub mod registry;
 mod runtime;
+mod schema_validate;
 mod subgraph;
+mod topology_mutation;
 
 use std::collections::HashMap;
 
@@ -23,8 +30,6 @@ use crate::task_graph::definition::types::{
 use crate::task_graph::pregel::outcome::NodeOutcome;
 use crate::task_graph::pregel::runner::RunnerOptions;
 use crate::task_graph::run_state::TaskGraphRun;
-
-pub(super) use navigation::{build_edge_map, resolve_next_nodes};
 
 // ─── Main dispatch ───────────────────────────────────────────────────────────
 
@@ -45,8 +50,16 @@ pub(super) fn execute_node(
         NodeType::Branch => control::execute_branch_node(node, run, edge_map),
         NodeType::Loop => control::execute_loop_node(node, run, edge_map),
         NodeType::InputVar => control::execute_input_var_node(node, run, edge_map),
+        NodeType::Plan => plan::execute_plan_node(opts, node, run, edge_map),
+        NodeType::IntentExtract => intent_extract::execute_intent_extract_node(opts, node, run),
+        NodeType::KbPlan => kb_plan::execute_kb_plan_node(opts, node, run),
+        NodeType::ManifestMerge => manifest_merge::execute_manifest_merge_node(opts, node, run),
+        NodeType::SchemaValidate => schema_validate::execute_schema_validate_node(opts, node, run),
         NodeType::HumanGate => control::execute_human_gate_node(node),
         NodeType::Llm => runtime::execute_llm_node(opts, node, run, edge_map),
+        NodeType::LlmMutation => {
+            topology_mutation::execute_llm_mutation_node(opts, node, run, edge_map)
+        }
         NodeType::Shell => runtime::execute_shell_node(opts, node, run, edge_map),
         NodeType::SubGraph => subgraph::execute_subgraph(opts, node, run, edge_map),
     }

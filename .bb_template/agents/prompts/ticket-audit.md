@@ -14,6 +14,6 @@ Project: {project}
 4. 拿不准的跳过，不猜。
 5. 每改一个 ticket，用 update_ticket 更新，记录判断依据。
 6. 最后报告：改了哪些、跳过了哪些、为什么。
-7. 运行门禁脚本 python3 scripts/check_ticket_ids.py --project {project} 和 qmd embed。
+7. 运行门禁脚本 python "$BB_SCRIPTS_DIR/check_ticket_ids.py" --project {project} 和 qmd embed。
 
 注意：这是巡检模式，不是 inbox 清理。不要处理 inbox，不要删除任何文件。

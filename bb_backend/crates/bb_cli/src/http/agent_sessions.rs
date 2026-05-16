@@ -7,6 +7,7 @@ use bb_core::agent_session::{
     self, AgentEvent, AgentEventType, AgentSession, AgentSessionError, AgentSessionStatus,
     AgentTurnRequest, CreateAgentSession,
 };
+use bb_core::task_graph::resolve_scripts_dir;
 use chrono::Utc;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -180,6 +181,7 @@ pub(crate) async fn create_agent_session(
         build_opencode_task_graph_config(&root, &agent, &overrides.mcp_servers);
     let request = AgentTurnRequest {
         workspace_root: root.clone(),
+        scripts_dir: resolve_scripts_dir(&root),
         execution_root: execution_root.clone(),
         project: project.clone(),
         session_id: session_id.clone(),

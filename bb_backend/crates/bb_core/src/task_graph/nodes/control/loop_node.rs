@@ -7,7 +7,7 @@ use crate::task_graph::definition::types::{
 };
 use crate::task_graph::nodes::eval::{evaluate_loop_condition, resolve_loop_max_iterations};
 use crate::task_graph::nodes::navigation::outgoing_edges;
-use crate::task_graph::pregel::outcome::{NodeOutcome, SideEffect};
+use crate::task_graph::pregel::outcome::{ControlDirective, NodeOutcome, SideEffect};
 use crate::task_graph::run_state::{
     LoopFrame, LoopIterationEntry, LoopIterationResult, LoopIterationState, NodeError,
     NodeRunStatus, TaskGraphRun, TaskGraphRunNode,
@@ -76,7 +76,89 @@ pub(crate) fn execute_loop_node(
     let current_iteration = existing_loop.map(|l| l.current_iteration).unwrap_or(0);
     let max_iterations = resolve_loop_max_iterations(&config, &run.context);
 
-    // Check max_iterations
+    // Check loop condition before max_iterations. When the body just returned a
+    // clean result on the final allowed iteration, the loop should exit cleanly.
+    let condition_met = evaluate_loop_condition(&config, &run.context);
+
+    if !condition_met && current_iteration > 0 {
+        let exit_reason = "condition_false";
+        let history = existing_loop.map(|l| l.history.clone()).unwrap_or_default();
+
+        side_effects.push(SideEffect::LoopIteration(LoopIterationState {
+            loop_node_id: node.id.clone(),
+            current_iteration,
+            max_iterations,
+            exit_reason: Some(exit_reason.to_string()),
+            history,
+        }));
+
+        let now = Utc::now().to_rfc3339();
+        let exit_edges = outgoing_edges(edge_map, &node.id, Some("exit"));
+        if let Some(exit_edge) = exit_edges.first() {
+            let next = vec![exit_edge.to.clone()];
+            return Ok(NodeOutcome {
+                node_id: node.id.clone(),
+                status: NodeRunStatus::Succeeded,
+                output: None,
+                node_state: TaskGraphRunNode {
+                    node_id: node.id.clone(),
+                    status: NodeRunStatus::Succeeded,
+                    started_at: Some(now.clone()),
+                    completed_at: Some(now),
+                    duration_ms: None,
+                    iteration: Some(current_iteration),
+                    exit_code: None,
+                    error: None,
+                    output_artifact: None,
+                    log_tail: Some(format!("Exit: {}", exit_reason)),
+                    child_run_id: None,
+                    runtime: None,
+                    agent: None,
+                    model: None,
+                    agent_session_id: None,
+                    agent_session: None,
+                },
+                side_effects,
+                child_run_id: None,
+                end_result: None,
+                control: next.into_iter().map(ControlDirective::goto).collect(),
+                graph_mutations: vec![],
+            });
+        }
+        return Ok(NodeOutcome {
+            node_id: node.id.clone(),
+            status: NodeRunStatus::Failed,
+            output: None,
+            node_state: TaskGraphRunNode {
+                node_id: node.id.clone(),
+                status: NodeRunStatus::Failed,
+                started_at: Some(now.clone()),
+                completed_at: Some(now),
+                duration_ms: None,
+                iteration: Some(current_iteration),
+                exit_code: None,
+                error: Some(NodeError {
+                    code: "no_exit_edge".to_string(),
+                    message: "No exit edge for loop node".to_string(),
+                }),
+                output_artifact: None,
+                log_tail: Some(format!("Exit: {}", exit_reason)),
+                child_run_id: None,
+                runtime: None,
+                agent: None,
+                model: None,
+                agent_session_id: None,
+                agent_session: None,
+            },
+            side_effects,
+            child_run_id: None,
+            end_result: None,
+            control: vec![],
+            graph_mutations: vec![],
+        });
+    }
+
+    // Check max_iterations only after a false condition had a chance to exit.
     if current_iteration >= max_iterations {
         let exit_reason = "max_iterations_reached";
         side_effects.push(SideEffect::LoopIteration(LoopIterationState {
@@ -107,7 +189,6 @@ pub(crate) fn execute_loop_node(
             return Ok(NodeOutcome {
                 node_id: node.id.clone(),
                 status: NodeRunStatus::Failed,
-                next_nodes: vec![],
                 output: None,
                 node_state: TaskGraphRunNode {
                     node_id: node.id.clone(),
@@ -133,13 +214,14 @@ pub(crate) fn execute_loop_node(
                 side_effects,
                 child_run_id: None,
                 end_result: None,
+                control: vec![],
+                graph_mutations: vec![],
             });
         }
 
         return Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: loop_node_status,
-            next_nodes: next,
             output: None,
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
@@ -169,86 +251,8 @@ pub(crate) fn execute_loop_node(
             side_effects,
             child_run_id: None,
             end_result: None,
-        });
-    }
-
-    // Check loop condition
-    let condition_met = evaluate_loop_condition(&config, &run.context);
-
-    if !condition_met && current_iteration > 0 {
-        // Condition no longer holds — exit loop
-        let exit_reason = "condition_false";
-        let history = existing_loop.map(|l| l.history.clone()).unwrap_or_default();
-
-        side_effects.push(SideEffect::LoopIteration(LoopIterationState {
-            loop_node_id: node.id.clone(),
-            current_iteration,
-            max_iterations,
-            exit_reason: Some(exit_reason.to_string()),
-            history,
-        }));
-
-        let now = Utc::now().to_rfc3339();
-        let exit_edges = outgoing_edges(edge_map, &node.id, Some("exit"));
-        if let Some(exit_edge) = exit_edges.first() {
-            let next = vec![exit_edge.to.clone()];
-            return Ok(NodeOutcome {
-                node_id: node.id.clone(),
-                status: NodeRunStatus::Succeeded,
-                next_nodes: next,
-                output: None,
-                node_state: TaskGraphRunNode {
-                    node_id: node.id.clone(),
-                    status: NodeRunStatus::Succeeded,
-                    started_at: Some(now.clone()),
-                    completed_at: Some(now),
-                    duration_ms: None,
-                    iteration: Some(current_iteration),
-                    exit_code: None,
-                    error: None,
-                    output_artifact: None,
-                    log_tail: Some(format!("Exit: {}", exit_reason)),
-                    child_run_id: None,
-                    runtime: None,
-                    agent: None,
-                    model: None,
-                    agent_session_id: None,
-                    agent_session: None,
-                },
-                side_effects,
-                child_run_id: None,
-                end_result: None,
-            });
-        }
-        return Ok(NodeOutcome {
-            node_id: node.id.clone(),
-            status: NodeRunStatus::Failed,
-            next_nodes: vec![],
-            output: None,
-            node_state: TaskGraphRunNode {
-                node_id: node.id.clone(),
-                status: NodeRunStatus::Failed,
-                started_at: Some(now.clone()),
-                completed_at: Some(now),
-                duration_ms: None,
-                iteration: Some(current_iteration),
-                exit_code: None,
-                error: Some(NodeError {
-                    code: "no_exit_edge".to_string(),
-                    message: "No exit edge for loop node".to_string(),
-                }),
-                output_artifact: None,
-                log_tail: Some(format!("Exit: {}", exit_reason)),
-                child_run_id: None,
-                runtime: None,
-                agent: None,
-                model: None,
-                agent_session_id: None,
-                agent_session: None,
-            },
-            side_effects,
-            child_run_id: None,
-            end_result: None,
+            control: next.into_iter().map(ControlDirective::goto).collect(),
+            graph_mutations: vec![],
         });
     }
 
@@ -284,7 +288,6 @@ pub(crate) fn execute_loop_node(
         Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Running,
-            next_nodes: next,
             output: None,
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
@@ -307,12 +310,13 @@ pub(crate) fn execute_loop_node(
             side_effects,
             child_run_id: None,
             end_result: None,
+            control: next.into_iter().map(ControlDirective::goto).collect(),
+            graph_mutations: vec![],
         })
     } else {
         Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Failed,
-            next_nodes: vec![],
             output: None,
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
@@ -338,6 +342,8 @@ pub(crate) fn execute_loop_node(
             side_effects,
             child_run_id: None,
             end_result: None,
+            control: vec![],
+            graph_mutations: vec![],
         })
     }
 }

@@ -65,6 +65,7 @@ pub(crate) fn build_runner_opts(
 
     task_graph::RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: task_graph::resolve_scripts_dir(root),
         project,
         run_id,
         codex_path,

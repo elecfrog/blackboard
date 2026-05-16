@@ -33,7 +33,7 @@ pub fn validate_pre_run(
     // 第二层：运行时依赖校验
     for (i, node) in def.nodes.iter().enumerate() {
         match node.node_type {
-            NodeType::Llm => {
+            NodeType::Llm | NodeType::Plan => {
                 validate_llm_runtime(node, i, workspace_root, &project_agents, &mut errors);
             }
             NodeType::SubGraph => {

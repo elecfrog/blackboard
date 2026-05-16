@@ -136,6 +136,7 @@ fn parallel_fork_join_basic() {
 
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path: "codex".to_string(),
@@ -324,6 +325,7 @@ fn parallel_fork_join_intermediate_node() {
 
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path: "codex".to_string(),
@@ -447,6 +449,7 @@ fn parallel_single_branch_backward_compatible() {
 
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path: "codex".to_string(),

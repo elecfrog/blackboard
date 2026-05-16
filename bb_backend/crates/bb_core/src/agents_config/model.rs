@@ -58,6 +58,10 @@ pub struct AgentConnectorSpec {
 #[derive(Debug, Clone, Copy)]
 pub struct AgentConnectorTargetSpec {
     pub label: &'static str,
+    /// Optional source path template. Defaults to `<bb-root>/agents/AGENTS.md`.
+    /// This lets a connector keep the tool-required target filename while
+    /// reading a specialized Blackboard-owned source file.
+    pub source_template: Option<&'static str>,
     /// Target path template using either an absolute path or one prefixed
     /// with `~/` (which expands to `$HOME`) or `<bb-root>/` (which expands
     /// to the workspace root).
@@ -73,6 +77,7 @@ pub const AGENT_CONNECTORS: &[AgentConnectorSpec] = &[
         display_name: "Codex",
         targets: &[AgentConnectorTargetSpec {
             label: "AGENTS.md",
+            source_template: Some("<bb-root>/agents/CODEX.md"),
             target_template: "~/.codex/AGENTS.md",
             connector_type: AgentConnectorType::AgentsMd,
         }],
@@ -91,11 +96,13 @@ pub const AGENT_CONNECTORS: &[AgentConnectorSpec] = &[
         targets: &[
             AgentConnectorTargetSpec {
                 label: "AGENTS.md",
+                source_template: None,
                 target_template: "~/.codebuddy/AGENTS.md",
                 connector_type: AgentConnectorType::AgentsMd,
             },
             AgentConnectorTargetSpec {
                 label: "Rules.mdc",
+                source_template: None,
                 target_template: "~/.codebuddy/rules/blackboard-rules.mdc",
                 connector_type: AgentConnectorType::Rules,
             },
@@ -114,6 +121,7 @@ pub const AGENT_CONNECTORS: &[AgentConnectorSpec] = &[
         display_name: "OpenCode",
         targets: &[AgentConnectorTargetSpec {
             label: "AGENTS.md",
+            source_template: None,
             target_template: "~/.config/opencode/AGENTS.md",
             connector_type: AgentConnectorType::AgentsMd,
         }],
@@ -140,7 +148,7 @@ pub enum AgentConnectorState {
     Missing,
     /// Parent directory itself does not exist.
     Unreachable,
-    /// `<bb-root>/agents/AGENTS.md` itself is missing.
+    /// The source file for this connector target is missing.
     SourceMissing,
 }
 
@@ -150,7 +158,7 @@ pub enum AgentConnectorState {
 pub enum AgentSourceState {
     /// Source file exists and is readable.
     Present,
-    /// Source file is missing (every connector reports `source_missing`).
+    /// Default shared source file is missing.
     Missing,
 }
 

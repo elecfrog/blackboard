@@ -12,6 +12,7 @@ import type {
   AgentConnectorState,
   AgentConnectorTarget,
 } from '@/data/agentConnectors'
+import type { AgentTool, AgentToolStatus } from '@/data/agentTools'
 
 const props = defineProps<{
   connector: AgentConnector
@@ -21,11 +22,14 @@ const props = defineProps<{
   sourceMissing: boolean
   agents: AgentProfile[]
   registrySourcePath: string
+  tool: AgentTool | null
+  toolBusyId: string | null
 }>()
 
 const emit = defineEmits<{
   (event: 'connect', id: string): void
   (event: 'disconnect', id: string): void
+  (event: 'install-tool', id: string): void
 }>()
 
 function stateMetaFor(state: AgentConnectorState) {
@@ -47,8 +51,45 @@ function stateMetaFor(state: AgentConnectorState) {
 
 const stateMeta = computed(() => stateMetaFor(props.connector.state))
 
+function toolStatusLabel(status: AgentToolStatus) {
+  switch (status) {
+    case 'missing':
+      return t('agentToolMissing')
+    case 'installed':
+      return t('agentToolInstalled')
+    case 'version_mismatch':
+      return t('agentToolVersionMismatch')
+    case 'npm_missing':
+      return t('agentToolNpmMissing')
+    case 'check_failed':
+      return t('agentToolCheckFailed')
+    case 'external_install':
+      return t('agentToolExternalInstall')
+    default:
+      return t('connectorUnknown')
+  }
+}
+
+function toolTone(status: AgentToolStatus) {
+  switch (status) {
+    case 'installed':
+      return 'green'
+    case 'missing':
+    case 'version_mismatch':
+    case 'external_install':
+      return 'yellow'
+    case 'npm_missing':
+    case 'check_failed':
+      return 'red'
+    default:
+      return 'grey'
+  }
+}
+
 const isBusy = computed(() => props.busyId === props.connector.id)
 const anyBusy = computed(() => props.busyId !== null)
+const isToolBusy = computed(() => props.toolBusyId === props.connector.id)
+const anyToolBusy = computed(() => props.toolBusyId !== null)
 const connectorTargets = computed<AgentConnectorTarget[]>(() => {
   if (props.connector.targets?.length) return props.connector.targets
   return [
@@ -67,10 +108,10 @@ const connectorTargets = computed<AgentConnectorTarget[]>(() => {
 const selectedAgentId = ref<string | null>(null)
 
 const canConnect = computed(
-  () => !isBusy.value && !anyBusy.value && !props.sourceMissing,
+  () => !isBusy.value && !anyBusy.value && !anyToolBusy.value && !props.sourceMissing,
 )
 const canDisconnect = computed(() => {
-  if (isBusy.value || anyBusy.value) return false
+  if (isBusy.value || anyBusy.value || anyToolBusy.value) return false
   return (
     props.connector.state === 'synced' ||
     props.connector.state === 'drift'
@@ -84,6 +125,22 @@ const connectLabel = computed(() => {
 })
 
 const disconnectLabel = computed(() => (isBusy.value ? t('connectorBusy') : t('connectorDisconnect')))
+const toolActionLabel = computed(() => {
+  if (isToolBusy.value) return t('connectorBusy')
+  const tool = props.tool
+  if (!tool) return t('agentToolInstall')
+  if (tool.status === 'version_mismatch' && tool.id === 'opencode') return t('agentToolLockOpenCode')
+  if (tool.status === 'installed' && tool.id === 'opencode') return t('agentToolLocked')
+  if (tool.status === 'installed') return t('agentToolUpdate')
+  if (tool.status === 'external_install') return t('agentToolRepair')
+  return t('agentToolInstall')
+})
+const canInstallTool = computed(() => {
+  if (!props.tool || isToolBusy.value || anyToolBusy.value || anyBusy.value) return false
+  if (props.tool.status === 'npm_missing') return false
+  if (props.tool.status === 'installed' && props.tool.id === 'opencode') return false
+  return true
+})
 const managedAgents = computed(() =>
   props.agents
     .filter((agent) => agent.runtime === props.connector.id)
@@ -208,6 +265,11 @@ function onDisconnect() {
   }
   emit('disconnect', props.connector.id)
 }
+
+function onInstallTool() {
+  if (!canInstallTool.value) return
+  emit('install-tool', props.connector.id)
+}
 </script>
 
 <template>
@@ -249,8 +311,30 @@ function onDisconnect() {
             <span v-if="target.error" class="target-error">{{ target.error }}</span>
           </button>
         </div>
+        <div v-if="tool" class="tool-status" :data-tone="toolTone(tool.status)">
+          <div class="tool-status-main">
+            <span class="tool-status-label">{{ toolStatusLabel(tool.status) }}</span>
+            <span class="tool-version">{{ t('agentToolCurrent') }} {{ tool.current_version ?? '-' }}</span>
+            <span class="tool-version">{{ t('agentToolTarget') }} {{ tool.target_version }}</span>
+          </div>
+          <div class="tool-status-detail">
+            <span>{{ tool.npm_package }}</span>
+            <code>{{ tool.install_command }}</code>
+            <span v-if="tool.cli_path" class="tool-cli">{{ tool.cli_path }}</span>
+            <span v-if="tool.last_error" class="tool-error">{{ tool.last_error }}</span>
+          </div>
+        </div>
       </div>
       <div class="connector-actions">
+        <button
+          v-if="tool"
+          type="button"
+          class="btn btn-ghost"
+          :disabled="!canInstallTool"
+          @click="onInstallTool"
+        >
+          {{ toolActionLabel }}
+        </button>
         <button
           type="button"
           class="btn btn-primary"
@@ -700,6 +784,69 @@ function onDisconnect() {
   color: var(--bb-md-error-text);
   font-size: 12px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.tool-status {
+  display: grid;
+  gap: 4px;
+  max-width: 720px;
+  padding: 7px 9px;
+  border: 1px solid var(--bb-hairline);
+  border-radius: 6px;
+  background: var(--bb-surface-soft);
+  font-size: 12px;
+}
+
+.tool-status[data-tone='green'] {
+  border-color: color-mix(in srgb, var(--bb-success) 32%, var(--bb-hairline));
+}
+
+.tool-status[data-tone='yellow'] {
+  border-color: color-mix(in srgb, var(--bb-warning) 36%, var(--bb-hairline));
+}
+
+.tool-status[data-tone='red'] {
+  border-color: color-mix(in srgb, var(--bb-error) 36%, var(--bb-hairline));
+}
+
+.tool-status-main,
+.tool-status-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.tool-status-label {
+  color: var(--bb-text-strong);
+  font-weight: 700;
+}
+
+.tool-version,
+.tool-status-detail span {
+  color: var(--bb-text-muted);
+}
+
+.tool-status-detail code,
+.tool-cli {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+}
+
+.tool-status-detail code {
+  color: var(--bb-text);
+}
+
+.tool-status-detail .tool-error {
+  color: var(--bb-error);
   overflow-wrap: anywhere;
 }
 

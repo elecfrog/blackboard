@@ -204,7 +204,28 @@ pub(crate) struct TgCreateRunBody {
     #[serde(default)]
     pub(crate) input: serde_json::Value,
     #[serde(default)]
+    pub(crate) intent: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub(crate) resolver: Option<TgRunInputResolver>,
+    #[serde(default)]
     pub(crate) dry_run: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TgRunInputResolver {
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub(crate) runtime: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub(crate) agent_profile: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub(crate) model: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub(crate) variant: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -255,7 +276,8 @@ pub(crate) struct TgRunStatusResponse {
 pub(crate) fn is_active_run_status(status: task_graph::RunStatus) -> bool {
     matches!(
         status,
-        task_graph::RunStatus::Pending
+        task_graph::RunStatus::Queued
+            | task_graph::RunStatus::Pending
             | task_graph::RunStatus::Running
             | task_graph::RunStatus::Paused
     )

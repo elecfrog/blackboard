@@ -12,6 +12,7 @@ use super::{
     compiled_snapshot_path, generate_run_id, node_state_path, read_json, run_dir, run_json_path,
     runs_root, snapshot_path, write_json,
 };
+use crate::task_graph::topology::GraphRevision;
 
 // ─── CRUD Operations ─────────────────────────────────────────────────────────
 
@@ -74,6 +75,14 @@ pub fn create_run(
         path: dir.join("checkpoints"),
         source,
     })?;
+    fs::create_dir_all(dir.join("graph_revisions")).map_err(|source| TaskGraphError::Io {
+        path: dir.join("graph_revisions"),
+        source,
+    })?;
+    fs::create_dir_all(dir.join("mutation_batches")).map_err(|source| TaskGraphError::Io {
+        path: dir.join("mutation_batches"),
+        source,
+    })?;
 
     let now = Utc::now().to_rfc3339();
 
@@ -85,14 +94,17 @@ pub fn create_run(
         graph_ref,
         status: RunStatus::Pending,
         created_at: now.clone(),
+        queued_at: None,
+        queue_deadline_at: None,
         started_at: None,
         updated_at: now,
         completed_at: None,
         current_superstep: 0,
         last_checkpoint_id: None,
         pregel_checkpoint: Some(pregel_checkpoint),
+        current_graph_revision: 0,
+        active_nodes: Vec::new(),
         paused: None,
-        cursor: Vec::new(),
         context: RunContext {
             input,
             node_outputs: serde_json::Map::new(),
@@ -110,6 +122,19 @@ pub fn create_run(
 
     // Write frozen graph snapshot
     write_json(&snapshot_path(&dir), graph_snapshot)?;
+
+    super::superstep::write_graph_revision(
+        workspace_root,
+        project,
+        &id,
+        &GraphRevision {
+            revision: 0,
+            graph: graph_snapshot.clone(),
+            created_at: Utc::now().to_rfc3339(),
+            parent_revision: None,
+            mutation_batch_id: None,
+        },
+    )?;
 
     // Write compiled graph snapshot so execution has an auditable plan input.
     write_json(&compiled_snapshot_path(&dir), &compiled)?;
@@ -137,6 +162,27 @@ pub fn create_run(
         write_json(&node_state_path(&dir, &node.id), &node_state)?;
     }
 
+    Ok(run)
+}
+
+/// Create a run in the durable admission queue.
+pub fn create_queued_run(
+    workspace_root: &Path,
+    project: &str,
+    graph_ref: GraphRef,
+    graph_snapshot: &TaskGraphDefinition,
+    input: serde_json::Value,
+    queue_deadline_at: String,
+) -> Result<TaskGraphRun, TaskGraphError> {
+    let mut run = create_run(workspace_root, project, graph_ref, graph_snapshot, input)?;
+    let now = Utc::now().to_rfc3339();
+    run.status = RunStatus::Queued;
+    run.queued_at = Some(now.clone());
+    run.queue_deadline_at = Some(queue_deadline_at);
+    run.updated_at = now;
+
+    let dir = run_dir(workspace_root, project, &run.id);
+    write_json(&run_json_path(&dir), &run)?;
     Ok(run)
 }
 
@@ -172,11 +218,15 @@ pub fn list_runs(
                     graph_ref: run.graph_ref,
                     status: run.status,
                     created_at: run.created_at,
+                    queued_at: run.queued_at,
+                    queue_deadline_at: run.queue_deadline_at,
                     started_at: run.started_at,
                     updated_at: run.updated_at,
                     completed_at: run.completed_at,
                     current_superstep: run.current_superstep,
                     last_checkpoint_id: run.last_checkpoint_id,
+                    current_graph_revision: run.current_graph_revision,
+                    active_nodes: run.active_nodes,
                     checkpoint_ns: run.checkpoint_ns,
                 });
             }
@@ -209,7 +259,7 @@ pub fn read_run_detail(
     for (k, v) in outputs {
         run.context.node_outputs.entry(k).or_insert(v);
     }
-    let graph_snapshot: TaskGraphDefinition = read_json(&snapshot_path(&dir))?;
+    let graph_snapshot = read_current_graph_snapshot(workspace_root, project, run_id, &run)?;
 
     // Read all node states
     let nodes_dir = dir.join("nodes");
@@ -263,6 +313,24 @@ pub fn read_run(
         run.context.node_outputs.entry(k).or_insert(v);
     }
     Ok(run)
+}
+
+fn read_current_graph_snapshot(
+    workspace_root: &Path,
+    project: &str,
+    run_id: &str,
+    run: &TaskGraphRun,
+) -> Result<TaskGraphDefinition, TaskGraphError> {
+    if let Some(revision) = super::superstep::read_graph_revision(
+        workspace_root,
+        project,
+        run_id,
+        run.current_graph_revision,
+    )? {
+        return Ok(revision.graph);
+    }
+    let dir = run_dir(workspace_root, project, run_id);
+    read_json(&snapshot_path(&dir))
 }
 
 /// Update run-level status with basic transition validation.
@@ -411,29 +479,16 @@ pub fn set_run_paused(
     Ok(run)
 }
 
-/// Update the cursor (list of currently active node ids).
-pub fn update_cursor(
-    workspace_root: &Path,
-    project: &str,
-    run_id: &str,
-    cursor: Vec<String>,
-) -> Result<(), TaskGraphError> {
-    let dir = run_dir(workspace_root, project, run_id);
-    let run_file = run_json_path(&dir);
-
-    let mut run: TaskGraphRun = read_json(&run_file)?;
-    run.cursor = cursor;
-    run.updated_at = Utc::now().to_rfc3339();
-    write_json(&run_file, &run)?;
-    Ok(())
-}
-
 // ─── Status transition validation ────────────────────────────────────────────
 
 fn validate_status_transition(from: RunStatus, to: RunStatus) -> Result<(), TaskGraphError> {
     let valid = matches!(
         (from, to),
-        (RunStatus::Pending, RunStatus::Running)
+        (RunStatus::Queued, RunStatus::Pending)
+            | (RunStatus::Queued, RunStatus::Failed)
+            | (RunStatus::Queued, RunStatus::Cancelled)
+            | (RunStatus::Pending, RunStatus::Running)
+            | (RunStatus::Pending, RunStatus::Failed)
             | (RunStatus::Pending, RunStatus::Cancelled)
             | (RunStatus::Running, RunStatus::Paused)
             | (RunStatus::Running, RunStatus::Succeeded)

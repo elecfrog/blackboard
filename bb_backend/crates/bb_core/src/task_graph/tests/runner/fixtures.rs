@@ -21,6 +21,7 @@ pub(super) fn empty_context() -> RunContext {
 pub(super) fn smoke_runner_opts(root: &Path, run_id: &str) -> RunnerOptions {
     RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run_id.to_string(),
         codex_path: "codex".to_string(),

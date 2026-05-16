@@ -105,6 +105,7 @@ fn execute_simple_linear_graph_dry_run() {
 
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path: "codex".to_string(),
@@ -340,8 +341,7 @@ fn recovery_replays_pending_start_writes_without_rerunning_start() {
         .iter()
         .find(|task| task.node_id == "start")
         .unwrap();
-    let pending =
-        writes_from_node_outcome(&compiled, start_task, None, &["left".to_string()], None).unwrap();
+    let pending = writes_from_node_outcome(&compiled, start_task, None, &[], None, true).unwrap();
     run_state::write_pending_pregel_writes(root, "test-project", &run.id, &pending).unwrap();
 
     let opts = smoke_runner_opts(root, &run.id);
@@ -360,7 +360,6 @@ fn recovery_replays_pending_start_writes_without_rerunning_start() {
         .find(|checkpoint| checkpoint.superstep == 1)
         .expect("first superstep should replay pending start writes");
     assert!(replay_step.ready_nodes.is_empty());
-    assert!(replay_step.cursor_after.is_empty());
     assert!(replay_step
         .pregel_checkpoint
         .as_ref()
@@ -601,6 +600,7 @@ fn interrupt_before_pauses_and_resume_runs_original_task() {
             recursion_limit: None,
             interrupt_before: Some(vec!["llm-1".to_string()]),
             interrupt_after: None,
+            run_policy: None,
         }),
         inputs: None,
         nodes: vec![
@@ -807,6 +807,7 @@ fn execute_branch_selects_correct_path() {
 
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path: "codex".to_string(),
@@ -843,6 +844,7 @@ fn execute_branch_selects_correct_path() {
 
     let opts2 = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run2.id.clone(),
         codex_path: "codex".to_string(),
@@ -952,6 +954,7 @@ fn execute_human_gate_pauses_run() {
 
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path: "codex".to_string(),
@@ -1073,6 +1076,7 @@ fn execute_human_gate_reject_cancels_run() {
 
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path: "codex".to_string(),
@@ -1208,6 +1212,7 @@ fn execute_loop_max_iterations_reached() {
 
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path: "codex".to_string(),
@@ -1384,6 +1389,7 @@ fn execute_loop_condition_exit() {
 
     let opts = RunnerOptions {
         workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
         project: "test-project".to_string(),
         run_id: run.id.clone(),
         codex_path: "codex".to_string(),
@@ -1411,6 +1417,153 @@ fn execute_loop_condition_exit() {
 }
 
 #[test]
+fn execute_loop_condition_exit_on_final_allowed_iteration() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    let graph = TaskGraphDefinition {
+        schema_version: 1,
+        id: "loop-final-condition-test".to_string(),
+        scope: TaskGraphScope::Project,
+        title: "Loop Final Condition Test".to_string(),
+        description: None,
+        version: 1,
+        readonly: false,
+        origin: None,
+        metadata: None,
+        inputs: None,
+        nodes: vec![
+            TaskGraphNode {
+                id: "start".to_string(),
+                node_type: NodeType::Start,
+                label: "Start".to_string(),
+                description: None,
+                position: None,
+                config: json!({}),
+                pins: vec![],
+            },
+            TaskGraphNode {
+                id: "loop-1".to_string(),
+                node_type: NodeType::Loop,
+                label: "Conditional Loop".to_string(),
+                description: None,
+                position: None,
+                config: json!({
+                    "max_iterations": 1,
+                    "condition": {
+                        "input_ref": "$.nodes.body-llm.output",
+                        "path": "$.needs_repair",
+                        "op": "equals",
+                        "value": true
+                    },
+                    "body_entry": "body-llm",
+                    "body_exit": "body-llm",
+                    "on_max_iterations": "fail"
+                }),
+                pins: vec![],
+            },
+            TaskGraphNode {
+                id: "body-llm".to_string(),
+                node_type: NodeType::Llm,
+                label: "Body".to_string(),
+                description: None,
+                position: None,
+                config: json!({
+                    "runtime": "codex",
+                    "agent": "codex",
+                    "prompt": { "mode": "inline", "template": "review" }
+                }),
+                pins: vec![],
+            },
+            TaskGraphNode {
+                id: "end-ok".to_string(),
+                node_type: NodeType::End,
+                label: "OK".to_string(),
+                description: None,
+                position: None,
+                config: json!({ "result": "succeeded" }),
+                pins: vec![],
+            },
+        ],
+        edges: vec![
+            TaskGraphEdge {
+                id: "start__loop-1".to_string(),
+                from: "start".to_string(),
+                to: "loop-1".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: None,
+                target_handle: None,
+                from_pin: None,
+                to_pin: None,
+            },
+            TaskGraphEdge {
+                id: "loop-1__body-llm__body".to_string(),
+                from: "loop-1".to_string(),
+                to: "body-llm".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: Some("body".to_string()),
+                target_handle: None,
+                from_pin: None,
+                to_pin: None,
+            },
+            TaskGraphEdge {
+                id: "loop-1__end-ok__exit".to_string(),
+                from: "loop-1".to_string(),
+                to: "end-ok".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: Some("exit".to_string()),
+                target_handle: None,
+                from_pin: None,
+                to_pin: None,
+            },
+        ],
+        layout: None,
+    };
+
+    let graph_ref = GraphRef {
+        scope: TaskGraphScope::Project,
+        id: "loop-final-condition-test".to_string(),
+        version: 1,
+    };
+    let run = run_state::create_run(root, "test-project", graph_ref, &graph, json!({})).unwrap();
+
+    let opts = RunnerOptions {
+        workspace_root: root.to_path_buf(),
+        scripts_dir: root.join("scripts"),
+        project: "test-project".to_string(),
+        run_id: run.id.clone(),
+        codex_path: "codex".to_string(),
+        codebuddy_path: "codebuddy".to_string(),
+        opencode_path: "opencode".to_string(),
+        opencode_config_content: None,
+        model: None,
+        node_timeout: std::time::Duration::from_secs(10),
+        run_timeout: std::time::Duration::from_secs(300),
+        dry_run: true,
+        custom_env: Default::default(),
+        custom_args: Vec::new(),
+        mcp_servers: Vec::new(),
+        skills: Vec::new(),
+    };
+
+    let outcome = execute_run(&opts).unwrap();
+    assert!(matches!(outcome, RunOutcome::Succeeded));
+
+    let final_run = run_state::read_run(root, "test-project", &run.id).unwrap();
+    assert_eq!(final_run.status, RunStatus::Succeeded);
+    let loop_iter = final_run
+        .context
+        .loop_iterations
+        .iter()
+        .find(|l| l.loop_node_id == "loop-1")
+        .unwrap();
+    assert_eq!(loop_iter.exit_reason.as_deref(), Some("condition_false"));
+}
+
+#[test]
 fn prompt_template_renders_graph_inputs_and_env() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
@@ -1424,15 +1577,26 @@ fn prompt_template_renders_graph_inputs_and_env() {
         .insert("cleanup".to_string(), json!({ "continue": true }));
 
     let rendered = render_prompt_template(
-        "Clean {{inputs.batch-count}} notes for {{env.project}} at {{env.root}}; continue={{nodes.cleanup.output.continue}}",
+        "Clean {{inputs.batch-count}} notes for {{env.project}} at {{env.root}} using {{env.scripts_dir}}; continue={{nodes.cleanup.output.continue}}",
         "blackboard",
         root,
+        &root.join("scripts"),
         &context,
         None,
     );
 
     assert!(rendered.contains("Clean 2 notes for blackboard"));
-    assert!(rendered.contains(&format!("at {}", root.display())));
+    assert!(rendered.contains(&format!(
+        "at {}",
+        root.display().to_string().replace('\\', "/")
+    )));
+    assert!(rendered.contains(&format!(
+        "using {}",
+        root.join("scripts")
+            .display()
+            .to_string()
+            .replace('\\', "/")
+    )));
     assert!(rendered.contains("continue=true"));
 }
 
@@ -1453,6 +1617,7 @@ fn prompt_template_renders_explicit_llm_inputs() {
         "Clean {{inputs.batch-count}} notes; static={{inputs.static-limit}}",
         "blackboard",
         root,
+        &root.join("scripts"),
         &context,
         Some(&llm_inputs),
     );

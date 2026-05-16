@@ -11,7 +11,6 @@ use chrono::Utc;
 use crate::task_graph::definition::types::{
     ShellConfig, ShellPermission, TaskGraphEdge, TaskGraphError, TaskGraphNode,
 };
-use crate::task_graph::nodes::navigation::resolve_next_nodes;
 use crate::task_graph::pregel::outcome::NodeOutcome;
 use crate::task_graph::pregel::runner::RunnerOptions;
 use crate::task_graph::run_state::{
@@ -86,8 +85,8 @@ struct ShellProcessResult {
 pub(crate) fn execute_shell_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
-    run: &TaskGraphRun,
-    edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
+    _run: &TaskGraphRun,
+    _edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
 ) -> Result<NodeOutcome, TaskGraphError> {
     let ws = &opts.workspace_root;
     let project = &opts.project;
@@ -147,11 +146,9 @@ pub(crate) fn execute_shell_node(
             false,
             false,
         );
-        let next = resolve_next_nodes(edge_map, &node.id, node, &run.context, None)?;
         return Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Succeeded,
-            next_nodes: next,
             output: Some(output),
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
@@ -174,6 +171,8 @@ pub(crate) fn execute_shell_node(
             side_effects: vec![],
             child_run_id: None,
             end_result: None,
+            control: vec![],
+            graph_mutations: vec![],
         });
     }
 
@@ -220,7 +219,8 @@ pub(crate) fn execute_shell_node(
         );
     }
 
-    let mut command = Command::new(&config.command);
+    let spawn_program = crate::platform::resolve_spawn_program(&config.command);
+    let mut command = Command::new(&spawn_program);
     command.args(&config.args);
     command.current_dir(&prepared.cwd);
     command.envs(&config.env);
@@ -305,11 +305,9 @@ pub(crate) fn execute_shell_node(
     let end_time = Utc::now().to_rfc3339();
 
     if success {
-        let next = resolve_next_nodes(edge_map, &node.id, node, &run.context, None)?;
         Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Succeeded,
-            next_nodes: next,
             output: Some(output),
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
@@ -332,6 +330,8 @@ pub(crate) fn execute_shell_node(
             side_effects: vec![],
             child_run_id: None,
             end_result: None,
+            control: vec![],
+            graph_mutations: vec![],
         })
     } else {
         let failure = if process_result.cancelled {
@@ -353,7 +353,6 @@ pub(crate) fn execute_shell_node(
         Ok(NodeOutcome {
             node_id: node.id.clone(),
             status: NodeRunStatus::Failed,
-            next_nodes: vec![],
             output: Some(output),
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
@@ -379,6 +378,8 @@ pub(crate) fn execute_shell_node(
             side_effects: vec![],
             child_run_id: None,
             end_result: None,
+            control: vec![],
+            graph_mutations: vec![],
         })
     }
 }
@@ -775,7 +776,6 @@ fn shell_failed_outcome(
     Ok(NodeOutcome {
         node_id: node.id.clone(),
         status: NodeRunStatus::Failed,
-        next_nodes: vec![],
         output: Some(output),
         node_state: TaskGraphRunNode {
             node_id: node.id.clone(),
@@ -801,6 +801,8 @@ fn shell_failed_outcome(
         side_effects: vec![],
         child_run_id: None,
         end_result: None,
+        control: vec![],
+        graph_mutations: vec![],
     })
 }
 

@@ -17,6 +17,12 @@ import {
   type AgentConnector,
   type AgentConnectorList,
 } from '@/data/agentConnectors'
+import {
+  installAgentTool,
+  loadAgentTools,
+  type AgentTool,
+  type AgentToolList,
+} from '@/data/agentTools'
 import { t } from '@/i18n'
 import AgentConnectorRow from './AgentConnectorRow.vue'
 
@@ -25,6 +31,7 @@ const props = defineProps<{
 }>()
 
 const list = ref<AgentConnectorList | null>(null)
+const toolList = ref<AgentToolList | null>(null)
 const registry = ref<AgentRegistryList | null>(null)
 const projectRegistry = ref<ProjectAgentList | null>(null)
 const offline = ref(false)
@@ -32,6 +39,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const backendError = ref<string | null>(null)
 const busyId = ref<string | null>(null)
+const toolBusyId = ref<string | null>(null)
 
 onMounted(async () => {
   await refresh()
@@ -47,12 +55,14 @@ async function refresh() {
     offline.value = result.source === 'offline'
     backendError.value = result.source === 'error' ? result.error ?? t('connectorBackendError') : null
     if (result.source === 'rest') {
-      const [registryResult, projectResult] = await Promise.all([
+      const [registryResult, projectResult, toolsResult] = await Promise.all([
         loadAgentRegistry(),
         loadProjectAgents(props.project),
+        loadAgentTools(),
       ])
       registry.value = registryResult
       projectRegistry.value = projectResult
+      toolList.value = toolsResult
     }
   } catch (err) {
     console.error('refresh agent connectors', err)
@@ -70,6 +80,7 @@ const sourceMissing = computed(
 const sourcePath = computed(() => list.value?.source_path ?? '')
 
 const connectors = computed(() => list.value?.connectors ?? [])
+const tools = computed(() => toolList.value?.tools ?? [])
 const agents = computed(() => registry.value?.agents ?? [])
 const assignableAgents = computed(() => projectRegistry.value?.agents ?? [])
 const distributedCount = computed(
@@ -100,6 +111,23 @@ function replaceConnector(updated: AgentConnector) {
   if (idx >= 0) {
     list.value.connectors.splice(idx, 1, updated)
   }
+}
+
+function replaceTool(updated: AgentTool) {
+  if (!toolList.value) {
+    toolList.value = { tools: [updated] }
+    return
+  }
+  const idx = toolList.value.tools.findIndex((tool) => tool.id === updated.id)
+  if (idx >= 0) {
+    toolList.value.tools.splice(idx, 1, updated)
+  } else {
+    toolList.value.tools.push(updated)
+  }
+}
+
+function toolForConnector(id: string) {
+  return tools.value.find((tool) => tool.id === id) ?? null
 }
 
 async function handleConnect(id: string) {
@@ -152,6 +180,31 @@ async function handleSyncAll() {
     }
   }
   busyId.value = null
+}
+
+async function handleInstallTool(id: string) {
+  if (busyId.value || toolBusyId.value) return
+  toolBusyId.value = id
+  error.value = null
+  try {
+    const result = await installAgentTool(id)
+    replaceTool(result.tool)
+    if (result.exit_code !== undefined && result.exit_code !== 0) {
+      const detail = result.stderr_tail || result.stdout_tail || t('agentToolInstallFailed')
+      error.value = `${result.command}: ${detail}`
+    }
+    const connectorsResult = await loadAgentConnectors()
+    if (connectorsResult.data) {
+      list.value = connectorsResult.data
+      backendError.value =
+        connectorsResult.source === 'error' ? connectorsResult.error ?? t('connectorBackendError') : null
+    }
+  } catch (err) {
+    console.error('install agent tool', id, err)
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    toolBusyId.value = null
+  }
 }
 </script>
 
@@ -219,8 +272,11 @@ async function handleSyncAll() {
         :source-missing="sourceMissing"
         :agents="agents"
         :registry-source-path="registry?.source_path ?? ''"
+        :tool="toolForConnector(connector.id)"
+        :tool-busy-id="toolBusyId"
         @connect="handleConnect"
         @disconnect="handleDisconnect"
+        @install-tool="handleInstallTool"
       />
     </div>
   </section>

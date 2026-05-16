@@ -41,6 +41,7 @@ pub fn validate_graph(def: &TaskGraphDefinition) -> Vec<TaskGraphValidationError
     }
 
     config::validate_graph_inputs(def, &mut errors);
+    config::validate_graph_run_policy(def, &mut errors);
 
     // ── Node ID format ───────────────────────────────────────────────────────
     for (i, node) in def.nodes.iter().enumerate() {
@@ -150,7 +151,7 @@ pub fn validate_graph(def: &TaskGraphDefinition) -> Vec<TaskGraphValidationError
     // ── Rule 8 & 9: Loop has max_iterations and body/exit edges ──────────────
     for (i, node) in def.nodes.iter().enumerate() {
         if node.node_type == NodeType::Loop {
-            config::validate_loop_config(node, i, &outgoing, &incoming, &mut errors);
+            config::validate_loop_config(node, i, &node_map, &outgoing, &incoming, &mut errors);
         }
     }
 

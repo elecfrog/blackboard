@@ -182,6 +182,10 @@ fn sample_tool_arguments(name: &str) -> Value {
                 "status": "review",
             },
         }),
+        "deprecate_ticket" => json!({
+            "project": "demo",
+            "id": "000002",
+        }),
         "append_ticket_sections" => json!({
             "project": "demo",
             "id": "000001",
@@ -348,6 +352,7 @@ fn lists_tools_and_calls_inbox_tools_with_project_routing() {
             "read_ticket_by_id",
             "create_ticket",
             "update_ticket",
+            "deprecate_ticket",
             "append_ticket_sections",
             "begin_ticket_work",
             "complete_handoff",

@@ -126,6 +126,12 @@ pub struct UpdateTicketInput {
     pub frontmatter: Option<TicketFrontmatterPatch>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct DeprecateTicketInput {
+    pub id: String,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct TicketFrontmatterPatch {
@@ -211,6 +217,14 @@ pub struct BoardSummary {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct TicketWriteResult {
     pub ticket: TicketWriteTicket,
+    pub maintenance: TicketMaintenance,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DeprecateTicketResult {
+    pub ticket: TicketWriteTicket,
+    pub removed_dependency_refs: Vec<String>,
+    pub removed_attachment_refs: Vec<String>,
     pub maintenance: TicketMaintenance,
 }
 

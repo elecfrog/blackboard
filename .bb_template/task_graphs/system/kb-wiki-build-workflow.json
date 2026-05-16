@@ -3,54 +3,62 @@
   "id": "kb-wiki-build-workflow",
   "scope": "system",
   "title": "KB Wiki Build Workflow",
-  "description": "调用 OpenCode kb-wiki agent 从代码模块构建完整 Wiki，动态 scout / manifest / writer fan-out 由既有 orchestrator 执行。",
-  "version": 1,
+  "description": "内化版 KB Wiki 构建工作流：graph 只接收六个结构化输入；自然语言请求由 run launcher / UI / API 的 pre-start 层解析，再启动 task run。",
+  "version": 22,
   "readonly": true,
   "metadata": {
     "tags": [
       "kb",
       "wiki",
+      "topology-mutation",
       "distill"
     ],
     "owner": "blackboard",
-    "created_by": "codex"
+    "created_by": "codex",
+    "recursion_limit": 80
   },
   "inputs": [
     {
       "id": "request",
-      "label": "Wiki 需求",
+      "label": "Request",
       "type": "string",
-      "default": ""
+      "default": "",
+      "description": "本次 KB 构建的人类目标摘要，由 pre-start intent resolver 从聊天文本解析或直接填写。"
     },
     {
       "id": "module-name",
-      "label": "模块名",
+      "label": "Module Name",
       "type": "string",
-      "default": ""
+      "default": "",
+      "description": "要蒸馏或构建 wiki 的模块/主题名称。"
     },
     {
       "id": "module-root",
-      "label": "模块根目录",
+      "label": "Module Root",
       "type": "string",
-      "default": ""
+      "default": "",
+      "description": "源码根目录。"
     },
     {
       "id": "kb-output-dir",
-      "label": "KB 输出目录",
+      "label": "KB Output Dir",
       "type": "string",
-      "default": ""
+      "default": "",
+      "description": "Wiki/KB 输出目录。"
     },
     {
       "id": "extra-source-dirs",
-      "label": "额外源码目录",
+      "label": "Extra Source Dirs",
       "type": "array<string>",
-      "default": []
+      "default": [],
+      "description": "额外需要扫描的源码或文档目录。"
     },
     {
       "id": "language",
-      "label": "文档语言",
+      "label": "Language",
       "type": "string",
-      "default": "zh-CN"
+      "default": "zh-CN",
+      "description": "输出语言。"
     }
   ],
   "nodes": [
@@ -59,8 +67,8 @@
       "type": "start",
       "label": "Start",
       "position": {
-        "x": -260.0,
-        "y": 120.0
+        "x": -726.9435209742592,
+        "y": -124.0
       },
       "config": {},
       "pins": [
@@ -74,33 +82,2338 @@
       ]
     },
     {
-      "id": "run-wiki-build",
-      "type": "llm",
-      "label": "kb-wiki",
-      "description": "从零构建 Wiki：intake、scout、manifest、writer batches、review。",
+      "id": "intake-validate",
+      "type": "intent_extract",
+      "label": "Intake / Validate",
+      "description": "校验 run launcher 已解析好的六个输入，产出 workflow intake JSON。",
       "position": {
-        "x": 64.0,
-        "y": 120.0
+        "x": -397.53991805373647,
+        "y": -124.0
       },
       "config": {
-        "runtime": "opencode",
-        "agent": "kb-wiki",
         "inputs": {
-          "request": "{{inputs.request}}",
-          "module-name": "{{inputs.module-name}}",
-          "module-root": "{{inputs.module-root}}",
-          "kb-output-dir": "{{inputs.kb-output-dir}}",
-          "extra-source-dirs": "{{inputs.extra-source-dirs}}",
-          "language": "{{inputs.language}}"
+          "draft": {
+            "extra_source_dirs": "{{inputs.extra-source-dirs}}",
+            "kb_output_dir": "{{inputs.kb-output-dir}}",
+            "language": "{{inputs.language}}",
+            "module_name": "{{inputs.module-name}}",
+            "module_root": "{{inputs.module-root}}",
+            "request": "{{inputs.request}}"
+          },
+          "request": "{{inputs.request}}"
         },
+        "language": "zh-CN"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "intake-route",
+      "type": "branch",
+      "label": "Input Ready?",
+      "description": "如果 typed intake 缺少关键参数，直接失败，避免空跑后续动态图。",
+      "position": {
+        "x": -77.74143377269988,
+        "y": -124.0
+      },
+      "config": {
+        "default_rule_id": "invalid",
+        "input_ref": "$.nodes.intake-validate.output",
+        "mode": "first_match",
+        "rules": [
+          {
+            "id": "valid",
+            "label": "Valid",
+            "when": {
+              "op": "equals",
+              "path": "ok",
+              "value": true
+            }
+          },
+          {
+            "id": "invalid",
+            "label": "Invalid",
+            "when": {
+              "op": "always"
+            }
+          }
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "rule:valid",
+          "label": "Valid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "rule:invalid",
+          "label": "Invalid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-invalid",
+      "type": "end",
+      "label": "Invalid Input",
+      "description": "Graph input 缺少关键参数时终止。",
+      "position": {
+        "x": 267.2585662273001,
+        "y": -20.75013557278956
+      },
+      "config": {
+        "result": "failed"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "scan-existing-truth",
+      "type": "llm",
+      "label": "Scan Existing Truth",
+      "description": "向内调研：扫描源码、已有 Wiki、契约、历史约束和可复用资产。",
+      "position": {
+        "x": 267.2585662273001,
+        "y": -210.2046831714261
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "extra-source-dirs": "{{nodes.intake-validate.output.extra_source_dirs}}",
+          "intake": "{{nodes.intake-validate.output}}",
+          "kb-output-dir": "{{nodes.intake-validate.output.kb_output_dir}}",
+          "language": "{{nodes.intake-validate.output.language}}",
+          "module-name": "{{nodes.intake-validate.output.module_name}}",
+          "module-root": "{{nodes.intake-validate.output.module_root}}",
+          "request": "{{nodes.intake-validate.output.request}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 KB Wiki Workflow 的 Existing Truth Scanner。只做向内调研，只输出 JSON。\n\nIntake: {{inputs.intake}}\n\n扫描范围：module_root、extra_source_dirs、kb_output_dir、项目内已有 wiki/spec/ticket 约束、source anchor 约定、QMD 状态、已有 agent/profile/skill。\n\n输出 schema: {\"module\": {\"name\": string, \"root\": string, \"source_dirs\": string[]}, \"existing_wiki\": {\"exists\": boolean, \"index\": string, \"pages\": string[], \"qmd_status\": string}, \"source_map\": {\"entrypoints\": string[], \"public_api\": string[], \"tests\": string[], \"configs\": string[]}, \"contracts\": {\"required_h2\": string[], \"source_anchor_format\": string, \"do_not_overwrite\": string[]}, \"known_gaps\": string[], \"constraints\": string[]}。"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-planner",
+      "type": "llm",
+      "label": "Scout Planner",
+      "description": "基于 existing truth 生成 scout fan-out topology mutation。",
+      "position": {
+        "x": 591.6051781356174,
+        "y": -209.9845276206411
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "intake": "{{nodes.intake-validate.output}}",
+          "truth": "{{nodes.scan-existing-truth.output}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 KB Wiki Workflow 的 Scout Planner。只输出 JSON，不要 Markdown。\n\nIntake: {{inputs.intake}}\nExisting Truth: {{inputs.truth}}\n\n任务：只规划需要并行执行的 scout 工作包。默认至少包含 scout-structure、scout-interfaces、scout-internals、scout-infra；如 existing truth 暴露额外风险，可添加 scout-tests、scout-config、scout-existing-wiki。每个 scout 必须有稳定 kebab-case id、scope、goal。goal 必须说明要扫描什么、输出什么、source anchors 要求。\n\n不要输出 graph_mutations，不要输出 node/edge，不要拼 topology 协议。后续 llm_mutation 节点会从 scout_plan 确定性生成 topology mutation artifact。\n\n输出 schema: {\"scout_plan\":{\"scouts\":[{\"id\":string,\"scope\":string,\"goal\":string}]}}。"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-plan-validate",
+      "type": "schema_validate",
+      "label": "Scout Plan Validate",
+      "description": "Generic JSON schema contract gate. Invalid non-final gates output errors for repair; final gates can fail the run.",
+      "position": {
+        "x": 909.9268687132028,
+        "y": -210.2046831714261
+      },
+      "config": {
+        "fail_on_invalid": false,
+        "inputs": {
+          "value": "{{nodes.scout-planner.output}}"
+        },
+        "schema": {
+          "properties": {
+            "scout_plan": {
+              "properties": {
+                "scouts": {
+                  "items": {
+                    "properties": {
+                      "goal": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "id": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "scope": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "scope",
+                      "goal"
+                    ],
+                    "type": "object"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "scouts"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "scout_plan"
+          ],
+          "type": "object"
+        },
+        "schema_name": "scout_plan"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-plan-route",
+      "type": "branch",
+      "label": "Scout Plan Route",
+      "position": {
+        "x": 1230.0,
+        "y": -335.11020820828867
+      },
+      "config": {
+        "default_rule_id": "invalid",
+        "input_ref": "$.nodes.scout-plan-validate.output",
+        "mode": "condition",
+        "rules": [
+          {
+            "id": "valid",
+            "label": "Valid",
+            "when": {
+              "op": "equals",
+              "path": "$.valid",
+              "value": true
+            }
+          },
+          {
+            "id": "invalid",
+            "label": "Invalid",
+            "when": {
+              "op": "always"
+            }
+          }
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "rule:valid",
+          "label": "Valid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "rule:invalid",
+          "label": "Invalid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-plan-repair",
+      "type": "llm",
+      "label": "Scout Plan Repair",
+      "description": "Generic LLM JSON repair node. It fixes upstream JSON according to schema validation errors.",
+      "position": {
+        "x": 1466.0,
+        "y": -192.0
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "original": "{{nodes.scout-plan-validate.output.data}}",
+          "validation": "{{nodes.scout-plan-validate.output}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "You are a generic JSON contract repair node. Output repaired JSON only. No Markdown.\n\nSchema name: scout_plan\nValidation: {{inputs.validation}}\nOriginal JSON: {{inputs.original}}\n\nRepair Original JSON to strictly match: {\"scout_plan\":{\"scouts\":[{\"id\":string,\"scope\":string,\"goal\":string}]}}. If the JSON is already valid, output it unchanged. Do not explain."
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-plan-final",
+      "type": "schema_validate",
+      "label": "Scout Plan Final Gate",
+      "description": "Generic JSON schema contract gate. Invalid non-final gates output errors for repair; final gates can fail the run.",
+      "position": {
+        "x": 1718.9631068813703,
+        "y": -335.11020820828867
+      },
+      "config": {
+        "artifact_path": "{{nodes.intake-validate.output.kb_output_dir}}/.staging/scout-plan.json",
+        "fail_on_invalid": true,
+        "inputs": {
+          "original": "{{nodes.scout-plan-validate.output.data}}",
+          "repaired": "{{nodes.scout-plan-repair.output}}"
+        },
+        "schema": {
+          "properties": {
+            "scout_plan": {
+              "properties": {
+                "scouts": {
+                  "items": {
+                    "properties": {
+                      "goal": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "id": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "scope": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "scope",
+                      "goal"
+                    ],
+                    "type": "object"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "scouts"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "scout_plan"
+          ],
+          "type": "object"
+        },
+        "schema_name": "scout_plan",
+        "value_keys": [
+          "repaired",
+          "original"
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-mutation",
+      "type": "llm_mutation",
+      "label": "Build Scout Mutations",
+      "description": "确定性地把 scout_plan 编译成 topology mutation artifact。",
+      "position": {
+        "x": 2063.9631068813705,
+        "y": -335.11020820828867
+      },
+      "config": {
+        "generated": {
+          "agent": "native",
+          "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+          "output_artifact_type": "json",
+          "runtime": "opencode"
+        },
+        "inputs": {
+          "plan_input": "{{data.scout-plan-final.output}}"
+        },
+        "mode": "scout_fanout",
+        "target_node_id": "scout-output-validate"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "plan_input",
+          "label": "Plan Input",
+          "direction": "in",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "mutation_artifact",
+          "label": "Mutation Artifact",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-output-validate",
+      "type": "schema_validate",
+      "label": "Scout Output Validate",
+      "description": "Generic JSON schema contract gate. Invalid non-final gates output errors for repair; final gates can fail the run.",
+      "position": {
+        "x": -1870.242845425961,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "fail_on_invalid": false,
+        "schema": {
+          "additionalProperties": {
+            "properties": {
+              "coverage_notes": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "findings": {
+                "items": {
+                  "properties": {
+                    "source_anchors": {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "summary": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "title": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "summary",
+                    "source_anchors"
+                  ],
+                  "type": "object"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "risks": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "findings"
+            ],
+            "type": "object"
+          },
+          "minProperties": 1,
+          "type": "object"
+        },
+        "schema_name": "scout_outputs",
+        "source": {
+          "exclude": [
+            "scout-planner",
+            "scout-plan-validate",
+            "scout-plan-route",
+            "scout-plan-repair",
+            "scout-plan-final",
+            "scout-mutation",
+            "scout-output-validate",
+            "scout-output-route",
+            "scout-output-repair",
+            "scout-output-final"
+          ],
+          "kind": "node_outputs_by_prefix",
+          "prefix": "scout-"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-output-route",
+      "type": "branch",
+      "label": "Scout Output Route",
+      "position": {
+        "x": -1520.7440964791529,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "default_rule_id": "invalid",
+        "input_ref": "$.nodes.scout-output-validate.output",
+        "mode": "condition",
+        "rules": [
+          {
+            "id": "valid",
+            "label": "Valid",
+            "when": {
+              "op": "equals",
+              "path": "$.valid",
+              "value": true
+            }
+          },
+          {
+            "id": "invalid",
+            "label": "Invalid",
+            "when": {
+              "op": "always"
+            }
+          }
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "rule:valid",
+          "label": "Valid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "rule:invalid",
+          "label": "Invalid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-output-repair",
+      "type": "llm",
+      "label": "Scout Output Repair",
+      "description": "Generic LLM JSON repair node. It fixes upstream JSON according to schema validation errors.",
+      "position": {
+        "x": -1358.5979606626477,
+        "y": 750.891668337952
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "original": "{{nodes.scout-output-validate.output.data}}",
+          "validation": "{{nodes.scout-output-validate.output}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "You are a generic JSON contract repair node. Output repaired JSON only. No Markdown.\n\nSchema name: scout_outputs\nValidation: {{inputs.validation}}\nScout Outputs: {{inputs.original}}\n\nOutput an object keyed by scout node id. Each value must match {\"findings\":[{\"title\":string,\"summary\":string,\"source_anchors\":string[]}],\"risks\":string[],\"coverage_notes\":string[]}. Preserve real source anchors. Do not invent file paths. If a scout is weak, record risks/coverage_notes, but still provide at least one traceable finding."
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-output-final",
+      "type": "schema_validate",
+      "label": "Scout Output Final Gate",
+      "description": "Generic JSON schema contract gate. Invalid non-final gates output errors for repair; final gates can fail the run.",
+      "position": {
+        "x": -1128.5979606626477,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "artifact_path": "{{nodes.intake-validate.output.kb_output_dir}}/.staging/scout-outputs.json",
+        "fail_on_invalid": true,
+        "inputs": {
+          "original": "{{nodes.scout-output-validate.output.data}}",
+          "repaired": "{{nodes.scout-output-repair.output}}"
+        },
+        "schema": {
+          "additionalProperties": {
+            "properties": {
+              "coverage_notes": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "findings": {
+                "items": {
+                  "properties": {
+                    "source_anchors": {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "summary": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "title": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "summary",
+                    "source_anchors"
+                  ],
+                  "type": "object"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "risks": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "findings"
+            ],
+            "type": "object"
+          },
+          "minProperties": 1,
+          "type": "object"
+        },
+        "schema_name": "scout_outputs",
+        "value_keys": [
+          "repaired",
+          "original"
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "merge-scans",
+      "type": "manifest_merge",
+      "label": "Merge Scans / Manifest",
+      "description": "等待动态 scout 全部完成，合并扫描结果并生成 manifest。",
+      "position": {
+        "x": -800.0,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "inputs": {
+          "intake": "{{nodes.intake-validate.output}}",
+          "kb-output-dir": "{{nodes.intake-validate.output.kb_output_dir}}",
+          "scout_existing_wiki": "{{nodes.scout-existing-wiki.output}}",
+          "scout_infra": "{{nodes.scout-infra.output}}",
+          "scout_interfaces": "{{nodes.scout-interfaces.output}}",
+          "scout_internals": "{{nodes.scout-internals.output}}",
+          "scout_outputs": "{{data.scout-output-final.data}}",
+          "scout_plan": "{{nodes.scout-plan-final.output.data}}",
+          "scout_structure": "{{nodes.scout-structure.output}}",
+          "scout_tests": "{{nodes.scout-tests.output}}",
+          "truth": "{{nodes.scan-existing-truth.output}}"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "scout_outputs",
+          "label": "Scout Outputs",
+          "direction": "in",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wiki-planner",
+      "type": "plan",
+      "label": "Wiki Planner",
+      "description": "通用 plan 节点：基于 manifest 和 request 生成 wiki-plan.json。",
+      "position": {
+        "x": -465.6999851578786,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "kb-output-dir": "{{nodes.intake-validate.output.kb_output_dir}}",
+          "language": "{{nodes.intake-validate.output.language}}",
+          "manifest": "{{data.merge-scans.output}}",
+          "manifest-path": "{{data.merge-scans.output.staging.manifest_path}}",
+          "request": "{{nodes.intake-validate.output.request}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_path": "{{inputs.kb-output-dir}}/.staging/wiki-plan.json",
+          "artifact_type": "json",
+          "required": true,
+          "schema_name": "wiki_plan"
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 KB Wiki Workflow 的 Wiki Planner。只输出 JSON，不要 Markdown。\n\nRequest: {{inputs.request}}\nManifest: {{inputs.manifest}}\nmanifest_path={{inputs.manifest-path}}\nkb_output_dir={{inputs.kb-output-dir}}\nlanguage={{inputs.language}}\n\n任务：先读取 manifest_path，把 .staging/manifest.json 和 scans 作为事实源，规划 Wiki 页面、页面 H2 契约、source anchors 要求和 writer 工作包。不要输出 graph_mutations，不要写 node/edge。\n\n输出 schema: {\"wiki_plan_version\":1,\"kb_output_dir\":string,\"language\":string,\"pages\":[{\"id\":string,\"title\":string,\"target_path\":string,\"h2_contract\":string[],\"source_anchors\":string[],\"writer_hint\":string}],\"writer_batches\":[{\"id\":string,\"page_ids\":string[],\"target_paths\":string[],\"goal\":string}],\"summary\":string,\"risks\":string[]}。"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "plan_input",
+          "label": "Plan Input",
+          "direction": "in",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wiki-plan-validate",
+      "type": "schema_validate",
+      "label": "Wiki Plan Validate",
+      "description": "Generic JSON schema contract gate. Invalid non-final gates output errors for repair; final gates can fail the run.",
+      "position": {
+        "x": -137.51939295418418,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "fail_on_invalid": false,
+        "inputs": {
+          "value": "{{nodes.wiki-planner.output.data}}"
+        },
+        "schema": {
+          "properties": {
+            "kb_output_dir": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "language": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "pages": {
+              "items": {
+                "properties": {
+                  "h2_contract": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source_anchors": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "target_path": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "writer_hint": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "target_path",
+                  "h2_contract",
+                  "source_anchors",
+                  "writer_hint"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "risks": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "summary": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "wiki_plan_version": {
+              "type": "integer"
+            },
+            "writer_batches": {
+              "items": {
+                "properties": {
+                  "goal": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "page_ids": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "target_paths": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "id",
+                  "page_ids",
+                  "target_paths",
+                  "goal"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "wiki_plan_version",
+            "kb_output_dir",
+            "language",
+            "pages",
+            "writer_batches",
+            "summary",
+            "risks"
+          ],
+          "type": "object"
+        },
+        "schema_name": "wiki_plan"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wiki-plan-route",
+      "type": "branch",
+      "label": "Wiki Plan Route",
+      "position": {
+        "x": 152.2585662273001,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "default_rule_id": "invalid",
+        "input_ref": "$.nodes.wiki-plan-validate.output",
+        "mode": "condition",
+        "rules": [
+          {
+            "id": "valid",
+            "label": "Valid",
+            "when": {
+              "op": "equals",
+              "path": "$.valid",
+              "value": true
+            }
+          },
+          {
+            "id": "invalid",
+            "label": "Invalid",
+            "when": {
+              "op": "always"
+            }
+          }
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "rule:valid",
+          "label": "Valid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "rule:invalid",
+          "label": "Invalid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wiki-plan-repair",
+      "type": "llm",
+      "label": "Wiki Plan Repair",
+      "description": "Generic LLM JSON repair node. It fixes upstream JSON according to schema validation errors.",
+      "position": {
+        "x": 361.60517813561734,
+        "y": 766.2989640266087
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "manifest": "{{nodes.merge-scans.output}}",
+          "original": "{{nodes.wiki-plan-validate.output.data}}",
+          "validation": "{{nodes.wiki-plan-validate.output}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "You are a generic JSON contract repair node. Output repaired JSON only. No Markdown.\n\nSchema name: wiki_plan\nValidation: {{inputs.validation}}\nOriginal JSON: {{inputs.original}}\nManifest: {{inputs.manifest}}\n\nRepair the wiki plan to strictly match: {\"wiki_plan_version\":1,\"kb_output_dir\":string,\"language\":string,\"pages\":[...],\"writer_batches\":[...],\"summary\":string,\"risks\":string[]}. Base it on the manifest. Do not output test or placeholder pages."
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wiki-plan-final",
+      "type": "schema_validate",
+      "label": "Wiki Plan Final Gate",
+      "description": "Generic JSON schema contract gate. Invalid non-final gates output errors for repair; final gates can fail the run.",
+      "position": {
+        "x": 576.0,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "artifact_path": "{{nodes.intake-validate.output.kb_output_dir}}/.staging/wiki-plan.json",
+        "fail_on_invalid": true,
+        "inputs": {
+          "original": "{{nodes.wiki-plan-validate.output.data}}",
+          "repaired": "{{nodes.wiki-plan-repair.output}}"
+        },
+        "schema": {
+          "properties": {
+            "kb_output_dir": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "language": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "pages": {
+              "items": {
+                "properties": {
+                  "h2_contract": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source_anchors": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "target_path": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "writer_hint": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "target_path",
+                  "h2_contract",
+                  "source_anchors",
+                  "writer_hint"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "risks": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "summary": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "wiki_plan_version": {
+              "type": "integer"
+            },
+            "writer_batches": {
+              "items": {
+                "properties": {
+                  "goal": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "page_ids": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "target_paths": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "id",
+                  "page_ids",
+                  "target_paths",
+                  "goal"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "wiki_plan_version",
+            "kb_output_dir",
+            "language",
+            "pages",
+            "writer_batches",
+            "summary",
+            "risks"
+          ],
+          "type": "object"
+        },
+        "schema_name": "wiki_plan",
+        "value_keys": [
+          "repaired",
+          "original"
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "writer-planner",
+      "type": "plan",
+      "label": "Writer Planner",
+      "description": "通用 plan 节点：基于 wiki-plan.json 和 manifest 生成 writer-plan.json。",
+      "position": {
+        "x": 885.6998367366641,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "kb-output-dir": "{{nodes.intake-validate.output.kb_output_dir}}",
+          "language": "{{nodes.intake-validate.output.language}}",
+          "manifest": "{{data.merge-scans.output}}",
+          "manifest-path": "{{data.merge-scans.output.staging.manifest_path}}",
+          "wiki-plan-path": "{{data.wiki-plan-final.artifact_path}}",
+          "wiki_plan": "{{data.wiki-plan-final.data}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_path": "{{inputs.kb-output-dir}}/.staging/writer-plan.json",
+          "artifact_type": "json",
+          "required": true,
+          "schema_name": "writer_plan"
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 KB Wiki Workflow 的 Writer Planner。只输出 JSON，不要 Markdown。\n\nManifest: {{inputs.manifest}}\nWiki Plan: {{inputs.wiki_plan}}\nmanifest_path={{inputs.manifest-path}}\nwiki_plan_path={{inputs.wiki-plan-path}}\nkb_output_dir={{inputs.kb-output-dir}}\nlanguage={{inputs.language}}\n\n任务：先读取 manifest_path 和 wiki_plan_path，以 .staging 为事实源，把 wiki pages 合并成可并行 writer 工作包。每个 writer id 必须稳定、kebab-case，并包含 page_ids、target_paths、goal。不要输出 graph_mutations。\n\n输出 schema: {\"writer_plan\":{\"writers\":[{\"id\":string,\"scope\":string,\"page_ids\":string[],\"target_paths\":string[],\"goal\":string}]},\"summary\":string,\"risks\":string[]}。"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "plan_input",
+          "label": "Plan Input",
+          "direction": "in",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "writer-plan-validate",
+      "type": "schema_validate",
+      "label": "Writer Plan Validate",
+      "description": "Generic JSON schema contract gate. Invalid non-final gates output errors for repair; final gates can fail the run.",
+      "position": {
+        "x": 1158.0,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "fail_on_invalid": false,
+        "inputs": {
+          "value": "{{nodes.writer-planner.output.data}}"
+        },
+        "schema": {
+          "properties": {
+            "risks": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "summary": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "writer_plan": {
+              "properties": {
+                "writers": {
+                  "items": {
+                    "properties": {
+                      "goal": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "id": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "page_ids": {
+                        "items": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "scope": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "target_paths": {
+                        "items": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "scope",
+                      "page_ids",
+                      "target_paths",
+                      "goal"
+                    ],
+                    "type": "object"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "writers"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "writer_plan",
+            "summary",
+            "risks"
+          ],
+          "type": "object"
+        },
+        "schema_name": "writer_plan"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "writer-plan-route",
+      "type": "branch",
+      "label": "Writer Plan Route",
+      "position": {
+        "x": 1490.860924363113,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "default_rule_id": "invalid",
+        "input_ref": "$.nodes.writer-plan-validate.output",
+        "mode": "condition",
+        "rules": [
+          {
+            "id": "valid",
+            "label": "Valid",
+            "when": {
+              "op": "equals",
+              "path": "$.valid",
+              "value": true
+            }
+          },
+          {
+            "id": "invalid",
+            "label": "Invalid",
+            "when": {
+              "op": "always"
+            }
+          }
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "rule:valid",
+          "label": "Valid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "rule:invalid",
+          "label": "Invalid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "writer-plan-repair",
+      "type": "llm",
+      "label": "Writer Plan Repair",
+      "description": "Generic LLM JSON repair node. It fixes upstream JSON according to schema validation errors.",
+      "position": {
+        "x": 1833.9631068813703,
+        "y": 720.2989640266087
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "manifest": "{{nodes.merge-scans.output}}",
+          "original": "{{nodes.writer-plan-validate.output.data}}",
+          "validation": "{{nodes.writer-plan-validate.output}}",
+          "wiki_plan": "{{nodes.wiki-plan-final.output.data}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "You are a generic JSON contract repair node. Output repaired JSON only. No Markdown.\n\nSchema name: writer_plan\nValidation: {{inputs.validation}}\nOriginal JSON: {{inputs.original}}\nWiki Plan: {{inputs.wiki_plan}}\nManifest: {{inputs.manifest}}\n\nRepair the writer plan to strictly match: {\"writer_plan\":{\"writers\":[{\"id\":string,\"scope\":string,\"page_ids\":string[],\"target_paths\":string[],\"goal\":string}]},\"summary\":string,\"risks\":string[]}. Writers must come from wiki plan batches/pages. Do not generate testing placeholders."
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "writer-plan-final",
+      "type": "schema_validate",
+      "label": "Writer Plan Final Gate",
+      "description": "Generic JSON schema contract gate. Invalid non-final gates output errors for repair; final gates can fail the run.",
+      "position": {
+        "x": 2157.0,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "artifact_path": "{{nodes.intake-validate.output.kb_output_dir}}/.staging/writer-plan.json",
+        "fail_on_invalid": true,
+        "inputs": {
+          "original": "{{nodes.writer-plan-validate.output.data}}",
+          "repaired": "{{nodes.writer-plan-repair.output}}"
+        },
+        "schema": {
+          "properties": {
+            "risks": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "summary": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "writer_plan": {
+              "properties": {
+                "writers": {
+                  "items": {
+                    "properties": {
+                      "goal": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "id": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "page_ids": {
+                        "items": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "scope": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "target_paths": {
+                        "items": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "scope",
+                      "page_ids",
+                      "target_paths",
+                      "goal"
+                    ],
+                    "type": "object"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "writers"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "writer_plan",
+            "summary",
+            "risks"
+          ],
+          "type": "object"
+        },
+        "schema_name": "writer_plan",
+        "value_keys": [
+          "repaired",
+          "original"
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "writer-mutation",
+      "type": "llm_mutation",
+      "label": "Build Writer Mutations",
+      "description": "确定性地把 writer_plan 编译成 topology mutation artifact。",
+      "position": {
+        "x": 2505.5669090879837,
+        "y": 586.9073562664722
+      },
+      "config": {
+        "generated": {
+          "agent": "native",
+          "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+          "output_artifact_type": "markdown",
+          "runtime": "opencode"
+        },
+        "inputs": {
+          "plan_input": "{{data.writer-plan-final.output}}"
+        },
+        "mode": "writer_fanout",
+        "target_node_id": "repair-loop"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "plan_input",
+          "label": "Plan Input",
+          "direction": "in",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "mutation_artifact",
+          "label": "Mutation Artifact",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "repair-loop",
+      "type": "loop",
+      "label": "Review / Repair Loop",
+      "description": "等待动态 writer 全部完成；review-repair 输出 needs_repair=true 时继续迭代。",
+      "position": {
+        "x": 1696.0,
+        "y": 128.0
+      },
+      "config": {
+        "body_entry": "review-repair",
+        "body_exit": "review-output-final",
+        "condition": {
+          "input_ref": "$.nodes.review-output-final.output.data",
+          "op": "equals",
+          "path": "$.needs_repair",
+          "value": true
+        },
+        "max_iterations": 3,
+        "on_max_iterations": "fail"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "exit",
+          "label": "Exit",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "review-repair",
+      "type": "llm",
+      "label": "Review / Repair",
+      "description": "审查 writer 输出，必要时直接修复可修复问题，并控制 loop 是否继续。",
+      "position": {
+        "x": 2016.0,
+        "y": 1.2498644272104364
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "kb-output-dir": "{{nodes.intake-validate.output.kb_output_dir}}",
+          "language": "{{nodes.intake-validate.output.language}}",
+          "manifest": "{{nodes.merge-scans.output}}",
+          "manifest-path": "{{nodes.merge-scans.output.staging.manifest_path}}",
+          "staging-dir": "{{nodes.merge-scans.output.staging.dir}}",
+          "wiki-plan-path": "{{nodes.wiki-plan-final.output.artifact_path}}",
+          "wiki_plan": "{{nodes.wiki-plan-final.output.data}}",
+          "writer-plan-path": "{{nodes.writer-plan-final.output.artifact_path}}",
+          "writer_plan": "{{nodes.writer-plan-final.output.data}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 KB Wiki Workflow 的 Review / Repair 节点。只输出 JSON。\n\nManifest Ref: {{inputs.manifest}}\nWiki Plan Ref: {{inputs.wiki_plan}}\nWriter Plan Ref: {{inputs.writer_plan}}\nkb_output_dir={{inputs.kb-output-dir}}\nstaging_dir={{inputs.staging-dir}}\nmanifest_path={{inputs.manifest-path}}\nwiki_plan_path={{inputs.wiki-plan-path}}\nwriter_plan_path={{inputs.writer-plan-path}}\nlanguage={{inputs.language}}\n\n任务：以 .staging 为事实源，先读取 manifest_path、wiki_plan_path、writer_plan_path 和 staging_dir/scans 下的 scout 文件，再读取本 run 的所有 writer-* 输出和 kb_output_dir 中的 Markdown，检查 source anchors、9 个 H2 契约、断链、重复、遗漏和事实错误。能直接修复的小问题就修复。输出 schema: {\"needs_repair\": boolean, \"repair_count\": number, \"review_status\": \"PASS\" | \"WARN\" | \"FAIL\", \"warnings\": string[], \"failures\": string[], \"changed_files\": string[]}。如果还有需要下一轮处理的问题，needs_repair=true；否则 false。"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "review-output-validate",
+      "type": "schema_validate",
+      "label": "Review Output Validate",
+      "description": "Generic JSON schema contract gate. Invalid non-final gates output errors for repair; final gates can fail the run.",
+      "position": {
+        "x": 2358.0900832377683,
+        "y": 1.24986442721044
+      },
+      "config": {
+        "fail_on_invalid": false,
+        "inputs": {
+          "value": "{{nodes.review-repair.output}}"
+        },
+        "schema": {
+          "properties": {
+            "changed_files": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "failures": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "needs_repair": {
+              "type": "boolean"
+            },
+            "repair_count": {
+              "minimum": 0,
+              "type": "number"
+            },
+            "review_status": {
+              "enum": [
+                "PASS",
+                "WARN",
+                "FAIL"
+              ],
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "needs_repair",
+            "repair_count",
+            "review_status",
+            "warnings",
+            "failures",
+            "changed_files"
+          ],
+          "type": "object"
+        },
+        "schema_name": "review_repair"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "review-output-route",
+      "type": "branch",
+      "label": "Review Output Route",
+      "position": {
+        "x": 2707.474599558303,
+        "y": 1.2498644272104364
+      },
+      "config": {
+        "default_rule_id": "invalid",
+        "input_ref": "$.nodes.review-output-validate.output",
+        "mode": "condition",
+        "rules": [
+          {
+            "id": "valid",
+            "label": "Valid",
+            "when": {
+              "op": "equals",
+              "path": "$.valid",
+              "value": true
+            }
+          },
+          {
+            "id": "invalid",
+            "label": "Invalid",
+            "when": {
+              "op": "always"
+            }
+          }
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "rule:valid",
+          "label": "Valid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "rule:invalid",
+          "label": "Invalid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "review-output-repair",
+      "type": "llm",
+      "label": "Review Output Repair",
+      "description": "Generic LLM JSON repair node. It fixes upstream JSON according to schema validation errors.",
+      "position": {
+        "x": 2899.645056747029,
+        "y": 174.0
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "original": "{{nodes.review-output-validate.output.data}}",
+          "validation": "{{nodes.review-output-validate.output}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "You are a generic JSON contract repair node. Output repaired JSON only. No Markdown.\n\nSchema name: review_repair\nValidation: {{inputs.validation}}\nOriginal JSON: {{inputs.original}}\n\nRepair review output to strictly match: {\"needs_repair\":boolean,\"repair_count\":number,\"review_status\":\"PASS\"|\"WARN\"|\"FAIL\",\"warnings\":string[],\"failures\":string[],\"changed_files\":string[]}. If already valid, output it unchanged. Do not explain."
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "review-output-final",
+      "type": "schema_validate",
+      "label": "Review Output Final Gate",
+      "description": "Generic JSON schema contract gate. Invalid non-final gates output errors for repair; final gates can fail the run.",
+      "position": {
+        "x": 3104.0,
+        "y": 1.24986442721044
+      },
+      "config": {
+        "artifact_path": "{{nodes.intake-validate.output.kb_output_dir}}/.staging/review-repair-output.json",
+        "fail_on_invalid": true,
+        "inputs": {
+          "original": "{{nodes.review-output-validate.output.data}}",
+          "repaired": "{{nodes.review-output-repair.output}}"
+        },
+        "schema": {
+          "properties": {
+            "changed_files": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "failures": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "needs_repair": {
+              "type": "boolean"
+            },
+            "repair_count": {
+              "minimum": 0,
+              "type": "number"
+            },
+            "review_status": {
+              "enum": [
+                "PASS",
+                "WARN",
+                "FAIL"
+              ],
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "needs_repair",
+            "repair_count",
+            "review_status",
+            "warnings",
+            "failures",
+            "changed_files"
+          ],
+          "type": "object"
+        },
+        "schema_name": "review_repair",
+        "value_keys": [
+          "repaired",
+          "original"
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "qmd-final-report",
+      "type": "llm",
+      "label": "QMD / Final Report",
+      "description": "刷新 QMD embedding，生成最终构建报告。",
+      "position": {
+        "x": 2042.0,
+        "y": 294.0
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "intake": "{{nodes.intake-validate.output}}",
+          "kb-output-dir": "{{nodes.intake-validate.output.kb_output_dir}}",
+          "manifest": "{{nodes.merge-scans.output}}",
+          "manifest-path": "{{nodes.merge-scans.output.staging.manifest_path}}",
+          "review": "{{nodes.review-output-final.output.data}}",
+          "staging-dir": "{{nodes.merge-scans.output.staging.dir}}",
+          "wiki-plan-path": "{{nodes.wiki-plan-final.output.artifact_path}}",
+          "wiki_plan": "{{nodes.wiki-plan-final.output.data}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
         "output": {
           "artifact_type": "markdown",
           "required": true
         },
         "prompt": {
           "mode": "inline",
-          "template": "请按 Wiki Workflow 从零构建完整代码 Wiki。\n\n用户需求：\n{{inputs.request}}\n\nmodule_name: {{inputs.module-name}}\nmodule_root: {{inputs.module-root}}\nkb_output_dir: {{inputs.kb-output-dir}}\nextra_source_dirs: {{inputs.extra-source-dirs}}\nlanguage: {{inputs.language}}\n\n要求：加载 wiki-workflow skill，执行 intake、structure/interfaces/internals/infra scouts、merge-scans、wiki-planner、writer batches、wiki-reviewer；遵守 source anchor 和 9 个模块 H2 契约；最后返回 build status、index.md、写入计数、review WARN/FAIL、QMD 状态。"
-        }
+          "template": "你是 KB Wiki Workflow 的 QMD / Final Report 节点。\n\nIntake: {{inputs.intake}}\nManifest Ref: {{inputs.manifest}}\nWiki Plan Ref: {{inputs.wiki_plan}}\nReview: {{inputs.review}}\nkb_output_dir={{inputs.kb-output-dir}}\nstaging_dir={{inputs.staging-dir}}\nmanifest_path={{inputs.manifest-path}}\nwiki_plan_path={{inputs.wiki-plan-path}}\n\n任务：以 .staging 为事实源，读取 manifest_path、wiki_plan_path 和 staging_dir/scans 下的 scout 文件，刷新 qmd embedding（如项目启用 qmd），生成最终报告。报告必须包含 build status、index.md 路径、写入/修改文件数、review PASS/WARN/FAIL、QMD 状态、未解决风险。输出 Markdown。"
+        },
+        "runtime": "opencode"
       },
       "pins": [
         {
@@ -132,8 +2445,8 @@
       "type": "end",
       "label": "Success",
       "position": {
-        "x": 432.0,
-        "y": 120.0
+        "x": 2368.0,
+        "y": 318.0
       },
       "config": {
         "result": "succeeded"
@@ -151,17 +2464,352 @@
   ],
   "edges": [
     {
-      "id": "edge-start-wiki",
+      "id": "edge-start-intake",
       "from": "start",
-      "to": "run-wiki-build",
+      "to": "intake-validate",
       "kind": "exec",
       "from_pin": "exec_out",
       "to_pin": "exec_in"
     },
     {
-      "id": "edge-wiki-end",
-      "from": "run-wiki-build",
+      "id": "edge-intake-route",
+      "from": "intake-validate",
+      "to": "intake-route",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-route-valid-truth",
+      "from": "intake-route",
+      "to": "scan-existing-truth",
+      "kind": "exec",
+      "from_pin": "rule:valid",
+      "to_pin": "exec_in",
+      "source_handle": "rule:valid"
+    },
+    {
+      "id": "edge-route-invalid-end",
+      "from": "intake-route",
+      "to": "end-invalid",
+      "kind": "exec",
+      "from_pin": "rule:invalid",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-truth-scout-planner",
+      "from": "scan-existing-truth",
+      "to": "scout-planner",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-loop-exit",
+      "from": "repair-loop",
+      "to": "qmd-final-report",
+      "kind": "exec",
+      "label": "Exit",
+      "from_pin": "exit",
+      "to_pin": "exec_in",
+      "source_handle": "exit"
+    },
+    {
+      "id": "edge-report-end",
+      "from": "qmd-final-report",
       "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-merge-data-wiki-planner",
+      "from": "merge-scans",
+      "to": "wiki-planner",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "plan_input"
+    },
+    {
+      "id": "edge-scout-plan-validate",
+      "from": "scout-planner",
+      "to": "scout-plan-validate",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-scout-plan-route",
+      "from": "scout-plan-validate",
+      "to": "scout-plan-route",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-scout-plan-valid-final",
+      "from": "scout-plan-route",
+      "to": "scout-plan-final",
+      "kind": "exec",
+      "from_pin": "rule:valid",
+      "to_pin": "exec_in",
+      "source_handle": "rule:valid"
+    },
+    {
+      "id": "edge-scout-plan-invalid-repair",
+      "from": "scout-plan-route",
+      "to": "scout-plan-repair",
+      "kind": "exec",
+      "from_pin": "rule:invalid",
+      "to_pin": "exec_in",
+      "source_handle": "rule:invalid"
+    },
+    {
+      "id": "edge-scout-plan-repair-final",
+      "from": "scout-plan-repair",
+      "to": "scout-plan-final",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-scout-plan-final-mutation",
+      "from": "scout-plan-final",
+      "to": "scout-mutation",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-scout-plan-final-data-mutation",
+      "from": "scout-plan-final",
+      "to": "scout-mutation",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "plan_input"
+    },
+    {
+      "id": "edge-scout-output-route",
+      "from": "scout-output-validate",
+      "to": "scout-output-route",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-scout-output-valid-final",
+      "from": "scout-output-route",
+      "to": "scout-output-final",
+      "kind": "exec",
+      "from_pin": "rule:valid",
+      "to_pin": "exec_in",
+      "source_handle": "rule:valid"
+    },
+    {
+      "id": "edge-scout-output-invalid-repair",
+      "from": "scout-output-route",
+      "to": "scout-output-repair",
+      "kind": "exec",
+      "from_pin": "rule:invalid",
+      "to_pin": "exec_in",
+      "source_handle": "rule:invalid"
+    },
+    {
+      "id": "edge-scout-output-repair-final",
+      "from": "scout-output-repair",
+      "to": "scout-output-final",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-scout-output-final-merge",
+      "from": "scout-output-final",
+      "to": "merge-scans",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-scout-output-final-data-merge",
+      "from": "scout-output-final",
+      "to": "merge-scans",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "scout_outputs"
+    },
+    {
+      "id": "edge-merge-wiki-planner",
+      "from": "merge-scans",
+      "to": "wiki-planner",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-wiki-plan-validate",
+      "from": "wiki-planner",
+      "to": "wiki-plan-validate",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-wiki-plan-route",
+      "from": "wiki-plan-validate",
+      "to": "wiki-plan-route",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-wiki-plan-valid-final",
+      "from": "wiki-plan-route",
+      "to": "wiki-plan-final",
+      "kind": "exec",
+      "from_pin": "rule:valid",
+      "to_pin": "exec_in",
+      "source_handle": "rule:valid"
+    },
+    {
+      "id": "edge-wiki-plan-invalid-repair",
+      "from": "wiki-plan-route",
+      "to": "wiki-plan-repair",
+      "kind": "exec",
+      "from_pin": "rule:invalid",
+      "to_pin": "exec_in",
+      "source_handle": "rule:invalid"
+    },
+    {
+      "id": "edge-wiki-plan-repair-final",
+      "from": "wiki-plan-repair",
+      "to": "wiki-plan-final",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-wiki-plan-final-writer-planner",
+      "from": "wiki-plan-final",
+      "to": "writer-planner",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-wiki-plan-final-data-writer-planner",
+      "from": "wiki-plan-final",
+      "to": "writer-planner",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "plan_input"
+    },
+    {
+      "id": "edge-writer-plan-validate",
+      "from": "writer-planner",
+      "to": "writer-plan-validate",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-writer-plan-route",
+      "from": "writer-plan-validate",
+      "to": "writer-plan-route",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-writer-plan-valid-final",
+      "from": "writer-plan-route",
+      "to": "writer-plan-final",
+      "kind": "exec",
+      "from_pin": "rule:valid",
+      "to_pin": "exec_in",
+      "source_handle": "rule:valid"
+    },
+    {
+      "id": "edge-writer-plan-invalid-repair",
+      "from": "writer-plan-route",
+      "to": "writer-plan-repair",
+      "kind": "exec",
+      "from_pin": "rule:invalid",
+      "to_pin": "exec_in",
+      "source_handle": "rule:invalid"
+    },
+    {
+      "id": "edge-writer-plan-repair-final",
+      "from": "writer-plan-repair",
+      "to": "writer-plan-final",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-writer-plan-final-mutation",
+      "from": "writer-plan-final",
+      "to": "writer-mutation",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-writer-plan-final-data-mutation",
+      "from": "writer-plan-final",
+      "to": "writer-mutation",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "plan_input"
+    },
+    {
+      "id": "edge-loop-body",
+      "from": "repair-loop",
+      "to": "review-repair",
+      "kind": "exec",
+      "label": "Body",
+      "from_pin": "body",
+      "to_pin": "exec_in",
+      "source_handle": "body"
+    },
+    {
+      "id": "edge-review-output-validate",
+      "from": "review-repair",
+      "to": "review-output-validate",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-review-output-route",
+      "from": "review-output-validate",
+      "to": "review-output-route",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-review-output-valid-final",
+      "from": "review-output-route",
+      "to": "review-output-final",
+      "kind": "exec",
+      "from_pin": "rule:valid",
+      "to_pin": "exec_in",
+      "source_handle": "rule:valid"
+    },
+    {
+      "id": "edge-review-output-invalid-repair",
+      "from": "review-output-route",
+      "to": "review-output-repair",
+      "kind": "exec",
+      "from_pin": "rule:invalid",
+      "to_pin": "exec_in",
+      "source_handle": "rule:invalid"
+    },
+    {
+      "id": "edge-review-output-repair-final",
+      "from": "review-output-repair",
+      "to": "review-output-final",
       "kind": "exec",
       "from_pin": "exec_out",
       "to_pin": "exec_in"
@@ -171,7 +2819,7 @@
     "viewport": {
       "x": 0.0,
       "y": 0.0,
-      "scale": 1.0
+      "scale": 0.75
     }
   }
 }

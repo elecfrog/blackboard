@@ -63,14 +63,14 @@ const groupedProjects = computed<ProjectGroup[]>(() =>
         </label>
       </div>
     </div>
-    <div v-if="groupedProjects.length === 0" class="aw-assignments-empty">
+    <p v-if="groupedProjects.length === 0" class="aw-empty-line">
       {{ t('noActiveAssignments') }}
-    </div>
-    <div v-else class="aw-assignments-grid">
-      <div v-for="group in groupedProjects" :key="group.project.name" class="aw-assignment-card">
-        <header class="aw-assignment-card-header">
+    </p>
+    <div v-else class="aw-assignment-groups">
+      <div v-for="group in groupedProjects" :key="group.project.name" class="aw-assignment-group">
+        <header class="aw-assignment-group-header">
           <h5>{{ group.project.name }}</h5>
-          <span class="aw-badge">{{ group.total }}</span>
+          <span class="aw-assignment-count">{{ group.total }}</span>
         </header>
         <div class="aw-assignment-tickets">
           <a

@@ -17,6 +17,7 @@ use std::path::{Component, Path};
 // ─── Module declarations ─────────────────────────────────────────────────────
 
 pub mod agent_session;
+pub mod agent_tools;
 pub mod agents_config;
 pub mod agents_registry;
 pub mod board;
@@ -35,6 +36,10 @@ pub mod workspace;
 
 // ─── Re-exports ──────────────────────────────────────────────────────────────
 
+pub use agent_tools::{
+    install_agent_tool, list_agent_tools, AgentTool, AgentToolInstallResult, AgentToolList,
+    AgentToolStatus,
+};
 pub use agents_config::{
     disconnect_agent_connector, list_agent_connectors, sync_agent_connector, AgentConnector,
     AgentConnectorList, AgentConnectorState, AgentConnectorSyncEvent, AgentConnectorTarget,

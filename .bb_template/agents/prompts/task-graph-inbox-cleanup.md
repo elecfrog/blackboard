@@ -13,6 +13,7 @@ Rules:
 - Treat this as a project-wide cleanup pass. Do not hard-code a feature, ticket range, or filename.
 - List inbox notes first, then inspect only enough notes and existing project tickets to make high-confidence matches for this batch.
 - This loop iteration must process up to `{{inputs.batch-count}}` high-confidence note(s) when they exist.
+- Stop after processing and deleting `{{inputs.batch-count}}` note(s) in this iteration, even if more high-confidence notes remain.
 - Match each inbox note to an existing ticket in the same project using explicit ticket IDs, titles, paths, components, code areas, feature names, and nearby project context.
 - Exclude archived tickets as cleanup targets. Archived tickets may be used only as historical context; do not append to them, change them, or delete an inbox note by assigning it to an archived ticket.
 - Prefer direct evidence to broad similarity. If several tickets could match, retain the note and report why it is ambiguous.
@@ -25,7 +26,7 @@ Rules:
 
 After any ticket or inbox mutation, run these commands from `{{env.root}}` and include their pass/fail results in the final response:
 
-- `python3 scripts/check_ticket_ids.py --project {{env.project}}`
+- `python "{{env.scripts_dir}}/check_ticket_ids.py" --project {{env.project}}`
 - `qmd embed`
 
 Final response must be a single JSON object and nothing else. The values below are examples; replace them with the actual note names and ticket IDs you processed:
@@ -41,7 +42,7 @@ Final response must be a single JSON object and nothing else. The values below a
   "tickets_updated": ["000123"],
   "continue": true,
   "verification": [
-    "python3 scripts/check_ticket_ids.py --project {{env.project}}: passed",
+    "python \"{{env.scripts_dir}}/check_ticket_ids.py\" --project {{env.project}}: passed",
     "qmd embed: passed"
   ]
 }

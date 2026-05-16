@@ -336,6 +336,76 @@ fn update_ticket_status_change_does_not_move_file() {
 }
 
 #[test]
+fn deprecate_ticket_moves_file_and_resolves_active_relationships() {
+    let (_temp, board) = fixture();
+    let deprecated = board
+        .create_ticket(create_ticket_input("Deprecated route"))
+        .unwrap();
+    let dependent = board
+        .create_ticket(create_ticket_input("Depends on deprecated"))
+        .unwrap();
+    let attached = board
+        .create_ticket(create_ticket_input("Attaches deprecated"))
+        .unwrap();
+
+    board
+        .update_ticket(UpdateTicketInput {
+            id: dependent.ticket.id.clone(),
+            frontmatter: Some(TicketFrontmatterPatch {
+                extra: [("depends_on".to_string(), deprecated.ticket.id.clone())]
+                    .into_iter()
+                    .collect(),
+                ..TicketFrontmatterPatch::default()
+            }),
+        })
+        .unwrap();
+    board
+        .update_ticket(UpdateTicketInput {
+            id: attached.ticket.id.clone(),
+            frontmatter: Some(TicketFrontmatterPatch {
+                extra: [(
+                    "attachments".to_string(),
+                    format!(
+                        r#"[{{"kind":"ticket","target":"{}"}},{{"kind":"wiki","target":"keep.md"}}]"#,
+                        deprecated.ticket.id
+                    ),
+                )]
+                .into_iter()
+                .collect(),
+                ..TicketFrontmatterPatch::default()
+            }),
+        })
+        .unwrap();
+
+    let result = board
+        .deprecate_ticket(DeprecateTicketInput {
+            id: deprecated.ticket.id.clone(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        result.ticket.path,
+        format!("tickets/_deprecated/{}", deprecated.ticket.file_name)
+    );
+    assert!(!board.root().join(&deprecated.ticket.path).exists());
+    assert!(board.root().join(&result.ticket.path).exists());
+    assert_eq!(board.list_tickets().unwrap().tickets.len(), 2);
+    assert!(result
+        .removed_dependency_refs
+        .contains(&dependent.ticket.id));
+    assert!(result.removed_attachment_refs.contains(&attached.ticket.id));
+
+    let dependent_content = fs::read_to_string(board.root().join(&dependent.ticket.path)).unwrap();
+    assert!(!dependent_content.contains("depends_on ="));
+    let attached_content = fs::read_to_string(board.root().join(&attached.ticket.path)).unwrap();
+    assert!(!attached_content.contains(&format!(r#""target":"{}""#, deprecated.ticket.id)));
+    assert!(attached_content.contains("keep.md"));
+
+    let created_after_deprecation = board.create_ticket(create_ticket_input("Next id")).unwrap();
+    assert_eq!(created_after_deprecation.ticket.id, "000004");
+}
+
+#[test]
 fn update_ticket_rejects_empty_or_unsafe_changes() {
     let (_temp, board) = fixture();
     let created = board.create_ticket(create_ticket_input("Rejects")).unwrap();
@@ -898,8 +968,10 @@ fn workspace_init_from_seed_copies_assets_without_runtime() {
     fs::create_dir_all(seed_data.join("task_graphs/system")).unwrap();
     fs::create_dir_all(seed_data.join("templates")).unwrap();
     fs::create_dir_all(seed_data.join("runtime/task_graph_runs")).unwrap();
+    fs::create_dir_all(seed_repo.join("scripts")).unwrap();
     fs::write(seed_data.join("templates/ticket.md"), "template").unwrap();
     fs::write(seed_data.join("runtime/seed-state.json"), "do not copy").unwrap();
+    fs::write(seed_repo.join("scripts/check_ticket_ids.py"), "script").unwrap();
     fs::write(
         seed_data.join("blackboard.json"),
         r#"{"schema_version":1,"layout":"seed"}"#,
@@ -919,6 +991,7 @@ fn workspace_init_from_seed_copies_assets_without_runtime() {
         crate::fs_util::canonicalize(&target.join(".bb")).unwrap()
     );
     assert!(target.join(".bb/templates/ticket.md").is_file());
+    assert!(target.join(".bb/scripts/check_ticket_ids.py").is_file());
     assert!(target.join(".bb/projects/__projects__.json").is_file());
     assert!(target.join(".bb/runtime").is_dir());
     assert!(!target.join(".bb/runtime/seed-state.json").exists());

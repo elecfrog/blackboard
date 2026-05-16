@@ -4,7 +4,7 @@
   "scope": "system",
   "title": "Inbox 批量清理",
   "description": "运行 bb-pm 执行 Inbox 清理任务，按批量参数判断并真实沉淀/删除 note。",
-  "version": 6,
+  "version": 8,
   "readonly": true,
   "metadata": {
     "tags": [
@@ -12,7 +12,13 @@
       "inbox"
     ],
     "related_tickets": [],
-    "owner": "blackboard"
+    "owner": "blackboard",
+    "run_policy": {
+      "allow_concurrent_runs": true,
+      "max_concurrent_runs": 2,
+      "queue_enabled": true,
+      "max_queue_wait_ms": 1800000
+    }
   },
   "inputs": [
     {
@@ -64,10 +70,10 @@
         "y": 219.9586397058824
       },
       "config": {
-        "body_entry": "3d0b8ead-4ec2-43be-a087-b1221159694a",
-        "body_exit": "3d0b8ead-4ec2-43be-a087-b1221159694a",
+        "body_entry": "b7ffec9f-2a60-4e25-9832-baba8485fecc",
+        "body_exit": "b7ffec9f-2a60-4e25-9832-baba8485fecc",
         "condition": {
-          "input_ref": "$.nodes.3d0b8ead-4ec2-43be-a087-b1221159694a.output",
+          "input_ref": "$.nodes.b7ffec9f-2a60-4e25-9832-baba8485fecc.output",
           "op": "equals",
           "path": "$.continue",
           "value": true

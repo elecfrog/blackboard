@@ -172,19 +172,6 @@ pub fn upsert_agent(bb_root: &Path, mut agent: AgentProfile) -> Result<AgentProf
             agent.instructions_path = None;
         }
     }
-    if let Some(org_role) = agent.org_role.as_mut() {
-        *org_role = org_role.trim().to_string();
-        if org_role.is_empty() {
-            agent.org_role = None;
-        }
-    }
-    if let Some(coordinator) = agent.coordinator.as_mut() {
-        *coordinator = coordinator.trim().to_string();
-        if coordinator.is_empty() {
-            agent.coordinator = None;
-        }
-    }
-    agent.workers.retain(|w| !w.trim().is_empty());
     // Remove empty custom_env entries
     agent
         .custom_env

@@ -60,9 +60,6 @@ pub(crate) fn tools_list() -> Value {
                         "custom_env": { "type": "object", "additionalProperties": { "type": "string" } },
                         "custom_args": { "type": "array", "items": { "type": "string" } },
                         "max_concurrent_tasks": { "type": "integer", "minimum": 1 },
-                        "org_role": { "type": "string", "enum": ["coordinator", "worker"] },
-                        "coordinator": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
-                        "workers": { "type": "array", "items": { "type": "string" } },
                         "mcp_servers": {
                             "type": "array",
                             "items": {
@@ -201,6 +198,19 @@ pub(crate) fn tools_list() -> Value {
                             },
                             "additionalProperties": false
                         }
+                    },
+                    "required": ["project", "id"],
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "deprecate_ticket",
+                "description": "Move one active ticket by six-digit ID into tickets/_deprecated and remove active dependency/attachment references to it.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "project": project_field,
+                        "id": { "type": "string", "pattern": "^[0-9]{6}$" }
                     },
                     "required": ["project", "id"],
                     "additionalProperties": false

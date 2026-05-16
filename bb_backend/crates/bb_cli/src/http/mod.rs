@@ -20,8 +20,8 @@ use rmcp::transport::streamable_http_server::{
 
 use crate::mcp_handler::BbMcpHandler;
 use bb_core::{
-    agents_config, AgentProfile, AgentRegistryList, ArchiveLaneResult, BoardSummary,
-    CreatedInboxNote, InboxError, InboxNote, InboxNoteEntry, InboxNoteInput, LaneDef,
+    agent_tools, agents_config, skills, AgentProfile, AgentRegistryList, ArchiveLaneResult,
+    BoardSummary, CreatedInboxNote, InboxError, InboxNote, InboxNoteEntry, InboxNoteInput, LaneDef,
     ProjectAgentList, ProjectAgentRegistration, ProjectBoardViewSettings, ProjectDirectoryCreate,
     ProjectDirectoryOpen, ProjectEntry, RemovedProjectAgentRegistration, Workspace,
 };
@@ -137,6 +137,10 @@ pub fn app_with_options(workspace: Workspace, options: HttpServeOptions) -> Rout
             patch(tickets::patch_ticket),
         )
         .route(
+            "/api/projects/{project}/tickets/{id}/deprecate",
+            post(tickets::deprecate_ticket),
+        )
+        .route(
             "/api/projects/{project}/tickets/{id}/content",
             get(tickets::ticket_content),
         )
@@ -183,6 +187,8 @@ pub fn app_with_options(workspace: Workspace, options: HttpServeOptions) -> Rout
         // as the lane endpoints above, so the Settings UI can drive them
         // directly without going through stdio.
         .route("/api/agents/connectors", get(list_agent_connectors_handler))
+        .route("/api/agents/tools", get(list_agent_tools_handler))
+        .route("/api/agents/skills", get(list_agent_skills_handler))
         .route(
             "/api/agents",
             get(list_agents_handler).post(upsert_agent_handler),
@@ -202,6 +208,10 @@ pub fn app_with_options(workspace: Workspace, options: HttpServeOptions) -> Rout
         .route(
             "/api/agents/connectors/{id}",
             delete(disconnect_agent_connector_handler),
+        )
+        .route(
+            "/api/agents/tools/{id}/install",
+            post(install_agent_tool_handler),
         )
         // AgentSession: shared LLM execution/session runtime used by Task Graph
         // LLM nodes first, and later by direct project chat.
@@ -805,6 +815,24 @@ async fn list_agent_connectors_handler(
     )?))
 }
 
+/// List supported Agent CLI tools and their npm/global installation status.
+async fn list_agent_tools_handler() -> Result<Json<agent_tools::AgentToolList>, ApiError> {
+    Ok(Json(agent_tools::list_agent_tools()))
+}
+
+#[derive(Debug, Serialize)]
+struct AgentSkillCatalog {
+    skills: Vec<skills::SkillInfo>,
+}
+
+async fn list_agent_skills_handler(
+    State(state): State<AppState>,
+) -> Result<Json<AgentSkillCatalog>, ApiError> {
+    Ok(Json(AgentSkillCatalog {
+        skills: skills::discover_skills(&state.workspace_root()?),
+    }))
+}
+
 async fn list_agents_handler(
     State(state): State<AppState>,
 ) -> Result<Json<AgentRegistryList>, ApiError> {
@@ -903,6 +931,13 @@ async fn disconnect_agent_connector_handler(
         &workspace_root,
         &id,
     )?))
+}
+
+/// Install or repair one supported Agent CLI using its fixed npm package spec.
+async fn install_agent_tool_handler(
+    Path(id): Path<String>,
+) -> Result<Json<agent_tools::AgentToolInstallResult>, ApiError> {
+    Ok(Json(agent_tools::install_agent_tool(&id)?))
 }
 
 #[derive(Debug)]

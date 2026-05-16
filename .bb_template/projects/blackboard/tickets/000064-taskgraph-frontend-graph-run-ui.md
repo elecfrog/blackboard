@@ -3,8 +3,8 @@ id = "000064"
 lane = "bbd"
 title = "TaskGraph 前端 Graph 与 Run UI：节点编辑、状态覆盖与 Artifact 面板"
 created_at = "2026-05-14"
-updated_at = "2026-05-15"
-status = "review"
+updated_at = "2026-05-17"
+status = "archived"
 area = "TaskGraph"
 assignee = "codex"
 depends_on = "000055"
@@ -37,6 +37,12 @@ scope = "frontend-graph-run-ui"
 - codex 完成阶段工作，handoff 写入 `2026-05-15-codex-taskgraph-run-节点状态-footer-避免-output-pin-重叠.md`。
 
 - codex 完成阶段工作，handoff 写入 `2026-05-15-codex-taskgraph-node-去除左侧-accent-strip.md`。
+
+- codex 开始执行：开始实现 pregel-topology-mutation 前端 spec；用户要求完成后不要跑前端 build，因为后端并行工作。
+
+- codex 完成阶段工作，handoff 写入 `2026-05-16-codex-pregel-topology-mutation-frontend-implementation.md`。
+
+- 2026-05-16：实现 TaskGraph run data contract 前端补充：current_graph_revision、active_nodes、topology mutation result types、pending graph mutation effects、legacy cursor fallback normalize、event/checkpoint normalize、mock Pregel mutation runs、HumanGate resume client
 
 # 记录
 
@@ -86,6 +92,25 @@ scope = "frontend-graph-run-ui"
 - 验证：`rg -n "task-graph-node-accent-strip" bb_web/src/components bb_web/src/views bb_web/src/styles.css`：无残留匹配。
 - 验证：`git diff --check -- bb_web/src/components/task-graph/TaskGraphNodeShape.vue`：通过；仅 Windows LF/CRLF 提示。
 
+- 验证：bb_list_projects equivalent mcp__bb__.list_projects: passed; visible project blackboard found.
+- 验证：bb_find_work_context equivalent mcp__bb__.find_work_context(project=blackboard, query=pregel topology mutation frontend implementation spec): passed; relevant active ticket 000064 found.
+- 验证：bb_begin_ticket_work equivalent mcp__bb__.begin_ticket_work(project=blackboard, id=000064): passed; ticket moved to in_progress and consistency checks passed.
+- 验证：npm exec vue-tsc -- -p tsconfig.app.json --noEmit from bb_web: passed.
+- 验证：rg "run\\.cursor|cursor_before|cursor_after|run-cursor|taskGraphCursor" bb_web/src: passed for UI migration; remaining hits are only legacy checkpoint type fields and normalize fallback in taskGraphs.ts.
+- 验证：Browser check via in-app browser at http://localhost:8060/#/projects/blackboard/task-graphs: passed; mock Pregel run showed Run Timeline, Active Nodes, Revision, Applied mutation, Review node, and enabled Approve action.
+- 验证：npm run build --prefix bb_web: intentionally not run per user instruction because backend work is running concurrently.
+
+- 来源：inbox/2026-05-15-codex-taskgraph-node-去除左侧-accent-strip.md
+
+- 来源：inbox/2026-05-15-codex-taskgraph-task-node-视觉对齐-编辑-预览-运行-fixture-统一节点组件.md
+
+- 来源：inbox/2026-05-15-codex-taskgraph-preview-run-inputs-改为摘要入口与右侧抽屉.md
+
+- 来源：inbox/2026-05-15-codex-taskgraph-run-节点状态-footer-避免-output-pin-重叠.md
+
+- 来源：inbox/2026-05-16-codex-pregel-topology-mutation-frontend-implementation.md
+- 代码位置：bb_web/src/data/taskGraphs.ts, bb_web/src/components/TaskGraphRunPanel.vue, bb_web/src/components/task-graph/TaskGraphMutationTimeline.vue
+
 # 下一步
 
 - 盘点现有 TaskGraphEditorPanel、RunPanel、GraphCanvas 与子组件缺口。
@@ -117,3 +142,6 @@ scope = "frontend-graph-run-ui"
 - 并发修改结束后建议补跑 `npm run build --prefix bb_web` 并在 running run 页面视觉确认 footer 与 Output pin 间距。
 
 - 并发修改结束后建议统一补跑前端 build 和 running 节点视觉冒烟。
+
+- Backend contract merge can remove legacy cursor fallback later once active_nodes/current_graph_revision/checkpoint revision fields are guaranteed.
+- After backend settles, run npm run build --prefix bb_web and a full manual smoke against real task graph runs.

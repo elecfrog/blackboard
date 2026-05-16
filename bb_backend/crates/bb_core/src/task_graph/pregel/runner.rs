@@ -7,6 +7,7 @@
 //! - `nodes/` — Per-node execution logic (returns NodeOutcome)
 //!
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use chrono::Utc;
@@ -16,7 +17,6 @@ use crate::agents_registry::McpServerConfig;
 use super::coordinator::GraphCoordinator;
 use crate::task_graph::compile::compiler::compile_graph_for_execution;
 use crate::task_graph::definition::types::TaskGraphError;
-use crate::task_graph::nodes::{build_edge_map, resolve_next_nodes};
 use crate::task_graph::pregel::{
     apply_writes as apply_pregel_writes, initial_checkpoint as initial_pregel_checkpoint,
     resume_write, writes_from_node_outcome, PregelTask, PregelTaskKind,
@@ -29,7 +29,9 @@ use crate::task_graph::run_state::{self, NodeRunStatus, RunStatus, TaskGraphRunN
 #[derive(Debug, Clone)]
 pub struct RunnerOptions {
     /// Workspace root path.
-    pub workspace_root: std::path::PathBuf,
+    pub workspace_root: PathBuf,
+    /// Directory containing Blackboard runtime scripts.
+    pub scripts_dir: PathBuf,
     /// Project name.
     pub project: String,
     /// Run ID being executed.
@@ -58,6 +60,55 @@ pub struct RunnerOptions {
     pub mcp_servers: Vec<McpServerConfig>,
     /// Skills available to LLM-mode nodes.
     pub skills: Vec<String>,
+}
+
+/// Resolve the scripts directory for TaskGraph agent sessions.
+///
+/// Source checkouts commonly execute with `.bb_template` as the workspace root
+/// while scripts live at the repository root. Packaged/user workspaces keep
+/// copied scripts under the writable workspace root.
+pub fn resolve_scripts_dir(workspace_root: &Path) -> PathBuf {
+    let workspace_scripts = workspace_root.join("scripts");
+    if workspace_scripts.join("check_ticket_ids.py").is_file() {
+        return workspace_scripts;
+    }
+
+    if workspace_root.file_name().and_then(|name| name.to_str()) == Some(".bb_template") {
+        if let Some(repo_root) = workspace_root.parent() {
+            let repo_scripts = repo_root.join("scripts");
+            if repo_scripts.join("check_ticket_ids.py").is_file() {
+                return repo_scripts;
+            }
+        }
+    }
+
+    workspace_scripts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_scripts_dir;
+
+    #[test]
+    fn resolve_scripts_dir_prefers_workspace_scripts() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path().join(".bb");
+        std::fs::create_dir_all(root.join("scripts")).unwrap();
+        std::fs::write(root.join("scripts/check_ticket_ids.py"), "").unwrap();
+
+        assert_eq!(resolve_scripts_dir(&root), root.join("scripts"));
+    }
+
+    #[test]
+    fn resolve_scripts_dir_uses_repo_scripts_for_template_workspace() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path().join(".bb_template");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(temp.path().join("scripts")).unwrap();
+        std::fs::write(temp.path().join("scripts/check_ticket_ids.py"), "").unwrap();
+
+        assert_eq!(resolve_scripts_dir(&root), temp.path().join("scripts"));
+    }
 }
 
 // ─── Runner result ───────────────────────────────────────────────────────────
@@ -217,10 +268,8 @@ pub fn resume_run(opts: &RunnerOptions, action_id: &str) -> Result<RunOutcome, T
         serde_json::json!({ "action": action_id, "result": action_result }),
     )?;
 
-    // Resolve next edges from the gate node and advance cursor
     let detail = run_state::read_run_detail(ws, project, run_id)?;
     let graph = &detail.graph_snapshot;
-    let edge_map = build_edge_map(&graph.edges);
 
     let Some(gate_node) = graph.nodes.iter().find(|node| node.id == gate_node_id) else {
         run_state::update_run_status(ws, project, run_id, RunStatus::Failed)?;
@@ -229,40 +278,11 @@ pub fn resume_run(opts: &RunnerOptions, action_id: &str) -> Result<RunOutcome, T
             message: "Human gate node not found in graph snapshot".to_string(),
         });
     };
-    let next_ids = resolve_next_nodes(
-        &edge_map,
-        &gate_node_id,
-        gate_node,
-        &detail.run.context,
-        None,
-    )?;
-
-    if next_ids.is_empty() {
-        run_state::update_run_status(ws, project, run_id, RunStatus::Failed)?;
-        return Ok(RunOutcome::Failed {
-            node_id: gate_node_id,
-            message: "Human gate has no outgoing edges".to_string(),
-        });
-    }
-
-    // 合并 HumanGate 的 next nodes 与 cursor 中其他并行分支的节点
-    let current_run = run_state::read_run(ws, project, run_id)?;
-    let mut new_cursor = Vec::new();
-    for node_id in &current_run.cursor {
-        if node_id != &gate_node_id && !new_cursor.contains(node_id) {
-            new_cursor.push(node_id.clone());
-        }
-    }
-    for n in &next_ids {
-        if !new_cursor.contains(n) {
-            new_cursor.push(n.clone());
-        }
-    }
-    run_state::update_cursor(ws, project, run_id, new_cursor)?;
+    let _ = gate_node;
 
     // Pregel truth update: resume is an external completion of the paused
     // HumanGate task. Write its output and branch trigger into the checkpoint
-    // so the scheduler can continue from channel versions instead of cursor.
+    // so the scheduler can continue from channel versions.
     let mut current_run = run_state::read_run(ws, project, run_id)?;
     let compiled = compile_graph_for_execution(graph)?;
     let current_checkpoint = current_run
@@ -282,8 +302,9 @@ pub fn resume_run(opts: &RunnerOptions, action_id: &str) -> Result<RunOutcome, T
         &compiled,
         &resume_task,
         Some(&resume_output),
-        &next_ids,
+        &[],
         None,
+        true,
     )?;
     resume_writes.push(resume_write(&resume_task, resume_output));
     let next_checkpoint = apply_pregel_writes(

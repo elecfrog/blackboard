@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use crate::agent_session::AgentSessionSummary;
 
 use super::super::pregel::{PregelCheckpoint, PregelCheckpointConfig, PregelCheckpointMetadata};
+use super::super::topology::GraphMutationRequest;
 use super::super::types::{TaskGraphDefinition, TaskGraphScope};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -20,6 +21,7 @@ pub struct GraphRef {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunStatus {
+    Queued,
     Pending,
     Running,
     Paused,
@@ -92,6 +94,16 @@ pub struct PendingWrite {
     pub value: serde_json::Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingTaskEffect {
+    pub task_id: String,
+    pub source_node_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub normal_writes: Vec<super::super::pregel::PregelWrite>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graph_mutations: Vec<GraphMutationRequest>,
+}
+
 /// Checkpoint saved at a superstep barrier.
 ///
 /// It captures the graph-visible state after all node outcomes in a superstep
@@ -105,14 +117,20 @@ pub struct SuperstepCheckpoint {
     pub created_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<String>,
-    pub cursor_before: Vec<String>,
-    pub cursor_after: Vec<String>,
+    #[serde(default)]
+    pub graph_revision_before: u64,
+    #[serde(default)]
+    pub graph_revision_after: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutation_batch_id: Option<String>,
     pub ready_nodes: Vec<String>,
     pub waiting_nodes: Vec<String>,
     pub node_statuses: BTreeMap<String, NodeRunStatus>,
     pub context: RunContext,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pending_writes: Vec<PendingWrite>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending_effects: Vec<PendingTaskEffect>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pregel_checkpoint: Option<PregelCheckpoint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -256,6 +274,10 @@ pub struct TaskGraphRun {
     pub graph_ref: GraphRef,
     pub status: RunStatus,
     pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queued_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_deadline_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub started_at: Option<String>,
     pub updated_at: String,
@@ -267,9 +289,12 @@ pub struct TaskGraphRun {
     pub last_checkpoint_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pregel_checkpoint: Option<PregelCheckpoint>,
+    #[serde(default)]
+    pub current_graph_revision: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub active_nodes: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paused: Option<RunPaused>,
-    pub cursor: Vec<String>,
     pub context: RunContext,
     /// If this run is a child run invoked by a sub_graph node, this is the parent run ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -296,6 +321,10 @@ pub struct TaskGraphRunSummary {
     pub graph_ref: GraphRef,
     pub status: RunStatus,
     pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queued_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_deadline_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub started_at: Option<String>,
     pub updated_at: String,
@@ -305,6 +334,10 @@ pub struct TaskGraphRunSummary {
     pub current_superstep: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_checkpoint_id: Option<String>,
+    #[serde(default)]
+    pub current_graph_revision: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub active_nodes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint_ns: Option<String>,
 }

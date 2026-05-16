@@ -22,7 +22,7 @@
 - 对 ticket 或 lane 做任何变更时，必须使用 `bb_*` 结构化 MCP 工具（如 `bb_create_ticket`、`bb_update_ticket`、`bb_append_ticket_sections`、`bb_list_lanes`、`bb_upsert_lane`、`bb_archive_lane`）。不要手改 ticket Markdown，除非用户明确要求裸文件流程且确认当前 project 使用本地文件存储。
 - Ticket ID、lane、status、frontmatter / extra、正文追加、索引维护和权限判断都由 `bb_*` 工具后端负责。Agent 不跨 project 猜号、不根据文件名推断权威状态、不直接读写 `__tickets__.json` 或 `__project__.json`。
 - Ticket 可能没有本地文件路径，也可能对当前 Agent 只读。工具返回 blocked / forbidden / not_found / conflict 时，停止本项 ticket/lane 写入并把工具结果作为阻塞事实汇报，不要绕过权限改文件。
-- 只有当任务本身是 Blackboard 本地后端/脚本/数据迁移开发，并且用户明确要求本地文件流程时，才把 `python3 scripts/check_ticket_ids.py`、`qmd embed` 作为本地数据门禁；云端或远端 ticket/lane 变更以 `bb_*` 工具响应为门禁。
+- 只有当任务本身是 Blackboard 本地后端/脚本/数据迁移开发，并且用户明确要求本地文件流程时，才把 `python "$BB_SCRIPTS_DIR/check_ticket_ids.py"`、`qmd embed` 作为本地数据门禁；云端或远端 ticket/lane 变更以 `bb_*` 工具响应为门禁。
 - 如果改动涉及 Blackboard Web 前端源码（`bb_web/src` 下），还需追加 `npm run build --prefix bb_web` 验证前端构建。
 - 最终回答以及 inbox 交接笔记里必须写清楚：实际调用了哪些 `bb_*` 工具或本地验证命令，每条的结果是通过、失败还是被阻塞。
 - 必需的 `bb_*` 工具不可用时，不要宣称 ticket/inbox/lane 任务完成；在最终回答里记录缺失工具、已完成的代码工作、以及需要恢复工具后补跑的完整操作。

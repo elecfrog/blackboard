@@ -52,6 +52,47 @@ pub(super) fn validate_graph_inputs(
     }
 }
 
+pub(super) fn validate_graph_run_policy(
+    def: &TaskGraphDefinition,
+    errors: &mut Vec<TaskGraphValidationError>,
+) {
+    let Some(policy) = def
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.run_policy.as_ref())
+    else {
+        return;
+    };
+
+    if policy.max_concurrent_runs < TaskGraphRunPolicy::DEFAULT_MAX_CONCURRENT_RUNS
+        || policy.max_concurrent_runs > TaskGraphRunPolicy::MAX_CONCURRENT_RUNS
+    {
+        errors.push(TaskGraphValidationError {
+            path: "metadata.run_policy.max_concurrent_runs".to_string(),
+            code: "out_of_range".to_string(),
+            message: format!(
+                "max_concurrent_runs must be 1-{}, got {}",
+                TaskGraphRunPolicy::MAX_CONCURRENT_RUNS,
+                policy.max_concurrent_runs
+            ),
+        });
+    }
+
+    if policy.max_queue_wait_ms < TaskGraphRunPolicy::MIN_QUEUE_WAIT_MS
+        || policy.max_queue_wait_ms > TaskGraphRunPolicy::MAX_QUEUE_WAIT_MS
+    {
+        errors.push(TaskGraphValidationError {
+            path: "metadata.run_policy.max_queue_wait_ms".to_string(),
+            code: "out_of_range".to_string(),
+            message: format!(
+                "max_queue_wait_ms must be {}-{}",
+                TaskGraphRunPolicy::MIN_QUEUE_WAIT_MS,
+                TaskGraphRunPolicy::MAX_QUEUE_WAIT_MS
+            ),
+        });
+    }
+}
+
 /// 合法的基础类型
 const VALID_BASE_TYPES: &[&str] = &["string", "number", "boolean", "json", "ticket_ref"];
 
@@ -130,6 +171,7 @@ pub(super) fn validate_branch_config(
 pub(super) fn validate_loop_config(
     node: &TaskGraphNode,
     idx: usize,
+    node_map: &HashMap<&str, &TaskGraphNode>,
     outgoing: &HashMap<&str, Vec<&TaskGraphEdge>>,
     _incoming: &HashMap<&str, Vec<&TaskGraphEdge>>,
     errors: &mut Vec<TaskGraphValidationError>,
@@ -159,16 +201,27 @@ pub(super) fn validate_loop_config(
         });
     }
 
+    validate_loop_endpoint(
+        idx,
+        &node.id,
+        "body_entry",
+        &config.body_entry,
+        node_map,
+        errors,
+    );
+    validate_loop_endpoint(
+        idx,
+        &node.id,
+        "body_exit",
+        &config.body_exit,
+        node_map,
+        errors,
+    );
+
     // Rule 9: must have body edge (from_pin="body")
     let node_outgoing = outgoing.get(node.id.as_str());
-    let has_body = node_outgoing
-        .map(|edges| {
-            edges.iter().any(|e| {
-                e.from_pin.as_deref() == Some("body") || e.source_handle.as_deref() == Some("body")
-            })
-        })
-        .unwrap_or(false);
-    if !has_body {
+    let body_edges = matching_loop_edges(node_outgoing, "body");
+    if body_edges.is_empty() {
         errors.push(TaskGraphValidationError {
             path: format!("nodes[{}]", idx),
             code: "missing_loop_body_edge".to_string(),
@@ -177,17 +230,22 @@ pub(super) fn validate_loop_config(
                 node.id
             ),
         });
+    } else if !config.body_entry.trim().is_empty()
+        && !body_edges.iter().any(|edge| edge.to == config.body_entry)
+    {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config.body_entry", idx),
+            code: "loop_body_entry_edge_mismatch".to_string(),
+            message: format!(
+                "Loop '{}' body_entry '{}' must match a body edge target",
+                node.id, config.body_entry
+            ),
+        });
     }
 
     // Rule 9: must have exit edge (from_pin="exit")
-    let has_exit = node_outgoing
-        .map(|edges| {
-            edges.iter().any(|e| {
-                e.from_pin.as_deref() == Some("exit") || e.source_handle.as_deref() == Some("exit")
-            })
-        })
-        .unwrap_or(false);
-    if !has_exit {
+    let exit_edges = matching_loop_edges(node_outgoing, "exit");
+    if exit_edges.is_empty() {
         errors.push(TaskGraphValidationError {
             path: format!("nodes[{}]", idx),
             code: "missing_loop_exit_edge".to_string(),
@@ -196,6 +254,161 @@ pub(super) fn validate_loop_config(
                 node.id
             ),
         });
+    }
+
+    validate_loop_condition(idx, &node.id, config.condition.as_ref(), node_map, errors);
+}
+
+fn matching_loop_edges<'a>(
+    node_outgoing: Option<&'a Vec<&'a TaskGraphEdge>>,
+    pin: &str,
+) -> Vec<&'a TaskGraphEdge> {
+    node_outgoing
+        .map(|edges| {
+            edges
+                .iter()
+                .copied()
+                .filter(|edge| {
+                    edge.from_pin.as_deref() == Some(pin)
+                        || edge.source_handle.as_deref() == Some(pin)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn validate_loop_endpoint(
+    idx: usize,
+    loop_id: &str,
+    field: &str,
+    value: &str,
+    node_map: &HashMap<&str, &TaskGraphNode>,
+    errors: &mut Vec<TaskGraphValidationError>,
+) {
+    let value = value.trim();
+    if value.is_empty() {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config.{}", idx, field),
+            code: "empty_loop_endpoint".to_string(),
+            message: format!("Loop '{}' {} must not be empty", loop_id, field),
+        });
+        return;
+    }
+    if !node_map.contains_key(value) {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config.{}", idx, field),
+            code: "loop_endpoint_not_found".to_string(),
+            message: format!(
+                "Loop '{}' {} references non-existent node '{}'",
+                loop_id, field, value
+            ),
+        });
+    }
+}
+
+fn validate_loop_condition(
+    idx: usize,
+    loop_id: &str,
+    condition: Option<&serde_json::Value>,
+    node_map: &HashMap<&str, &TaskGraphNode>,
+    errors: &mut Vec<TaskGraphValidationError>,
+) {
+    let Some(condition) = condition else {
+        return;
+    };
+    let Some(object) = condition.as_object() else {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config.condition", idx),
+            code: "invalid_loop_condition".to_string(),
+            message: format!("Loop '{}' condition must be an object", loop_id),
+        });
+        return;
+    };
+
+    let Some(input_ref) = object.get("input_ref").and_then(serde_json::Value::as_str) else {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config.condition.input_ref", idx),
+            code: "missing_loop_condition_input_ref".to_string(),
+            message: format!("Loop '{}' condition must define input_ref", loop_id),
+        });
+        return;
+    };
+    validate_condition_input_ref(idx, loop_id, input_ref, node_map, errors);
+
+    if let Some(op) = object.get("op").and_then(serde_json::Value::as_str) {
+        const ALLOWED_OPS: &[&str] = &[
+            "always",
+            "exists",
+            "equals",
+            "not_equals",
+            ">",
+            "gt",
+            ">=",
+            "gte",
+            "<",
+            "lt",
+            "<=",
+            "lte",
+            "contains",
+            "is_empty",
+            "not_empty",
+            "truthy",
+            "falsy",
+        ];
+        if !ALLOWED_OPS.contains(&op) {
+            errors.push(TaskGraphValidationError {
+                path: format!("nodes[{}].config.condition.op", idx),
+                code: "invalid_loop_condition_op".to_string(),
+                message: format!("Loop '{}' condition op '{}' is not supported", loop_id, op),
+            });
+        }
+    }
+}
+
+fn validate_condition_input_ref(
+    idx: usize,
+    loop_id: &str,
+    input_ref: &str,
+    node_map: &HashMap<&str, &TaskGraphNode>,
+    errors: &mut Vec<TaskGraphValidationError>,
+) {
+    let Some(path) = input_ref.trim().strip_prefix("$.") else {
+        errors.push(TaskGraphValidationError {
+            path: format!("nodes[{}].config.condition.input_ref", idx),
+            code: "invalid_loop_condition_input_ref".to_string(),
+            message: format!(
+                "Loop '{}' condition input_ref '{}' must start with '$.'",
+                loop_id, input_ref
+            ),
+        });
+        return;
+    };
+
+    let segments: Vec<&str> = path.split('.').collect();
+    match segments.as_slice() {
+        ["nodes", node_id, "output", ..] => {
+            if !node_map.contains_key(*node_id) {
+                errors.push(TaskGraphValidationError {
+                    path: format!("nodes[{}].config.condition.input_ref", idx),
+                    code: "loop_condition_node_not_found".to_string(),
+                    message: format!(
+                        "Loop '{}' condition input_ref references non-existent node '{}'",
+                        loop_id, node_id
+                    ),
+                });
+            }
+        }
+        ["input", ..] => {}
+        _ => {
+            errors.push(TaskGraphValidationError {
+                path: format!("nodes[{}].config.condition.input_ref", idx),
+                code: "invalid_loop_condition_input_ref".to_string(),
+                message: format!(
+                    "Loop '{}' condition input_ref '{}' must use '$.nodes.<node-id>.output' or '$.input.<key>'",
+                    loop_id, input_ref
+                ),
+            });
+        }
     }
 }
 

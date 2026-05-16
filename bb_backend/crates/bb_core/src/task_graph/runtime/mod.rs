@@ -56,7 +56,8 @@ pub(super) fn run_runtime_command(
             ));
         }
         _ => {
-            let mut c = Command::new(&opts.opencode_path);
+            let opencode_program = crate::platform::resolve_spawn_program(&opts.opencode_path);
+            let mut c = Command::new(opencode_program);
             c.arg("run");
             c.arg("--format").arg("json");
             if invocation.agent != "native" {

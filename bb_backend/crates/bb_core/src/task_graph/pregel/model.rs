@@ -10,6 +10,8 @@ pub struct PregelCheckpoint {
     pub id: String,
     pub superstep: u64,
     #[serde(default)]
+    pub graph_revision: u64,
+    #[serde(default)]
     pub channel_values: BTreeMap<String, Value>,
     #[serde(default)]
     pub channel_versions: BTreeMap<String, u64>,
