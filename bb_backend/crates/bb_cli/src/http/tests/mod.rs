@@ -157,6 +157,99 @@ async fn agent_tool_install_unknown_id_is_rejected_before_npm() {
 }
 
 #[tokio::test]
+async fn rest_idea_canvas_sticky_note_round_trip() {
+    let (_temp, workspace) = fixture();
+    let app = app(workspace);
+
+    let create_body = json!({
+        "title": "Loose ideas"
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/projects/demo/idea-canvases")
+                .header("content-type", "application/json")
+                .body(Body::from(create_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let created = json_response(response).await;
+    let canvas_id = created["canvas"]["id"].as_str().unwrap();
+    assert_eq!(created["canvas"]["title"], "Loose ideas");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/projects/demo/idea-canvases/{canvas_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let detail = json_response(response).await;
+    assert_eq!(detail["title"], "Loose ideas");
+    assert_eq!(detail["notes"].as_array().unwrap().len(), 0);
+
+    let note_body = json!({ "text": "first note", "x": 120.0, "y": 80.0 });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(format!(
+                    "/api/projects/demo/idea-canvases/{canvas_id}/notes"
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(note_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let created_note = json_response(response).await;
+    let note_id = created_note["note"]["id"].as_str().unwrap();
+    assert_eq!(created_note["note"]["text"], "first note");
+
+    let patch_body = json!({ "text": "moved note", "x": 240.0, "y": 160.0 });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::PATCH)
+                .uri(format!(
+                    "/api/projects/demo/idea-canvases/{canvas_id}/notes/{note_id}"
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(patch_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let patched = json_response(response).await;
+    assert_eq!(patched["note"]["text"], "moved note");
+    assert_eq!(patched["note"]["x"], 240.0);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::get("/api/projects/demo/idea-canvases")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let list = json_response(response).await;
+    assert_eq!(list["canvases"][0]["note_count"], 1);
+}
+
+#[tokio::test]
 async fn static_dir_serves_assets_and_spa_fallback_without_masking_api() {
     let temp = TempDir::new().unwrap();
     let static_dir = temp.path().join("dist");

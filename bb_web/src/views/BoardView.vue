@@ -15,6 +15,7 @@ import {
   Search,
   Settings as SettingsIcon,
   SlidersHorizontal,
+  StickyNote,
   Sun,
   Workflow,
 } from 'lucide-vue-next'
@@ -60,6 +61,7 @@ import {
 
 const AgentConnectorPanel = defineAsyncComponent(() => import('@/components/AgentConnectorPanel.vue'))
 const AgentWorkbench = defineAsyncComponent(() => import('@/components/AgentWorkbench.vue'))
+const IdeaCanvasPanel = defineAsyncComponent(() => import('@/components/IdeaCanvasPanel.vue'))
 const InboxPanel = defineAsyncComponent(() => import('@/components/InboxPanel.vue'))
 const LaneManager = defineAsyncComponent(() => import('@/components/LaneManager.vue'))
 const TicketDependencyGraph = defineAsyncComponent(() => import('@/components/TicketDependencyGraph.vue'))
@@ -67,7 +69,7 @@ const TicketDetailPanel = defineAsyncComponent(() => import('@/components/Ticket
 const TaskGraphCatalogPanel = defineAsyncComponent(() => import('@/components/TaskGraphCatalogPanel.vue'))
 const WikiPanel = defineAsyncComponent(() => import('@/components/WikiPanel.vue'))
 
-type WorkspaceKey = 'tickets' | 'taskGraphs' | 'inbox' | 'agents' | 'settings' | 'wiki'
+type WorkspaceKey = 'tickets' | 'taskGraphs' | 'inbox' | 'ideaCanvas' | 'agents' | 'settings' | 'wiki'
 type WorkspaceIconKey = WorkspaceKey
 type TicketViewMode = 'kanban' | 'graph' | 'list'
 
@@ -119,6 +121,7 @@ const workspaceIconComponents: Record<WorkspaceIconKey, Component> = {
   tickets: ListTodo,
   taskGraphs: Workflow,
   inbox: Inbox,
+  ideaCanvas: StickyNote,
   agents: Bot,
   settings: SettingsIcon,
   wiki: Book,
@@ -365,6 +368,7 @@ const workspaceTabGroups = computed(() => [
     label: t('workspace'),
     tabs: [
       { key: 'inbox' as const, label: t('inbox'), icon: 'inbox' as const, count: inboxNoteCount.value },
+      { key: 'ideaCanvas' as const, label: t('ideaCanvas'), icon: 'ideaCanvas' as const, count: null },
       { key: 'tickets' as const, label: t('tickets'), icon: 'tickets' as const, count: null },
       { key: 'taskGraphs' as const, label: t('taskGraphs'), icon: 'taskGraphs' as const, count: null },
       { key: 'wiki' as const, label: t('wiki'), icon: 'wiki' as const, count: null },
@@ -403,6 +407,7 @@ function workspaceRoute(workspace: WorkspaceKey) {
   if (workspace === 'tickets') return `/projects/${props.project}/tickets`
   if (workspace === 'taskGraphs') return `/projects/${props.project}/task-graphs`
   if (workspace === 'inbox') return `/projects/${props.project}/inbox`
+  if (workspace === 'ideaCanvas') return `/projects/${props.project}/idea-canvas`
   if (workspace === 'agents') return `/projects/${props.project}/agents`
   if (workspace === 'settings') return `/projects/${props.project}/settings`
   if (workspace === 'wiki') return `/projects/${props.project}/wiki`
@@ -1075,6 +1080,11 @@ async function deprecateSelectedTicket(ticket: BlackboardTicket) {
           <section v-else-if="activeWorkspace === 'inbox'" class="bb-inbox-workspace">
             <InboxPanel :project="project" variant="full" />
           </section>
+
+          <IdeaCanvasPanel
+            v-else-if="activeWorkspace === 'ideaCanvas'"
+            :project="project"
+          />
 
           <AgentWorkbench
             v-else-if="activeWorkspace === 'agents'"

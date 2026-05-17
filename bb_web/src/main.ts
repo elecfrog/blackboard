@@ -12,7 +12,7 @@ function routeString(value: unknown) {
 }
 
 function dashboardProps(
-  section?: 'tickets' | 'taskGraphs' | 'inbox' | 'agents' | 'settings' | 'wiki',
+  section?: 'tickets' | 'taskGraphs' | 'inbox' | 'ideaCanvas' | 'agents' | 'settings' | 'wiki',
   ticketView?: 'kanban' | 'graph' | 'list',
 ) {
   return (route: { params: Record<string, unknown>; query: Record<string, unknown> }) => {
@@ -50,6 +50,11 @@ const router = createRouter({
     { path: '/projects/:project/task-graphs', component: BoardView, props: dashboardProps('taskGraphs') },
     { path: '/projects/:project/task-graphs/:scope/:graphId/:mode?', component: BoardView, props: dashboardProps('taskGraphs') },
     { path: '/projects/:project/inbox', component: BoardView, props: dashboardProps('inbox') },
+    { path: '/projects/:project/idea-canvas', component: BoardView, props: dashboardProps('ideaCanvas') },
+    {
+      path: '/projects/:project/insights',
+      redirect: (to) => `/projects/${String(to.params.project)}/idea-canvas`,
+    },
     { path: '/projects/:project/agents', component: BoardView, props: dashboardProps('agents') },
     {
       path: '/projects/:project/graph',

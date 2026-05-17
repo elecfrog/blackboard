@@ -5,9 +5,49 @@
 - Codex 当前客户端可能不会在初始工具列表里直接暴露 Blackboard MCP 工具。
 - Codex 默认延迟使用 Blackboard 工具：先完成用户当前明确指定的本地代码、文档、搜索或分析工作；完成后再做 Blackboard project/ticket/inbox 检索和交接。
 - 如果当前轮次看不到 `bb_*` 或 `mcp__bb__` 工具，不要把它当成启动阻塞。等用户指定工作完成、需要写 handoff、需要读取历史上下文，或必须进行 ticket/lane 写入时，再用 `tool_search` 搜 `Blackboard bb list_projects search_tickets inbox notes`。
+- `tool_search` 找不到 Blackboard 工具不等于 Blackboard MCP 不存在，也不等于 ticket/inbox/lane 操作被阻塞。Codex 必须继续执行下面的 **Remote MCP 兜底协议**；只有兜底协议也确认失败，才允许报告 Blackboard 工具不可用。
 - 只有当用户明确给出 ticket ID、要求操作 ticket/lane、或任务本身必须依赖 Blackboard 历史上下文才能安全推进时，才在工作前加载并使用 Blackboard 工具。
 - 在 Codex 里，Blackboard 工具可能显示为命名空间形式，例如 `mcp__bb__.list_projects`、`mcp__bb__.find_work_context`、`mcp__bb__.create_inbox_note`；这与 `bb_list_projects` 等裸 MCP 工具名是同一组能力的展示差异。
 - 最终回答和 inbox 交接里记录实际调用名和结果，例如 `mcp__bb__.list_projects: 通过`，不要把“初始工具列表未显示”误报成 Blackboard 工具不存在。
+
+## Codex Remote MCP 兜底协议
+
+当满足以下任一条件时，Codex 必须使用本节兜底协议：
+
+- 当前 active tools 里没有 `bb_*` / `mcp__bb__`。
+- `tool_search` 只返回无关工具，或没有返回 Blackboard 工具。
+- 用户要求 ticket / lane / inbox 写入，但 Codex 工具面板没有暴露 Blackboard namespace。
+
+兜底步骤：
+
+1. 读取本机 Codex 配置中的 Blackboard MCP 地址：优先使用 `~/.codex/config.toml` 的 `[mcp_servers.bb].url`；如果读取失败，默认使用 `http://127.0.0.1:3001/mcp`。
+2. 先检查后端是否运行：请求 `GET http://127.0.0.1:3001/healthz`，或用配置 URL 同 host 的 `/healthz`。只要返回成功，就视为后端在线。
+3. 对 MCP URL 发送 JSON-RPC `initialize` 请求。响应 header 中的 `mcp-session-id` 是后续请求必需字段。
+4. 带 `mcp-session-id` 调用 JSON-RPC `tools/list`。如果返回 `list_projects`、`read_ticket_by_id`、`create_ticket`、`update_ticket`、`append_ticket_sections`、`create_inbox_note` 等工具，则 Blackboard MCP 可用。
+5. 之后所有 Blackboard 操作通过 JSON-RPC `tools/call` 调用原始工具名，例如 `list_projects`、`search_tickets`、`read_ticket_by_id`、`create_ticket`、`update_ticket`、`append_ticket_sections`、`create_inbox_note`。
+6. Remote MCP `/mcp tools/call` 是结构化 Blackboard MCP 工具调用，满足 ticket 工具门禁；不要因为 active tools 面板没有 `mcp__bb__` namespace 就退回手改 Markdown。
+
+最小 JSON-RPC 形状：
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"codex","version":"fallback"}}}
+```
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+```
+
+```json
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"read_ticket_by_id","arguments":{"project":"blackboard","id":"000060"}}}
+```
+
+注意：
+
+- `/mcp` 可能返回 `text/event-stream`，Codex 需要解析 `data:` 行里的 JSON。
+- project 级工具必须显式传 `project`。
+- 如果 `/healthz` 成功且 `/mcp tools/list` 返回 Blackboard 工具，Codex 不得报告“工具没找到 / MCP 没暴露”。
+- 只有在 active tools、`tool_search`、Remote MCP `/mcp initialize` 或 `/mcp tools/list` 都失败时，才可以把 Blackboard 工具不可用作为阻塞事实。
+- 最终回答和 inbox 交接里记录真实路径，例如 `remote /mcp tools/call create_ticket: 通过`。
 
 ## Blackboard 起止协议
 
@@ -28,7 +68,7 @@
 - 只有当任务本身是 Blackboard 本地后端/脚本/数据迁移开发，并且用户明确要求本地文件流程时，才把 `python "$BB_SCRIPTS_DIR/check_ticket_ids.py"`、`qmd embed` 作为本地数据门禁；云端或远端 ticket/lane 变更以 `bb_*` 工具响应为门禁。
 - 如果改动涉及 Blackboard Web 前端源码（`bb_web/src` 下），还需追加 `npm run build --prefix bb_web` 验证前端构建。
 - 最终回答以及 inbox 交接笔记里必须写清楚：实际调用了哪些 `bb_*` 工具或本地验证命令，每条的结果是通过、失败还是被阻塞。
-- 必需的 `bb_*` 工具不可用时，不要宣称 ticket/inbox/lane 任务完成；在最终回答里记录缺失工具、已完成的代码工作、以及需要恢复工具后补跑的完整操作。
+- 必需的 `bb_*` 工具不可用时，不要宣称 ticket/inbox/lane 任务完成；但在报告不可用前，必须先执行 Codex Remote MCP 兜底协议。兜底 `/mcp tools/call` 成功时，视为 Blackboard 结构化工具调用成功，不得再声称工具缺失。
 
 ## 并发 Agent Worktree 协议
 

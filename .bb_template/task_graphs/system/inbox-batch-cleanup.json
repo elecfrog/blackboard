@@ -4,7 +4,7 @@
   "scope": "system",
   "title": "Inbox 批量清理",
   "description": "运行 bb-pm 执行 Inbox 清理任务，按批量参数判断并真实沉淀/删除 note。",
-  "version": 8,
+  "version": 10,
   "readonly": true,
   "metadata": {
     "tags": [
@@ -14,8 +14,8 @@
     "related_tickets": [],
     "owner": "blackboard",
     "run_policy": {
-      "allow_concurrent_runs": true,
-      "max_concurrent_runs": 2,
+      "allow_concurrent_runs": false,
+      "max_concurrent_runs": 1,
       "queue_enabled": true,
       "max_queue_wait_ms": 1800000
     }
@@ -25,7 +25,7 @@
       "id": "batch-count",
       "label": "一次处理几条",
       "type": "number",
-      "default": 2,
+      "default": 5,
       "description": "每轮 cleanup task 最多沉淀并删除的 inbox note 数量。",
       "min": 1.0,
       "max": 10.0
@@ -34,7 +34,7 @@
       "id": "max-iterations",
       "label": "循环次数",
       "type": "number",
-      "default": 3,
+      "default": 5,
       "description": "Loop 最多执行多少轮；例如 3 轮 × 每轮 2 条可覆盖 0-5。",
       "min": 1.0,
       "max": 50.0

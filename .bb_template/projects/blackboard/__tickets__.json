@@ -1,5 +1,5 @@
 {
-  "current_counter": "000069",
+  "current_counter": "000072",
   "tickets": [
     {
       "name": "000001-产品基线-多agent工具管理dashboard.md",
@@ -422,13 +422,14 @@
       "path": "tickets/000026-idea-pool-freeform-brainstorm-nodes.md",
       "id": "000026",
       "lane": "bbp",
-      "title": "Idea Pool：自由脑暴节点池",
-      "status": "todo",
+      "title": "Idea Canvas：轻量自由的想法白板",
+      "status": "archived",
       "created_at": "2026-05-08",
-      "updated_at": "2026-05-08",
+      "updated_at": "2026-05-17",
       "extra": {
-        "area": "IdeaPool",
-        "kind": "product"
+        "area": "Idea Canvas",
+        "kind": "product",
+        "product_object": "idea_canvas"
       },
       "metadata_error": null,
       "metadata_warnings": []
@@ -875,7 +876,7 @@
       "id": "000051",
       "lane": "bbt",
       "title": "Roadmap：Runtime 连接与 AgentSession 维护",
-      "status": "done",
+      "status": "archived",
       "created_at": "2026-05-13",
       "updated_at": "2026-05-17",
       "extra": {
@@ -905,9 +906,9 @@
       "id": "000053",
       "lane": "bbp",
       "title": "TaskGraph Vision：多 Runtime 自主协作执行图",
-      "status": "in_progress",
+      "status": "done",
       "created_at": "2026-05-14",
-      "updated_at": "2026-05-16",
+      "updated_at": "2026-05-17",
       "extra": {
         "area": "TaskGraph",
         "depends_on": "000051 000052",
@@ -924,7 +925,7 @@
       "id": "000054",
       "lane": "bbt",
       "title": "TaskGraph Task Creation & Compile：从意图到可执行计划",
-      "status": "done",
+      "status": "archived",
       "created_at": "2026-05-14",
       "updated_at": "2026-05-17",
       "extra": {
@@ -944,7 +945,7 @@
       "id": "000055",
       "lane": "bbt",
       "title": "TaskGraph Task Execution：运行态、Runtime Session 与验收闭环",
-      "status": "in_progress",
+      "status": "archived",
       "created_at": "2026-05-14",
       "updated_at": "2026-05-17",
       "extra": {
@@ -966,7 +967,7 @@
       "title": "TaskGraph Trigger System：统一任务触发层",
       "status": "in_progress",
       "created_at": "2026-05-14",
-      "updated_at": "2026-05-16",
+      "updated_at": "2026-05-17",
       "extra": {
         "area": "TaskGraph",
         "depends_on": "000053",
@@ -984,7 +985,7 @@
       "id": "000057",
       "lane": "bbt",
       "title": "TaskGraph Trigger：手动触发入口（Chat/Web/CLI）",
-      "status": "done",
+      "status": "archived",
       "created_at": "2026-05-14",
       "updated_at": "2026-05-17",
       "extra": {
@@ -1004,9 +1005,9 @@
       "id": "000058",
       "lane": "bbt",
       "title": "TaskGraph Trigger：Hook 触发与内部事件 Outbox",
-      "status": "in_progress",
+      "status": "todo",
       "created_at": "2026-05-14",
-      "updated_at": "2026-05-16",
+      "updated_at": "2026-05-17",
       "extra": {
         "area": "TaskGraph",
         "depends_on": "000056",
@@ -1092,9 +1093,9 @@
       "id": "000065",
       "lane": "bbt",
       "title": "TaskGraph 第三方生态：飞书通知、Webhook、本地工具与插件接入",
-      "status": "in_progress",
+      "status": "todo",
       "created_at": "2026-05-14",
-      "updated_at": "2026-05-16",
+      "updated_at": "2026-05-17",
       "extra": {
         "area": "TaskGraph",
         "depends_on": "000055",
@@ -1146,7 +1147,7 @@
       "id": "000069",
       "lane": "bbt",
       "title": "TaskGraph 060 Follow-up: Pregel Topology Mutation and Contract Gate",
-      "status": "done",
+      "status": "archived",
       "created_at": "2026-05-17",
       "updated_at": "2026-05-17",
       "extra": {
@@ -1157,6 +1158,61 @@
         "parent": "000060",
         "requested_by": "user",
         "scope": "pregel-topology-mutation-schema-validate-repair-kb-workflow-practice"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000070-idea-canvas-backend-store-api.md",
+      "path": "tickets/000070-idea-canvas-backend-store-api.md",
+      "id": "000070",
+      "lane": "bbt",
+      "title": "Idea Canvas Backend：canvas/sticky note 轻量持久化与 API",
+      "status": "archived",
+      "created_at": "2026-05-17",
+      "updated_at": "2026-05-17",
+      "extra": {
+        "area": "Idea Canvas",
+        "depends_on": "000026",
+        "kind": "backend",
+        "parent": "000026"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000071-idea-canvas-frontend-canvas-sticky-notes.md",
+      "path": "tickets/000071-idea-canvas-frontend-canvas-sticky-notes.md",
+      "id": "000071",
+      "lane": "bbd",
+      "title": "Idea Canvas Frontend：canvas 列表与 sticky note 白板",
+      "status": "archived",
+      "created_at": "2026-05-17",
+      "updated_at": "2026-05-17",
+      "extra": {
+        "area": "Idea Canvas",
+        "depends_on": "000026 000070",
+        "kind": "frontend",
+        "parent": "000026"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000072-idea-canvas-sticker-to-ticket-followup.md",
+      "path": "tickets/000072-idea-canvas-sticker-to-ticket-followup.md",
+      "id": "000072",
+      "lane": "bbp",
+      "title": "Idea Canvas 后续转化：从 sticker 到 ticket 的可选路径",
+      "status": "blocked",
+      "created_at": "2026-05-17",
+      "updated_at": "2026-05-17",
+      "extra": {
+        "area": "Idea Canvas",
+        "blocked_reason": "post_mvp_after_canvas_core",
+        "depends_on": "000026 000070 000071",
+        "kind": "product-workflow",
+        "parent": "000026"
       },
       "metadata_error": null,
       "metadata_warnings": []

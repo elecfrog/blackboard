@@ -17,6 +17,7 @@ fn fixture() -> (TempDir, Workspace) {
     fs::create_dir_all(kb_root.join("tickets")).unwrap();
     fs::create_dir_all(root.join("agents")).unwrap();
     fs::write(root.join("agents/AGENTS.md"), "# Demo Agent Rules\n").unwrap();
+    fs::write(root.join("agents/CODEX.md"), "# Demo Codex Rules\n").unwrap();
     fs::write(
         kb_root.join("__project__.json"),
         r##"{

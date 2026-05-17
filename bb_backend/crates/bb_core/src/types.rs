@@ -288,6 +288,118 @@ pub struct TicketSearchMatch {
     pub snippet: String,
 }
 
+// ─── Idea Canvas types ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CreateIdeaCanvasInput {
+    pub title: String,
+    #[serde(default)]
+    pub id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateIdeaCanvasInput {
+    pub id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CreateStickyNoteInput {
+    #[serde(default)]
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateStickyNoteInput {
+    pub canvas_id: String,
+    pub note_id: String,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub x: Option<f64>,
+    #[serde(default)]
+    pub y: Option<f64>,
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct IdeaCanvasIndex {
+    pub generated_at: String,
+    pub canvases: Vec<IdeaCanvasEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct IdeaCanvasEntry {
+    pub id: String,
+    pub title: String,
+    pub note_count: usize,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct IdeaCanvasDetail {
+    pub id: String,
+    pub title: String,
+    pub created_at: String,
+    pub updated_at: String,
+    #[serde(default)]
+    pub notes: Vec<StickyNote>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct StickyNote {
+    pub id: String,
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+    pub color: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct IdeaCanvasWriteResult {
+    pub canvas: IdeaCanvasDetail,
+    pub maintenance: IdeaCanvasMaintenance,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct StickyNoteWriteResult {
+    pub canvas: IdeaCanvasDetail,
+    pub note: StickyNote,
+    pub maintenance: IdeaCanvasMaintenance,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct IdeaCanvasDeleteResult {
+    pub id: String,
+    pub maintenance: IdeaCanvasMaintenance,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct StickyNoteDeleteResult {
+    pub canvas_id: String,
+    pub note_id: String,
+    pub maintenance: IdeaCanvasMaintenance,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct IdeaCanvasMaintenance {
+    pub consistency: MaintenanceCheck,
+    pub export: MaintenanceState,
+}
+
 // ─── Project types ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
