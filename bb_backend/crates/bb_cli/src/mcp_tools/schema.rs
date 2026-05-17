@@ -8,7 +8,6 @@ pub(crate) fn tools_list() -> Value {
         "pattern": "^[^./\\\\][^./\\\\]{0,63}$",
         "description": "Target project name from the Blackboard workspace registry."
     });
-
     let mut result = json!({
         "tools": [
             {

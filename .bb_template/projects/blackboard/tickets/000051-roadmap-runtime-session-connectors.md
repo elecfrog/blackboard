@@ -4,7 +4,7 @@ lane = "bbt"
 title = "Roadmap：Runtime 连接与 AgentSession 维护"
 created_at = "2026-05-13"
 updated_at = "2026-05-17"
-status = "done"
+status = "archived"
 assignee = "codex"
 +++
 

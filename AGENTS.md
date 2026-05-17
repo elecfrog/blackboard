@@ -30,3 +30,18 @@ Blackboard 是一个本地多 Agent 协作工作台，将 Codex、CodeBuddy、Op
 ```
 python3 scripts/dev.py
 ```
+
+## Practice in Blackboard
+
+Ticket 是轻量 BDD
+
+在 Blackboard 项目里，ticket 不是任务备忘录，也不是历史记录。  
+ticket 是当前可执行的产品/工程行为定义，承担轻量 BDD 的角色：描述行为、边界和验收标准，让 Agent 能直接按它实现。
+
+Agent 写 ticket 时应满足：
+
+- 只描述当前有效定义，过时内容应删除或替换。
+- 用用户语言定义行为，不用 Agent 自己重定义产品方向。
+- 明确 MVP 行为、非目标、验收标准。
+- 子票只拆实现范围，不重新解释父票产品定义。
+- handoff 记录过程，ticket 保存当前事实。

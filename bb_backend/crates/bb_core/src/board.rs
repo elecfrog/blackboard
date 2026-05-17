@@ -68,6 +68,7 @@ impl Blackboard {
     /// Ensure derived JSON indexes are present.
     fn ensure_indexes(&self) {
         let _ = self.read_ticket_index();
+        let _ = self.read_idea_canvas_index();
         if !self.root.join("__inbox__.json").exists() {
             let _ = self.rebuild_inbox_index();
         }

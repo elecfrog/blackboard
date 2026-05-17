@@ -442,6 +442,8 @@ NodeRun 状态：
 
 - Correction: the 000060 topology mutation follow-up ticket is 000069.
 
+- 来源：inbox/2026-05-15-codex-taskgraph-backend-core-existing-truth-review.md；比较 feature/orni (commit 5c3c84a feat: pregel task engine) 与 main 分支；确认已实现：compiled graph IR、Pregel checkpoint/task/write 模型、superstep prepare/apply barrier、pending write replay、run events/superstep checkpoints、Command/Send MVP、interrupt-before/after、Shell node、LLM AgentSession runtime、SubGraph checkpoint namespace propagation、node registry roles；未实现：Pregel paper 3.4 运行时 topology mutation、graph mutation request queue、add/remove node/edge at runtime、coordinator-driven graph modification、Arena/plan-review mechanism
+
 # 下一步
 
 - 后续由 #000061 将 pending writes 推进为 typed channel writes；由 #000062 把业务节点输出绑定到 artifact/channel contract。

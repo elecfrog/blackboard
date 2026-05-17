@@ -10,6 +10,7 @@
 //! - `board`     — per-project data handle (`Blackboard`/`ProjectBoard`)
 //! - `ticket`    — ticket CRUD, indexing, search, maintenance
 //! - `inbox`     — inbox note CRUD, indexing, search
+//! - `idea_canvas` — Idea Canvas CRUD, indexing, and sticky note persistence
 //! - `project`   — project metadata, lane CRUD, project index
 
 use std::path::{Component, Path};
@@ -24,6 +25,7 @@ pub mod board;
 pub(crate) mod common;
 pub mod error;
 pub mod fs_util;
+pub mod idea_canvas;
 pub mod inbox;
 pub mod platform;
 pub mod project;

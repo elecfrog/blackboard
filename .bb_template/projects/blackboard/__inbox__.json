@@ -3,164 +3,170 @@
     {
       "name": "2026-05-13-codex-readme-upstream-references-acknowledgement.md",
       "size": 748,
-      "modified_at": "2026-05-13T03:45:24Z",
+      "modified_at": "2026-05-17T10:17:47Z",
       "excerpt": "时间: 2026-05-13T03:45:24Z"
-    },
-    {
-      "name": "2026-05-15-codex-taskgraph-backend-core-existing-truth-review.md",
-      "size": 1639,
-      "modified_at": "2026-05-15T17:48:33Z",
-      "excerpt": "时间: 2026-05-15T17:48:33Z"
     },
     {
       "name": "2026-05-16-codex-agents-empty-state-no-card.md",
       "size": 1068,
-      "modified_at": "2026-05-16T14:36:51Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T14:36:51Z"
     },
     {
       "name": "2026-05-16-codex-agents-floating-metadata-textbox-background-alignment.md",
       "size": 1057,
-      "modified_at": "2026-05-16T08:30:29Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T08:30:29Z"
     },
     {
       "name": "2026-05-16-codex-agents-floating-metadata-textboxes.md",
       "size": 1584,
-      "modified_at": "2026-05-16T08:01:33Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T08:01:33Z"
     },
     {
       "name": "2026-05-16-codex-agents-profile-hide-roles-ui.md",
       "size": 683,
-      "modified_at": "2026-05-16T09:54:30Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T09:54:30Z"
     },
     {
       "name": "2026-05-16-codex-agents-profile-metadata-textbox-redesign.md",
       "size": 1278,
-      "modified_at": "2026-05-16T07:55:30Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T07:55:30Z"
     },
     {
       "name": "2026-05-16-codex-agents-profile-remove-duplicate-skill-mcp-stats.md",
       "size": 757,
-      "modified_at": "2026-05-16T12:26:31Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T12:26:31Z"
     },
     {
       "name": "2026-05-16-codex-agents-profile-remove-placeholder-timestamps.md",
       "size": 811,
-      "modified_at": "2026-05-16T13:16:21Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T13:16:21Z"
     },
     {
       "name": "2026-05-16-codex-agents-profile-summary-no-card.md",
       "size": 1089,
-      "modified_at": "2026-05-16T14:30:31Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T14:30:31Z"
     },
     {
       "name": "2026-05-16-codex-agents-profile-ui-design-alignment.md",
       "size": 1471,
-      "modified_at": "2026-05-16T07:33:54Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T07:33:54Z"
     },
     {
       "name": "2026-05-16-codex-agents-profile-worker-field.md",
       "size": 1090,
-      "modified_at": "2026-05-16T08:46:10Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T08:46:10Z"
     },
     {
       "name": "2026-05-16-codex-agents-remove-fake-online-status-ui.md",
       "size": 1175,
-      "modified_at": "2026-05-16T14:43:34Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T14:43:34Z"
     },
     {
       "name": "2026-05-16-codex-agents-remove-org-relationship-model.md",
       "size": 2097,
-      "modified_at": "2026-05-16T12:34:24Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T12:34:24Z"
     },
     {
       "name": "2026-05-16-codex-agents-runtime-config-section.md",
       "size": 1386,
-      "modified_at": "2026-05-16T14:17:17Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T14:17:17Z"
     },
     {
       "name": "2026-05-16-codex-agents-runtime-config-simple-layout.md",
       "size": 1174,
-      "modified_at": "2026-05-16T14:19:34Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T14:19:34Z"
     },
     {
       "name": "2026-05-16-codex-agents-skill-action-and-assignment-empty-state.md",
       "size": 1137,
-      "modified_at": "2026-05-16T14:38:57Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T14:38:57Z"
     },
     {
       "name": "2026-05-16-codex-agents-skill-config-editor.md",
       "size": 1903,
-      "modified_at": "2026-05-16T13:48:35Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T13:48:35Z"
     },
     {
       "name": "2026-05-16-codex-agents-skill-config-list.md",
       "size": 1223,
-      "modified_at": "2026-05-16T13:33:52Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T13:33:52Z"
     },
     {
       "name": "2026-05-16-codex-bb-web-agents-chunk-warning-cleanup.md",
       "size": 1244,
-      "modified_at": "2026-05-16T14:52:30Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T14:52:30Z"
     },
     {
       "name": "2026-05-16-codex-inbox-batch-cleanup-loop-graph-fix.md",
       "size": 1380,
-      "modified_at": "2026-05-16T13:34:51Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T13:34:51Z"
     },
     {
       "name": "2026-05-16-codex-inbox-batch-cleanup-run-failure-investigation.md",
       "size": 1449,
-      "modified_at": "2026-05-16T13:31:25Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T13:31:25Z"
     },
     {
       "name": "2026-05-16-codex-ticket-deprecate-confirm-dialog.md",
       "size": 711,
-      "modified_at": "2026-05-16T14:29:17Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T14:29:17Z"
     },
     {
       "name": "2026-05-16-codex-ticket-deprecate-menu-placement.md",
       "size": 620,
-      "modified_at": "2026-05-16T14:32:42Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T14:32:42Z"
     },
     {
       "name": "2026-05-16-codex-ticket-deprecated-archive-entry.md",
       "size": 1641,
-      "modified_at": "2026-05-16T14:26:13Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T14:26:13Z"
     },
     {
       "name": "2026-05-16-codex-trace-agents-md-connector-ingestion.md",
       "size": 1677,
-      "modified_at": "2026-05-16T10:49:36Z",
+      "modified_at": "2026-05-17T10:17:54Z",
       "excerpt": "时间: 2026-05-16T10:49:36Z"
     },
     {
-      "name": "2026-05-17-codex-054-057-060-mutation-tickets-completed.md",
-      "size": 1303,
-      "modified_at": "2026-05-17T10:05:11Z",
-      "excerpt": "时间: 2026-05-17T10:05:11Z"
+      "name": "2026-05-17-codex-codex-remote-mcp-fallback-rule.md",
+      "size": 954,
+      "modified_at": "2026-05-17T10:17:54Z",
+      "excerpt": "时间: 2026-05-17T10:08:17Z"
+    },
+    {
+      "name": "2026-05-17-codex-idea-canvas-canvas-删除按钮.md",
+      "size": 1295,
+      "modified_at": "2026-05-17T16:52:02Z",
+      "excerpt": "时间: 2026-05-17T16:52:02Z"
+    },
+    {
+      "name": "2026-05-17-codex-idea-canvas-删除确认弹窗修正.md",
+      "size": 930,
+      "modified_at": "2026-05-17T16:58:03Z",
+      "excerpt": "时间: 2026-05-17T16:58:03Z"
     }
   ]
 }

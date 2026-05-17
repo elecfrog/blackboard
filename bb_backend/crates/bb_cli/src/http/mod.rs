@@ -1,4 +1,5 @@
 mod agent_sessions;
+mod idea_canvas;
 mod project_picker;
 pub(crate) mod task_graph;
 mod tickets;
@@ -143,6 +144,24 @@ pub fn app_with_options(workspace: Workspace, options: HttpServeOptions) -> Rout
         .route(
             "/api/projects/{project}/tickets/{id}/content",
             get(tickets::ticket_content),
+        )
+        .route(
+            "/api/projects/{project}/idea-canvases",
+            get(idea_canvas::list_canvases).post(idea_canvas::create_canvas),
+        )
+        .route(
+            "/api/projects/{project}/idea-canvases/{canvas_id}",
+            get(idea_canvas::read_canvas)
+                .patch(idea_canvas::patch_canvas)
+                .delete(idea_canvas::delete_canvas),
+        )
+        .route(
+            "/api/projects/{project}/idea-canvases/{canvas_id}/notes",
+            post(idea_canvas::create_note),
+        )
+        .route(
+            "/api/projects/{project}/idea-canvases/{canvas_id}/notes/{note_id}",
+            patch(idea_canvas::patch_note).delete(idea_canvas::delete_note),
         )
         // Wiki: read-only file tree, Markdown content, and relative static
         // assets for project-level wikis, plus a multipart upload endpoint
