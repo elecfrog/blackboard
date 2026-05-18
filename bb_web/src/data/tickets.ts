@@ -14,16 +14,41 @@ export interface BlackboardTicket {
   file_name: string
   file_path: string
   dependencies: string[]
-  attachments?: TicketAttachment[]
-  /// Markdown body content. Only populated when the ticket detail is loaded
-  /// on demand via `loadTicketContent`; the list endpoint no longer returns
-  /// this field (index/content split).
-  content?: string
+  attachments: TicketAttachment[]
+  spec?: TicketSpec
   /// Arbitrary frontmatter KV pairs carried through from bb-core verbatim.
   /// Known conventions today: `assignee`. Legacy data may still carry
   /// `current` / `family` until those files are cleaned up via
   /// `update_ticket` + `remove`.
   extra: Record<string, string>
+}
+
+export interface TicketSpec {
+  summary: string
+  stories: TicketStory[]
+  risks?: TicketRisk[]
+  progress_record?: TicketProgressRecord[]
+}
+
+export interface TicketStory {
+  id: string
+  given: string
+  when: string
+  then: string
+  sample?: string
+}
+
+export interface TicketRisk {
+  id: string
+  description: string
+  mitigation?: string
+  status?: string
+}
+
+export interface TicketProgressRecord {
+  at?: string
+  summary: string
+  evidence?: string[]
 }
 
 export interface TicketAttachment {
@@ -142,6 +167,8 @@ export interface TicketWriteTicket {
   updated_at: string
   file_name: string
   path: string
+  attachments: TicketAttachment[]
+  spec?: TicketSpec
   extra: Record<string, string>
 }
 
@@ -346,16 +373,13 @@ export async function loadBlackboardData(project: string): Promise<BlackboardPay
   return fetchJson<BlackboardPayload>(`/api/projects/${encoded}/tickets`)
 }
 
-/// Load the Markdown body content for a single ticket by ID. This is the
-/// "content" half of the index/content split — the list endpoint returns
-/// structural index fields only; call this when the user opens a detail view.
-export async function loadTicketContent(project: string, id: string): Promise<string> {
+/// Load one structured ticket by ID. This reads the source ticket file through
+/// the backend so JSON BDD fields are available without storing full specs in
+/// the project index.
+export async function loadTicketDetail(project: string, id: string): Promise<BlackboardTicket> {
   const encoded = encodeURIComponent(project)
   const safeId = encodeURIComponent(id)
-  const payload = await fetchJson<{ content: string }>(
-    `/api/projects/${encoded}/tickets/${safeId}/content`,
-  )
-  return payload.content
+  return fetchJson<BlackboardTicket>(`/api/projects/${encoded}/tickets/${safeId}`)
 }
 
 export async function patchTicket(
@@ -525,72 +549,4 @@ export function boardRoute(project: string): string {
 
 export function ticketRoute(project: string, id: string): string {
   return `/projects/${project}/tickets/${id}`
-}
-
-export function attachmentsFromExtra(extra: Record<string, string>): TicketAttachment[] {
-  const raw = extra.attachments
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .map((item) => {
-        if (!item || typeof item !== 'object') return null
-        const record = item as Record<string, unknown>
-        const kind = typeof record.kind === 'string' ? record.kind.trim() : ''
-        const target = typeof record.target === 'string' ? record.target.trim() : ''
-        if (!kind || !target) return null
-        const label = typeof record.label === 'string' ? record.label.trim() : ''
-        const description =
-          typeof record.description === 'string' ? record.description.trim() : ''
-        return {
-          kind,
-          target,
-          ...(label ? { label } : {}),
-          ...(description ? { description } : {}),
-        }
-      })
-      .filter((item): item is TicketAttachment => Boolean(item))
-  } catch {
-    return []
-  }
-}
-
-/// Pull a short plain-text preview out of a ticket's markdown body for the
-/// `# 当前进展` / (progress) section. This is the single source of truth for
-/// "current" information after frontmatter.current was removed — both the
-/// BoardView search bar and the TicketCard preview read this value so there
-/// is only one concept of "current" to reason about.
-export function extractProgressText(content: string): string {
-  return extractSectionPreview(content, '当前进展')
-}
-
-function extractSectionPreview(content: string, heading: string): string {
-  const lines = content.split(/\r?\n/)
-  const headingIndex = lines.findIndex((line) => {
-    const match = line.match(/^#{1,6}\s+(.+?)\s*$/)
-    return match?.[1]?.trim() === heading
-  })
-
-  if (headingIndex === -1) return ''
-
-  const sectionLines: string[] = []
-  for (const line of lines.slice(headingIndex + 1)) {
-    if (/^#{1,6}\s+/.test(line)) break
-    const cleanedLine = line
-      .trim()
-      .replace(/^- \[[ xX]\]\s+/, '')
-      .replace(/^[-*]\s+/, '')
-    if (cleanedLine) sectionLines.push(cleanedLine)
-  }
-
-  const text = sectionLines
-    .join(' ')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  return text.length > 150 ? `${text.slice(0, 150)}...` : text
 }

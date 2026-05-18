@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "id": "000072",
+  "lane": "bbp",
+  "title": "Idea Canvas 后续转化：从 sticker 到 ticket 的可选路径",
+  "summary": "定义 Idea Canvas 后续转化能力：当 canvas/sticky note MVP 稳定后，提供从 sticky note 轻量生成 ticket 的可选路径。sticky note 默认不是 ticket，转化能力不能压过随手记录和自由整理体验。 本轮补充：转化路径同时覆盖 JSON BDD ticket 生成、用户确认预览、source attachment/backlink 与转化后状态回链。",
+  "stories": [
+    {
+      "id": "f63c2447-fd0b-446e-b6b8-cb61f6ef5dcf",
+      "given": "用户在 Idea Canvas 上有一个或多个 sticky note",
+      "when": "用户明确选择要将 sticky note 转化为 ticket",
+      "then": "用户可以明确选择将 sticky note 转化为 ticket",
+      "sample": "用户在 canvas 上随手粘了 3 个 sticky note"
+    },
+    {
+      "id": "b6047276-bc68-4041-b88e-f29c56e44d3a",
+      "given": "用户在 Idea Canvas 上有多个 sticky note",
+      "when": "用户选择将多个 sticky note 合并转化为一个 ticket",
+      "then": "系统生成 ticket 时保留 sticky note 的排序和分组作为上下文",
+      "sample": "用户在 canvas 上粘了 5 个 sticky note"
+    },
+    {
+      "id": "b9b1c784-ace0-40bd-be38-cae84e74dfcd",
+      "given": "用户在 Idea Canvas 上的 sticky note",
+      "when": "用户将 sticky note 转化为 ticket 后",
+      "then": "sticky note 可以保留、标记或由用户决定是否变更",
+      "sample": "用户在 canvas 上有一个深蓝色的 sticky note"
+    },
+    {
+      "id": "c2feaeb6-67be-4dca-a156-bef633292e0b",
+      "given": "用户在 Idea Canvas 上有已转化的 sticky note",
+      "when": "用户想要在 canvas 上找到已转化的 sticky note",
+      "then": "用户可以从 ticket 回到 canvas 上对应 sticky note 的原位置",
+      "sample": "用户将某个 sticky note 转化为了 ticket 000XXX"
+    },
+    {
+      "id": "e8559315-efae-4087-8e4b-82d2d9f3172f",
+      "given": "用户从 Idea Canvas 中选择 sticky note 准备转化为 ticket",
+      "when": "系统展示转化预览",
+      "then": "用户可以在创建前确认 title、summary、BDD stories、lane 和 attachments，取消时不产生 ticket",
+      "sample": "用户点选一张 sticky note 后，先看到 ticket 草稿预览，而不是立刻落盘。"
+    },
+    {
+      "id": "c82e10a6-107b-477e-85f6-59fd674a228e",
+      "given": "用户确认将 sticky note 转化为 ticket",
+      "when": "系统调用 ticket 创建能力",
+      "then": "系统必须创建符合 JSON BDD schema 的 ticket，包含 summary、stories、risks、progress_record、attachments；不生成 Markdown/frontmatter ticket",
+      "sample": "create_ticket 输入包含 spec.summary、spec.stories、spec.risks、spec.progress_record 和顶层 attachments。"
+    },
+    {
+      "id": "92002df5-8572-4701-a1f2-6e48ea9964fd",
+      "given": "一个或多个 sticky note 已转化为 ticket",
+      "when": "ticket 创建成功",
+      "then": "ticket 必须保留来源 canvas/sticky note 的附件或 backlink，sticky note 也能显示已关联的 ticket id",
+      "sample": "ticket attachments 可记录 kind=idea_canvas 或 source_note；sticky note 上显示 ticket 000XXX。"
+    },
+    {
+      "id": "0d3bf4d4-e4a0-4860-9442-c7125be91389",
+      "given": "LLM 根据 sticky note 文本草拟 ticket 行为定义",
+      "when": "note 内容不足以形成可执行 Given/When/Then",
+      "then": "系统必须要求用户补充或保留为草稿，不把模糊想法直接写成权威 ticket",
+      "sample": "sticky note 只有‘优化体验’时不能直接生成完整 BDD ticket。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "blocked-000070",
+      "description": "000070 后端 canvas/note 存储与 API 未完成",
+      "mitigation": "000070 已完成归档，后续以 canvas API 事实为基础。",
+      "status": "resolved"
+    },
+    {
+      "id": "blocked-000071",
+      "description": "000071 前端 canvas/sticky note 核心交互未完成",
+      "mitigation": "000071 已完成归档，后续以现有 canvas/sticky note UI 为基础。",
+      "status": "resolved"
+    },
+    {
+      "id": "pending-user-confirmation",
+      "description": "用户尚未确认转化入口是否符合 026 的轻量气质",
+      "mitigation": "等待用户确认",
+      "status": "open"
+    },
+    {
+      "id": "llm_overwrites_canvas_intent",
+      "description": "LLM 可能把随手 sticky note 过度解释成正式 ticket 行为定义。",
+      "mitigation": "转化前必须展示预览并要求用户确认；信息不足时保留草稿，不落权威 ticket。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-17",
+      "summary": "建立 Idea Canvas 后续转化能力定义：sticky note 到 ticket 的可选路径",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "明确本票是后续增强，不是 MVP 核心；等待 000070/000071 完成",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "收拢 072 扩大范围：sticky note 转 ticket 不只是生成入口，还包含 JSON BDD 创建契约、转化预览确认、source attachment/backlink 和转化后 sticky note 状态回链。",
+      "evidence": [
+        "000072 implicit scope expansion",
+        "000073 JSON BDD ticket contract",
+        "000074 JSON ticket detail/attachments child work"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "todo",
+  "created_at": "2026-05-17",
+  "updated_at": "2026-05-18",
+  "extra": {
+    "area": "Idea Canvas",
+    "blocked_reason": "post_mvp_after_canvas_core",
+    "depends_on": "000026 000070 000071",
+    "kind": "product-workflow",
+    "parent": "000026",
+    "schema_version": "1.0"
+  }
+}

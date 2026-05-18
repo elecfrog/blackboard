@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "000018",
+  "lane": "bbt",
+  "title": "本地 Agent Runtime Manager 能力底座",
+  "summary": "Blackboard 从全局 Agent 配置注入器转向本地 Agent Runtime Manager，由本机 bb daemon 负责检测 Agent CLI",
+  "stories": [
+    {
+      "id": "c1d2e3f4-5a6b-7c8d-9e0f-1a2b3c4d5e6f",
+      "given": "bb daemon 在本地机器运行",
+      "when": "需要启动 Agent 执行任务",
+      "then": "检测 Agent CLI、创建 per-task 环境并启动 Codex/Claude/OpenCode"
+    },
+    {
+      "id": "d2e3f4a5-6b7c-8d9e-0f1a-2b3c4d5e6f7a",
+      "given": "Agent 需要操作 Blackboard",
+      "when": "执行任务时",
+      "then": "通过 bb CLI 操作工单，MCP 作为可选增强能力"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-08",
+      "summary": "确认 Blackboard 要从全局 Agent 配置注入器，转向本地 Agent Runtime Manager",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "明确本机 bb daemon 负责检测 Agent CLI、创建 per-task 环境并启动 Codex/Claude/OpenCode",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "bb_server 新增 daemon 子命令原型，通过 daemon 注入受控工具，验证 Agent 可走结构化操作",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "重构 bb daemon 从硬编码 inbox prompt 改为 agents/tasks.toml 注册表驱动模型",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "修复 Codex app-server client 初始化自旋问题",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-07",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "assignee": "codex"
+  }
+}

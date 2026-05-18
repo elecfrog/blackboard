@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "000052",
+  "lane": "bbt",
+  "title": "Roadmap：内置 Agent Chat 与任务下发",
+  "summary": "Blackboard 内置 Agent Chat：支持选择 Agent/Profile、持续对话、任务下发到 ticket/inbox/TaskGraph",
+  "stories": [
+    {
+      "id": "8eb97068-7cb4-46c6-bd79-ec1177a50e3c",
+      "given": "用户在 Devkit settings 页面打开了 Agent Chat FAB",
+      "when": "用户选择模型和变体后发起对话",
+      "then": "系统创建 AgentSession 并透传 model/variant 到 OpenCode，会话可持续接收 thinking/usage/tool 事件"
+    },
+    {
+      "id": "f6dde6c7-c2dc-4dcd-9fae-7821e0b2d3d9",
+      "given": "用户在 Agent Chat 中发送任务指令",
+      "when": "用户通过 Chat 下发任务到 ticket/inbox/TaskGraph",
+      "then": "系统创建对应的 AgentSession 或 TaskGraph run，建立可恢复的任务执行上下文"
+    }
+  ],
+  "risks": [
+    {
+      "id": "opencode-thinking-event-mapping",
+      "description": "OpenCode provider 尚未映射 reasoning/thinking 事件到 AgentEventType::Thinking",
+      "mitigation": "继续完成事件映射并在真实模型配置上做 E2E 验证",
+      "status": "identified"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-14",
+      "summary": "给 AgentChatFab 增加模型/变体设置区，扩展 AgentSession API 支持 model/variant"
+    },
+    {
+      "at": "2026-05-14",
+      "summary": "调研 TDesign ChatEngine 自定义渲染路径"
+    },
+    {
+      "at": "2026-05-14",
+      "summary": "通过 cargo check 和 npm run build"
+    },
+    {
+      "at": "2026-05-14",
+      "summary": "通过真实两轮 OpenCode 对话验证 provider session 复用"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-13",
+  "updated_at": "2026-05-16",
+  "extra": {
+    "assignee": "codex"
+  }
+}

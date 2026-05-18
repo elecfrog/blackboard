@@ -1,30 +1,32 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { MarkdownRenderer, TableOfContents } from '@/ui/markdown'
 import AppNav from '@/components/AppNav.vue'
+import TicketStructuredDocument from '@/components/TicketStructuredDocument.vue'
 import type { BlackboardPayload, LaneDef } from '@/data/tickets'
 import {
   boardRoute,
   loadBlackboardData,
   loadLanes,
-  loadTicketContent,
+  loadTicketDetail,
   resolveLaneMeta,
   ticketRoute,
 } from '@/data/tickets'
-import { locale, ticketStatusLabel, t } from '@/i18n'
+import { ticketStatusLabel, t } from '@/i18n'
 
 const props = defineProps<{ project: string; id: string }>()
 
 const router = useRouter()
 const payload = ref<BlackboardPayload | null>(null)
 const lanes = ref<LaneDef[]>([])
+const ticketDetail = ref<BlackboardPayload['tickets'][number] | null>(null)
 const loading = ref(true)
 const error = ref('')
-const ticketContent = ref('')
-const contentLoading = ref(false)
+const detailLoading = ref(false)
+const detailError = ref('')
 
-const ticket = computed(() => payload.value?.tickets.find((item) => item.id === props.id))
+const indexedTicket = computed(() => payload.value?.tickets.find((item) => item.id === props.id))
+const ticket = computed(() => ticketDetail.value ?? indexedTicket.value)
 const laneMeta = computed(() =>
   ticket.value ? resolveLaneMeta(ticket.value.lane, lanes.value) : null,
 )
@@ -39,42 +41,31 @@ async function reload(project: string) {
   loading.value = true
   error.value = ''
   payload.value = null
-  ticketContent.value = ''
+  ticketDetail.value = null
+  detailError.value = ''
+  detailLoading.value = true
   try {
     // Tickets and lanes are independent reads, kick them off in parallel so
     // the detail panel still renders if one fails.
-    const [data, laneResult] = await Promise.all([
+    const [data, laneResult, detail] = await Promise.all([
       loadBlackboardData(project),
       loadLanes(project),
+      loadTicketDetail(project, props.id),
     ])
     payload.value = data
     lanes.value = laneResult.data
+    ticketDetail.value = detail
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
     loading.value = false
+    detailLoading.value = false
   }
 }
 
-// Load ticket content on demand when the ticket id is resolved.
 watch(
-  () => ticket.value?.id,
-  async (id) => {
-    if (!id) { ticketContent.value = ''; return }
-    contentLoading.value = true
-    try {
-      ticketContent.value = await loadTicketContent(props.project, id)
-    } catch {
-      ticketContent.value = ''
-    } finally {
-      contentLoading.value = false
-    }
-  },
-)
-
-watch(
-  () => props.project,
-  (project) => {
+  () => [props.project, props.id] as const,
+  ([project]) => {
     if (project) reload(project)
   },
   { immediate: true },
@@ -100,8 +91,11 @@ watch(
       <template v-else>
         <section class="ticket-detail-grid">
           <article class="control-panel ticket-document">
-            <div v-if="contentLoading">{{ t('ticketLoadingContent') }}</div>
-            <MarkdownRenderer v-else :content="ticketContent" :locale="locale" />
+            <TicketStructuredDocument
+              :ticket="ticket"
+              :loading="detailLoading"
+              :error="detailError"
+            />
           </article>
 
           <aside class="ticket-side">
@@ -112,12 +106,6 @@ watch(
               <div class="meta-row"><span>{{ t('ticketLane') }}</span><strong :style="{ color: laneMeta?.color }">{{ ticket.lane }} · {{ laneMeta?.label }}</strong></div>
               <div class="meta-row"><span>{{ t('status') }}</span><strong>{{ ticketStatusLabel(ticket.status) }}</strong></div>
               <div class="meta-row"><span>{{ t('assignee') }}</span><strong>{{ ticket.extra.assignee || t('unassigned') }}</strong></div>
-              <!--
-                The former frontmatter `current` field was removed in favour of
-                the `# 当前进展` body section, which is rendered in full by the
-                MarkdownRenderer on the left. No duplicate "current action"
-                row is needed here.
-              -->
             </div>
 
             <div v-if="relatedTickets.length > 0" class="control-panel meta-panel">
@@ -132,7 +120,6 @@ watch(
               </button>
             </div>
 
-            <TableOfContents :content="ticketContent" :locale="locale" />
           </aside>
         </section>
       </template>

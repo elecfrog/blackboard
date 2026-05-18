@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "id": "000032",
+  "lane": "bbt",
+  "title": "Task Graph 后端：Run Snapshot、Context 与运行态存储",
+  "summary": "实现 Task Graph 每次运行的冻结快照、run context、node run state、日志与 artifact 存储，为 executor 和前端 Run UI 提供稳定读写层。",
+  "stories": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567891",
+      "given": "需要为 Task Graph 每次运行保存完整状态",
+      "when": "调用 create_run 创建新 run",
+      "then": "生成完整目录结构与 graph.snapshot.json，初始化所有节点为 idle 状态",
+      "sample": ".bb_runtime/task_graph_runs/<project>/<run-id>/ 包含 run.json、graph.snapshot.json、nodes/<node-id>.json"
+    },
+    {
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678912",
+      "given": "executor 需要更新 run 和 node 的状态",
+      "when": "调用 update_run_status 更新 run 状态",
+      "then": "状态发生合法转移时更新 run status；非法转移时返回错误",
+      "sample": "run status: pending→running→succeeded/failed/cancelled；node status: idle→queued→running→succeeded/failed/skipped/paused"
+    },
+    {
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789123",
+      "given": "前端 Run UI 需要读取 run 详细信息",
+      "when": "调用 read_run_detail 读取完整 run 状态",
+      "then": "返回聚合后的 run detail，包含所有 node 状态、日志和 artifact 路径",
+      "sample": "返回 TaskGraphRunDetail，包含 nodes: [{node_id, status, logs, artifacts}]"
+    },
+    {
+      "id": "d4e5f6a7-b8c9-0123-def0-234567890124",
+      "given": "executor 需要记录 branch 和 loop 的控制流决策",
+      "when": "执行 Branch 或 Loop 节点时",
+      "then": "Branch 记录 decision path；Loop 记录 iteration index、退出原因和 max_iterations 命中情况",
+      "sample": "BranchDecision 包含 selected_path；LoopIterationState 包含 index、exit_reason、hit_max_iterations"
+    },
+    {
+      "id": "e5f6a7b8-c9d0-1234-ef01-345678901235",
+      "given": "system graph 后续升级不应影响历史 run",
+      "when": "读取 run detail 时",
+      "then": "永远读取 graph.snapshot.json，保证历史 run 可追溯",
+      "sample": "run.json 引用 graph.snapshot.json 而非原始 graph 定义"
+    },
+    {
+      "id": "f6a7b8c9-d0e1-2345-f012-456789012346",
+      "given": "executor 需要追加日志和写入 artifact",
+      "when": "节点执行过程中",
+      "then": "日志写入 logs/<node-id>.log，artifact 写入 artifacts/<node-id>.*",
+      "sample": "append log、write artifact helper 方法"
+    }
+  ],
+  "risks": [
+    {
+      "id": "run-state-consistency",
+      "description": "run 状态转移需要合法性校验",
+      "mitigation": "update_run_status 包含转移规则校验，非法的 pending→succeeded 会被拒绝",
+      "status": "mitigated"
+    },
+    {
+      "id": "snapshot-freshness",
+      "description": "graph 升级后历史 run 可能引用已删除的节点",
+      "mitigation": "run detail 永远读取 snapshot，不依赖实时 graph 定义",
+      "status": "mitigated"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "新增 bb_core/src/task_graph/run_state.rs — 运行态完整实现",
+      "evidence": [
+        "bb_core/src/task_graph/run_state.rs"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "类型定义：TaskGraphRun, RunStatus(6态), NodeRunStatus(7态), RunContext, BranchDecision, LoopIterationState, TaskGraphRunNode, TaskGraphRunDetail, TaskGraphRunSummary, RunPaused, OutputArtifact 等",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "存储操作：create_run、list_runs、read_run、read_run_detail（聚合读取）",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "状态管理：update_run_status（含转移合法性校验）、set_run_paused、update_cursor",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-09",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000029",
+    "kind": "backend",
+    "parent": "000028"
+  }
+}

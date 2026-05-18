@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "id": "000073",
+  "lane": "bbp",
+  "title": "Ticket BDD Schema：结构化 JSON Ticket 重构与旧票清理流水线",
+  "summary": "Blackboard 的新 ticket 必须是结构化 JSON 文件，title/summary/stories/risks/progress_record/attachments 都是 JSON 字段；旧 Markdown ticket 不继续兼容，由 BBPM 清理流水线统一迁移。 本轮补充：073 还覆盖顶层 attachments、MCP tool profile、Agent 工具说明同步与 ticket audit 校验修复循环。",
+  "stories": [
+    {
+      "id": "3b89b1c2-0d65-4f31-9b9e-87d4f03e7a01",
+      "given": "Agent 或用户要创建、迁移或校验 Blackboard ticket",
+      "when": "系统读取 ticket schema 或生成新的 ticket 文件",
+      "then": "ticket 的权威形态必须是 JSON，必填字段包含 schema_version、id、lane、title、summary、stories、risks、progress_record、attachments、status、created_at、updated_at；attachments 是顶层必填数组，可以为空；stories[].id 必须由系统生成，LLM 只填写 given/when/then/sample；stories 必须用 Given/When/Then 描述可执行行为，不能写成普通任务备忘录",
+      "sample": "{\"id\":\"7b6a8c28-4baf-44f5-8a49-0204a2c75a11\",\"given\":\"用户在列表中看到一条可删除记录\",\"when\":\"用户点击删除按钮\",\"then\":\"系统先显示确认弹窗，不会立即删除\",\"sample\":\"适合写具体可观察行为；不要写‘优化删除体验’这种任务口号。\"}"
+    },
+    {
+      "id": "70a31c55-36d4-41a2-9f4c-3f99dbdf601d",
+      "given": "Agent 或用户需要创建、读取、更新、追加或迁移 Blackboard ticket",
+      "when": "Agent 通过 create_ticket、update_ticket、read_ticket_by_id、append_ticket_sections、本地 JSON schema 或 BBPM 流水线操作 ticket",
+      "then": "系统必须用结构化工具契约约束 ticket 行为：新 ticket 只能写入 .json 文件并按 JSON ticket schema 校验；ticket id、story id、文件名、时间戳由后端生成或维护；工具输入输出以 JSON ticket spec 为核心，校验失败返回具体字段错误；Agent 不需要也不允许手写 Markdown/frontmatter 作为权威 ticket；追加进展必须落入 progress_record，而不是任意 Markdown 正文",
+      "sample": "Agent 创建 ticket 时只提交 {\"lane\":\"bbp\",\"title\":\"删除确认弹窗\",\"status\":\"todo\",\"spec\":{\"summary\":\"删除前必须确认\",\"stories\":[{\"given\":\"用户看到可删除记录\",\"when\":\"用户点击删除\",\"then\":\"系统显示确认弹窗\"}],\"risks\":[],\"progress_record\":[],\"attachments\":[]}}；story.id 省略，由后端生成。"
+    },
+    {
+      "id": "5ab3dfd0-4029-46e8-a238-084033ab1f6c",
+      "given": "项目中存在旧 .md ticket，或 Agent/LLM 试图继续使用 frontmatter + Markdown 形态",
+      "when": "BBPM 运行旧票迁移清理流水线",
+      "then": "流水线必须把旧 Markdown 只当作迁移输入而不是新 ticket 权威形态，并参考 kb-wiki-build-workflow 的 schema_validate 校验出口和 inbox-batch-cleanup 的小步多轮 loop 模式：每轮只迁移有限数量旧 Markdown，写出通过 JSON schema 校验的新 .json ticket 后清理对应 .md 源文件，同时清理或重建 projects/<project>/__tickets__.json 中对应 ticket 的旧索引形态，再根据 continue 和 remaining_legacy_count 决定是否继续，直到没有可迁移 legacy ticket 或达到最大轮数",
+      "sample": "每轮输出形如 {\"processed\":true,\"converted\":[\"000001\"],\"json_files_created\":[\"000001-example.json\"],\"markdown_files_removed\":[\"000001-example.md\"],\"skipped\":[],\"remaining_legacy_count\":12,\"continue\":true,\"verification_status\":{\"tool_schema\":\"passed\",\"file_conversion\":\"passed\",\"transitional_check\":\"passed\",\"qmd_embed\":\"passed\",\"strict_check\":\"not_run_remaining_legacy\"}}；schema_validate 失败则该轮失败，不让自动化静默吞掉坏输出。"
+    },
+    {
+      "id": "4667f96d-2730-4e98-ac26-e373aa5980d8",
+      "given": "前端读取到新的 JSON ticket 形态",
+      "when": "用户在 Ticket 详情、列表、看板或搜索结果中查看 ticket",
+      "then": "前端必须直接消费 JSON ticket 字段，而不是解析 Markdown 正文；详情页暂定用 card 展示 section：summary card 展示当前行为定义，stories card 按 Given/When/Then 展示每条 BDD story 和可选 sample，risks card 展示风险、缓解与状态，progress_record card 展示进展记录和 evidence，attachments card/section 展示挂载资源；列表/看板继续显示 title、lane、status、assignee 等扫描字段，并能从 spec/stories 判断 ticket 是否结构化有效",
+      "sample": "TicketDetailPanel 可把 Summary、Stories、Risks、Progress Record 渲染为同层 card；story card 内部固定显示 Given / When / Then 三行，sample 作为轻量辅助文本，不混入验收事实。"
+    },
+    {
+      "id": "368a3bfb-e91c-4231-b14a-484bdaec85bf",
+      "given": "JSON ticket 需要挂载 wiki、ticket 或来源资源",
+      "when": "后端、MCP 或前端读写 attachments",
+      "then": "attachments 必须是 ticket 顶层必填数组；extra.attachments 被拒绝或迁移清理；列表、详情、索引和编辑器都只消费顶层 attachments",
+      "sample": "000060 的 wiki attachment 存在于 attachments 数组，不再存在于 extra.attachments。"
+    },
+    {
+      "id": "826787ec-68eb-420d-aa6c-18532b01322e",
+      "given": "不同 Agent 连接 Blackboard MCP",
+      "when": "Agent、BBPM、Admin 或开发者调用 tools/list 与 tools/call",
+      "then": "系统必须按 tool profile 暴露和拦截工具：默认 agent 只暴露日常 ticket/inbox 工具，bbpm daemon 才能删除 inbox，admin 才能管理连接器，dev-all 用于本地开发全量验证；隐藏工具直接调用也返回 -32601",
+      "sample": "默认 profile 下 sync_agent_connector 不在 tools/list，直接 tools/call 也被拒绝。"
+    },
+    {
+      "id": "94606f67-4302-48c2-96bf-bb41b71baf28",
+      "given": "ticket 清理或日常巡查任务依赖 LLM 输出结构化结果",
+      "when": "LLM 输出不符合预期 schema",
+      "then": "task-ticket-audit 必须执行 LLM 输出 -> schema_validate -> repair -> final schema_validate 的校验重试循环，坏 JSON 不能被静默吞掉",
+      "sample": "参考 KB Wiki Build workflow 的 schema_validate 出口，把 repair 分支接入 ticket audit。"
+    },
+    {
+      "id": "6de7ae27-563e-4161-8b65-d4af38e88e0e",
+      "given": "Agent 需要学习新的 JSON BDD ticket 写法",
+      "when": "连接器同步 AGENTS/CODEX/BBPM 提示词",
+      "then": "同步后的说明必须教 create_ticket/update_ticket/append_ticket_sections 的 JSON BDD 契约，强调 progress_record 与顶层 attachments，不能继续教 Markdown/frontmatter 权威写法",
+      "sample": "Codex Remote MCP 示例包含 spec.summary、stories、risks、progress_record、attachments。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "llm_invents_behavior",
+      "description": "LLM 迁移旧票时可能补出用户未定义的行为。",
+      "mitigation": "清理提示要求保留来源证据，拿不准的 ticket 标记 skipped，不猜。",
+      "status": "open"
+    },
+    {
+      "id": "legacy_markdown_bulk",
+      "description": "旧 Markdown 票数量多，切换 JSON 后迁移会产生批量维护成本。",
+      "mitigation": "旧 .md 只作为 BBPM 迁移输入，分批转换成 .json 后再清理。",
+      "status": "accepted"
+    },
+    {
+      "id": "tool_profile_misconfiguration",
+      "description": "MCP profile 配错会导致 Agent 看不到必要工具，或 BBPM 拿不到 delete_inbox_note。",
+      "mitigation": "默认 profile 只给 Agent；BBPM daemon 必须设置 BB_DAEMON=1 与 BB_DAEMON_AGENT=bb-pm；管理操作使用 admin/dev-all profile。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-18",
+      "summary": "用户明确决定 ticket 的权威形态是 JSON，完全不兼容旧 Markdown。",
+      "evidence": [
+        "conversation: 用户说 ticket 的形态就是一个 json",
+        "conversation: 用户说完全不兼容老的 markdown"
+      ]
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "收拢 073 扩大范围：除 JSON schema 与旧票迁移外，范围已包含顶层 attachments、MCP JSON BDD 工具契约、工具 profile 门禁、Agent 文档同步，以及 task-ticket-audit 的 schema_validate/repair 循环。",
+      "evidence": [
+        "2026-05-18-codex-ticket-attachments-top-level-json-shape.md",
+        "2026-05-18-codex-ticket-mcp-json-bdd-tool-contract.md",
+        "2026-05-18-codex-agent-json-bdd-ticket-tooling-docs-sync.md",
+        "2026-05-18-codex-ticket-bdd-cleanup-and-audit-validation.md",
+        "2026-05-18-codex-mcp-tool-profile-gating.md"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "in_progress",
+  "created_at": "2026-05-18",
+  "updated_at": "2026-05-18",
+  "extra": {
+    "area": "Ticket",
+    "assignee": "codex",
+    "kind": "bdd-json-schema"
+  }
+}

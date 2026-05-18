@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "id": "000047",
+  "lane": "bbt",
+  "title": "Tauri v2 Desktop：Rust sidecar 打包与本地工作台",
+  "summary": "Tauri v2 Desktop：Rust sidecar 打包与本地工作台",
+  "stories": [
+    {
+      "id": "80a6bfd9-0684-41d7-bbe4-43113e9201d0",
+      "given": "用户需要使用桌面应用访问本地工作台",
+      "when": "用户启动 Tauri v2 Desktop 应用",
+      "then": "系统启动 Rust sidecar 并提供静态前端服务"
+    },
+    {
+      "id": "e036284c-4746-40ad-9975-28666c4902f7",
+      "given": "用户需要打开文件夹作为工作区",
+      "when": "用户在 Desktop 中使用 Open Folder 功能",
+      "then": "系统在选定文件夹中初始化 .bb 项目胶囊"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-11",
+      "summary": "实现 Tauri v2 Desktop 新增桌面壳、打包 bb sidecar、静态前端服务"
+    },
+    {
+      "at": "2026-05-11",
+      "summary": "Windows trial release 通过 Tauri NSIS 构建成功"
+    },
+    {
+      "at": "2026-05-11",
+      "summary": "添加 Windows 便携独立发行路径 python scripts/desktop.py portable"
+    },
+    {
+      "at": "2026-05-11",
+      "summary": "实现 Open Folder workspace 模型"
+    },
+    {
+      "at": "2026-05-11",
+      "summary": "统一 Desktop 和 legacy Server+Web 的数据根语义"
+    },
+    {
+      "at": "2026-05-11",
+      "summary": "修复 Desktop /api/projects 500 问题"
+    },
+    {
+      "at": "2026-05-11",
+      "summary": "完成 .bb_template 隔离改造"
+    },
+    {
+      "at": "2026-05-11",
+      "summary": "实现 Desktop sidecar 端口回退机制 3001..3099"
+    },
+    {
+      "at": "2026-05-11",
+      "summary": "完成文件夹工作区初始化和动态 HTTP/MCP 工作区切换"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-11",
+  "updated_at": "2026-05-12",
+  "extra": {
+    "area": "bb_desktop bb_cli static-serving scripts",
+    "assignee": "codex",
+    "depends_on": "000046"
+  }
+}

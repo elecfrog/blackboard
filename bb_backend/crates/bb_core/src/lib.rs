@@ -29,6 +29,8 @@ pub mod idea_canvas;
 pub mod inbox;
 pub mod platform;
 pub mod project;
+#[cfg(feature = "schema")]
+pub mod schema;
 pub mod skills;
 pub mod task_graph;
 pub mod ticket;

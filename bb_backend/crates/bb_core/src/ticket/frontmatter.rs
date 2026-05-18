@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::{FrontmatterExtra, InboxError};
+use crate::{FrontmatterExtra, InboxError, TicketAttachment};
 
 use super::{validate_required_string, CORE_FRONTMATTER_FIELDS};
 
@@ -166,7 +166,15 @@ pub(crate) fn split_ticket_frontmatter(
 }
 
 pub(crate) fn render_frontmatter(fields: &BTreeMap<String, String>) -> String {
-    const CORE_ORDER: [&str; 6] = ["id", "lane", "title", "created_at", "updated_at", "status"];
+    const CORE_ORDER: [&str; 7] = [
+        "id",
+        "lane",
+        "title",
+        "created_at",
+        "updated_at",
+        "status",
+        "ticket_spec",
+    ];
     let mut rendered = String::from("+++\n");
     for key in CORE_ORDER {
         if let Some(value) = fields.get(key) {
@@ -206,6 +214,12 @@ pub(super) fn reject_extra_frontmatter_key(key: &str) -> Result<(), InboxError> 
                 .to_string(),
         ));
     }
+    if key == "attachments" {
+        return Err(InboxError::InvalidInput(
+            "`attachments` is a top-level ticket field; use the structured attachments field"
+                .to_string(),
+        ));
+    }
     Ok(())
 }
 
@@ -224,9 +238,21 @@ pub(super) fn sanitize_extra_for_write(
 pub(crate) fn extract_extra_fields(fields: &BTreeMap<String, String>) -> FrontmatterExtra {
     let mut out = FrontmatterExtra::new();
     for (key, value) in fields {
+        if key == "attachments" {
+            continue;
+        }
         if !CORE_FRONTMATTER_FIELDS.contains(&key.as_str()) {
             out.insert(key.clone(), value.clone());
         }
     }
     out
+}
+
+pub(crate) fn extract_attachments_field(
+    fields: &BTreeMap<String, String>,
+) -> Vec<TicketAttachment> {
+    fields
+        .get("attachments")
+        .and_then(|raw| serde_json::from_str::<Vec<TicketAttachment>>(raw).ok())
+        .unwrap_or_default()
 }

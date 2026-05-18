@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "000075",
+  "lane": "bbt",
+  "title": "Schema Tooling：Rust code-to-schema 独立生成器",
+  "summary": "Blackboard 的 JSON schema 应从 Rust 事实源自动生成，并输出到 .bb_template/schemas，供 MCP、前端、表格校验和业务自动化复用；schema 是结构契约，业务真规则仍由代码执行。",
+  "stories": [
+    {
+      "id": "5ada837e-b6cb-4431-b86a-773b94ea96e5",
+      "given": "Rust ticket 类型是系统运行时事实源",
+      "when": "开发者运行独立 schema 生成 executable",
+      "then": "工具必须从 Rust 类型生成 ticket JSON schema，并写入 .bb_template/schemas/ticket.schema.json，不再维护手写 templates/ticket.schema.json",
+      "sample": "类似 UE 的 UBT：schema 生成工具和业务服务主线分离，可以单独运行。"
+    },
+    {
+      "id": "95b65967-fa01-47a1-8f48-ecaf13e9021b",
+      "given": "外部业务、前端或 TaskGraph 需要结构化校验",
+      "when": "它们读取 .bb_template/schemas 下的 schema 文件",
+      "then": "schema 可用于表单、MCP、schema_validate、迁移流水线等结构校验；复杂业务规则继续由 Rust validator 和服务端执行",
+      "sample": "lane 是否存在、依赖成环、assignee 是否有效仍由后端校验。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "schema_drift",
+      "description": "手写 schema 容易和 Rust 类型漂移。",
+      "mitigation": "用 code-to-schema 生成并用测试/命令校验生成结果是否最新。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-18",
+      "summary": "实现 Rust code-to-schema 独立生成器：bb_core 暴露 schema feature，bb_schema 提供 bb-schema generate/check，ticket schema 生成到 .bb_template/schemas，并迁移旧 prompt/test/docs 引用。",
+      "evidence": [
+        "bb_backend/crates/bb_core/src/schema.rs",
+        "bb_backend/crates/bb_schema/src/main.rs",
+        ".bb_template/schemas/ticket.schema.json",
+        "cargo test --manifest-path bb_backend/Cargo.toml -p bb_core: passed",
+        "cargo check --manifest-path bb_backend/Cargo.toml --workspace: passed",
+        "cargo run --manifest-path bb_backend/Cargo.toml -p bb_schema -- check --root .bb_template: passed",
+        "python3 scripts/check_ticket_ids.py --project blackboard: passed",
+        "qmd embed: passed",
+        "git diff --check: passed"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "done",
+  "created_at": "2026-05-18",
+  "updated_at": "2026-05-18",
+  "extra": {
+    "area": "Schema",
+    "kind": "codegen-tooling",
+    "parent": "000073"
+  }
+}

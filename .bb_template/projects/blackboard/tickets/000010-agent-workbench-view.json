@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "000010",
+  "lane": "bbd",
+  "title": "Agent 工作台视图",
+  "summary": "实现按 Agent 聚合的跨 project 工作台视图，支持查看各 agent 在各 project 的 active ticket、最近 handoff 与待验收项。",
+  "stories": [
+    {
+      "id": "72213797-d195-4582-9e8f-552ceaade6fc",
+      "given": "用户打开了 Agent 工作台页面 /projects/blackboard/agents",
+      "when": "用户选择一个具体的 Agent（Codex/OpenCode/CodeBuddy）",
+      "then": "页面展示该 Agent 在所有 project 中的 active assignments、待验收项和最近 handoff，且各 project 的 ticket id 不会混淆",
+      "sample": "选中 Codex 后，页面显示 Codex 在 blackboard 项目的 active tickets 列表。"
+    },
+    {
+      "id": "16939b56-042b-4192-a4b0-02a3309b1377",
+      "given": "Agent 工作台页面已加载且显示某 Agent 的 assignments 列表",
+      "when": "该 Agent 在当前 project 没有分配任何 ticket",
+      "then": "页面展示可读的空状态布局，不会撑成大色块",
+      "sample": "Codex 在某 project 无 active ticket 时显示空状态提示。"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-07",
+      "summary": "从用户夜间任务拆出，准备实现按 Agent 聚合的跨 project 工作台。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "完成 Agent 工作台视图，支持按 Agent 聚合查看跨 project active tickets。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "根据用户验收反馈，重做 Agent 工作台主面板视觉层次。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "codex 开始执行：开始重构 /projects/blackboard/agents UI：统一 BB 风格，合并预览与编辑为卡片化单页。",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-12",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000018,000048",
+    "parent": "000005"
+  }
+}

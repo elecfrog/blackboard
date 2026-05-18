@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import type { BlackboardTicket, LaneDef } from '@/data/tickets'
 import {
-  extractProgressText,
   resolveLaneMeta,
 } from '@/data/tickets'
 import { t, ticketStatusLabel } from '@/i18n'
@@ -28,10 +27,11 @@ const emit = defineEmits<{
 const lane = computed(() => resolveLaneMeta(props.ticket.lane, props.lanes ?? []))
 const statusText = computed(() => ticketStatusLabel(props.ticket.status))
 
-// Single source of truth for "what is this ticket currently about": the
-// `# 当前进展` body section. The old frontmatter.current field has been
-// removed and is no longer rendered even when present in legacy extras.
-const progressPreview = computed(() => extractProgressText(props.ticket.content ?? ''))
+const progressPreview = computed(() => {
+  const records = props.ticket.spec?.progress_record ?? []
+  const latestRecord = records.length > 0 ? records[records.length - 1]?.summary : ''
+  return latestRecord || props.ticket.spec?.summary || ''
+})
 
 // Assignee now lives in the open `extra` KV map. Fall back to `unassigned`
 // both when the key is missing and when it is present but empty.

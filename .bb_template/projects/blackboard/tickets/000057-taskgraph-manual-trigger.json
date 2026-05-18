@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "000057",
+  "lane": "bbt",
+  "title": "TaskGraph Trigger：手动触发入口（Chat/Web/CLI）",
+  "summary": "定义 Chat FAB、Web 按钮、Terminal CLI 三类人工入口统一成 TaskIntent/RunRequest 的边界与最小请求体。",
+  "stories": [
+    {
+      "id": "793e613e-3f8b-42af-81c5-1df0c4fab7f4",
+      "given": "用户希望从 Chat FAB、Web 按钮或 Terminal CLI 手动触发 TaskGraph 任务。",
+      "when": "用户通过 Chat FAB、Web 按钮或 Terminal CLI 提交任务触发请求。",
+      "then": "系统将用户输入统一转换为结构化 TaskIntent，交给 Task Creation & Compile 处理，不绕过执行层。"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-14",
+      "summary": "从 Trigger System 拆出手动触发入口子单",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-17",
+      "summary": "定义 Chat/FAB → intent resolver → graph inputs → task run 路径",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-14",
+  "updated_at": "2026-05-17",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000056",
+    "kind": "trigger-subtrack",
+    "parent": "000056",
+    "requested_by": "user",
+    "scope": "manual-trigger"
+  }
+}

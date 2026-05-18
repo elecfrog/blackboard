@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "id": "000034",
+  "lane": "bbd",
+  "title": "Task Graph 前端：抽取通用 Graph Canvas 基底",
+  "summary": "从 TicketDependencyGraph 抽取可复用 Graph Canvas 基底，实现 Task Graph 与 Ticket Graph 共用拖拽、连线、缩放、布局和选择态能力",
+  "stories": [
+    {
+      "id": "4076b096-abe2-4350-b4e0-f50a5bf315e4",
+      "given": "TicketDependencyGraph 包含完整的 SVG 画布实现",
+      "when": "抽取通用 Graph Canvas 基底组件",
+      "then": "Task Graph 与 Ticket Graph 共用 pan/zoom、节点拖拽、pin 连线、edge hover/remove、viewport fit 与布局保存能力"
+    },
+    {
+      "id": "b52e3821-c8a1-4dd2-9c34-d9d88c0f6881",
+      "given": "Task Graph 需要渲染 LLM 节点、分支节点、循环节点、edge label 与只读状态",
+      "when": "新增 TaskGraphCanvasFixture.vue 契约样例",
+      "then": "Task Graph 可用 fixture 渲染不同类型节点和边"
+    },
+    {
+      "id": "33d2f40f-4b5a-484b-95dd-f15208998ffe",
+      "given": "Ticket Graph 现有功能包括依赖编辑、pin 交互、缩放与布局保存",
+      "when": "迁移 TicketDependencyGraph.vue 到新 GraphCanvas",
+      "then": "Ticket Graph 视觉和交互保持一致"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "抽取 bb_web/src/components/GraphCanvas.vue 作为通用 SVG Graph Canvas 基底",
+      "evidence": [
+        "bb_web/src/components/GraphCanvas.vue"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "迁移 TicketDependencyGraph.vue 到新 GraphCanvas",
+      "evidence": [
+        "bb_web/src/components/TicketDependencyGraph.vue"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "新增 TaskGraphCanvasFixture.vue 覆盖 LLM 节点、分支节点、循环节点渲染需求",
+      "evidence": [
+        "bb_web/src/components/TaskGraphCanvasFixture.vue"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "修复迁移期间旧 Dependency Graph/List 不渲染回归",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "验证：npm run build --prefix bb_web 通过",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "验证：browser-use 打开 Ticket Graph 页面渲染正常",
+      "evidence": [
+        "http://127.0.0.1:8060/#/projects/blackboard/tickets/graph"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-09",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "area": "TaskGraph",
+    "deliverable": "bb_web/src/components/GraphCanvas.vue; bb_web/src/components/TaskGraphCanvasFixture.vue",
+    "depends_on": "000029",
+    "kind": "frontend",
+    "parent": "000028"
+  }
+}

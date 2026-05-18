@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "000065",
+  "lane": "bbt",
+  "title": "TaskGraph 第三方生态：飞书通知、Webhook、本地工具与插件接入",
+  "summary": "TaskGraph 第三方生态：飞书通知、Webhook、本地工具与插件接入。通知不是锦上添花；用户离开电脑后必须有 IM 闭环，否则 autonomous workflow 不成立。预留 Webhook、MCP tool、local tool/plugin 的 integration node 契约。",
+  "stories": [
+    {
+      "id": "96c86a89-d778-40a9-a5e7-9f7f24803389",
+      "given": "TaskGraph run 进入 ready_for_review 或 failed/blocked 状态",
+      "when": "用户配置了飞书 webhook/bot 并开启通知策略",
+      "then": "通知消息包含项目名称、任务摘要、当前状态、验收链接或失败/阻塞原因",
+      "sample": "飞书机器人向项目成员发送通知，包含项目名、任务摘要、验收链接"
+    },
+    {
+      "id": "62c65652-c775-413b-a2f1-5f89de9d5e2a",
+      "given": "外部系统需要触发一个 TaskGraph 执行",
+      "when": "外部系统通过 Webhook、Agent Follow-up 或 External Webhook 发起请求",
+      "then": "Trigger 层接收请求并产生 TaskIntent，携带 source、actor、goal、project 等上下文，不直接执行任务",
+      "sample": "飞书消息触发 \"帮我清理这个 inbox\""
+    },
+    {
+      "id": "2be3128f-2dc6-489c-85e0-b36a5f4e7d72",
+      "given": "TaskGraph 需要调用外部本地工具、MCP tool 或插件",
+      "when": "TaskGraph 执行到某个需要外部能力的节点",
+      "then": "系统通过 integration node 契约调用对应 MCP tool 或本地 tool，返回结果继续执行图",
+      "sample": "通过 MCP tool node 调用文件系统或 API 工具"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-14",
+      "summary": "从 #000055 拆出第三方生态与通知闭环子单",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "todo",
+  "created_at": "2026-05-14",
+  "updated_at": "2026-05-18",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000055",
+    "kind": "execution-subtrack",
+    "parent": "000055",
+    "requested_by": "user",
+    "schema_version": "1.0",
+    "scope": "integrations-feishu-webhook-plugins"
+  }
+}

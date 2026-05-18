@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "id": "000015",
+  "lane": "bbd",
+  "title": "BoardView 专项优化单",
+  "summary": "BoardView 状态着色下沉到各 Kanban 列，优化 Lane 可见性和横向滚动体验",
+  "stories": [
+    {
+      "id": "a7b8c9d0-e1f2-4a3b-8c4d-5e6f7a8b9c0d",
+      "given": "用户打开 BoardView",
+      "when": "查看 Kanban 看板",
+      "then": "每个 Lane/状态列有清晰的 status-specific 着色，dark-mode 下可见"
+    },
+    {
+      "id": "b8c9d0e1-f2a3-4b4c-9d5e-6f7a8b9c0d1e",
+      "given": "用户在 BoardView 看板",
+      "when": "拖拽 ticket 到不同状态列",
+      "then": "状态变更通过 PATCH /api/projects/{project}/tickets/{id} 持久化到后端"
+    },
+    {
+      "id": "c9d0e1f2-a3b4-4c5d-0e6f-7a8b9c0d1e2f",
+      "given": "用户打开 BoardView 设置",
+      "when": "勾选/取消勾选状态列可见性",
+      "then": "配置持久化到 meta.board_view.hidden_statuses，reload 后恢复设置"
+    },
+    {
+      "id": "d0e1f2a3-b4c5-4d6e-1f7a-8b9c0d1e2f3a",
+      "given": "用户使用 BoardView Kanban",
+      "when": "横向滚动看板",
+      "then": "Lane 筛选条与 Kanban 列同步横向滚动"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-07",
+      "summary": "用户希望把顶部统计已有的状态着色下沉到下方每个 Lane/状态列，让 Lane 本身更清晰可扫"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "TicketDetailPanel Workflow 格改为 UnifiedPopupSelect，5 enum 下拉触发 @status-change；BoardView 新增 statusSavingId 与 updateTicketStatus，走 patchTicket(..., { status }) 调 bb-server PATCH"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "i18n 新增 workflowStatusUpdateFailed；Graph pill 显示 statusLabels 本地化文本而非原始 enum"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "颜色令牌收敛到 --bb-status-*，TicketDetailPanel 与 TicketDependencyGraph 共享"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "移除 Board 页面顶部 status metric grid，消除与下方 Kanban 列的重复表达"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "在 BoardView.vue 各 Kanban 列添加 status-specific data-kind 标记"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "把 workflow status 着色下沉到 Kanban 列（accent、列背景色、header dots、count pills）"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "为 Kanban 列添加 dark-mode 颜色适配，确保暗色主题下 status accent 可见"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "npm run build --prefix bb_web 成功完成"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "Board Kanban 改为单排横向滚动，lane 筛选条同步横向滚动"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "移除 Board 主视图 Diagnostics 面板和 compact Inbox"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "新增 ProjectMeta/ProjectIndex board_view.hidden_statuses 字段，作为 project 级 BoardView 偏好配置"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "新增 GET/PATCH /api/projects/{project}/board/view 接口，写入前校验 status、去重、canonical 顺序，禁止隐藏全部状态列"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "BoardView 状态列 checkbox 改为调用后端持久化接口，reload 时从 meta.board_view.hidden_statuses 恢复可见列"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "补全 REST round-trip 与非法隐藏全部状态列测试，覆盖配置写入和拒绝逻辑"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "BoardView 状态列顺序固定为 Todo → In progress → Review → Done → Blocked → Archived"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "BoardView 增加状态列 checkbox 可见性控制，可隐藏 Archived 等状态列"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "保持顶部 Kanban 横向滚动条与可见状态列同步"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-07",
+  "updated_at": "2026-05-08",
+  "extra": {
+    "area": "BoardView",
+    "assignee": "codex",
+    "depends_on": "000016",
+    "source": "browser-diff-comments"
+  }
+}

@@ -10,6 +10,7 @@
 
 - Blackboard 是 project 化的，**必须以 `bb_*` MCP 工具返回的数据和权限为准**。
 - 工具名以当前客户端工具列表为准；通常显示为 `bb_*`。少数裸 MCP 客户端可能显示无前缀原始名，这是同一 Blackboard 工具的展示差异，不代表存在两套 API。
+- MCP 默认使用 `agent` 工具 profile，只暴露日常 Agent 需要的 project/ticket/inbox 工具。管理工具、连接器工具和危险清理工具不在默认 `tools/list` 中时，不要绕过本地文件；只有服务端明确以 `BB_MCP_TOOL_PROFILE=admin` / `dev-all` 或 `BB_DAEMON=1` + `BB_DAEMON_AGENT=bb-pm` 启动时才会暴露对应 profile。
 - 在开始任何实质性工作之前，优先通过 `bb_list_projects` 获取可见 project；如果用户给了 project 名、ticket ID 或关键词，再用 `bb_search_tickets`、`bb_list_tickets`、`bb_read_ticket_by_id` 检索上下文。除 `bb_list_projects` 外，每次调用都必须显式传 `project`。
 - 如果 active ticket 检索不充分、有歧义，或者请求里出现很可能有历史上下文的关键词，再用 `bb_search_notes`、`bb_list_inbox_notes`、`bb_read_inbox_note` 搜对应 project 的 inbox。不要扫本地 `projects/*` 目录来替代 MCP 检索。
 - Blackboard 是协作上下文事实。找到相关 ticket 时按其范围推进工作。
@@ -19,8 +20,28 @@
 
 ## Blackboard Ticket 工具门禁
 
-- 对 ticket 或 lane 做任何变更时，必须使用 `bb_*` 结构化 MCP 工具（如 `bb_create_ticket`、`bb_update_ticket`、`bb_append_ticket_sections`、`bb_list_lanes`、`bb_upsert_lane`、`bb_archive_lane`）。不要手改 ticket Markdown，除非用户明确要求裸文件流程且确认当前 project 使用本地文件存储。
-- Ticket ID、lane、status、frontmatter / extra、正文追加、索引维护和权限判断都由 `bb_*` 工具后端负责。Agent 不跨 project 猜号、不根据文件名推断权威状态、不直接读写 `__tickets__.json` 或 `__project__.json`。
+- 对 ticket 或 lane 做任何变更时，必须使用 `bb_*` 结构化 MCP 工具（如 `bb_create_ticket`、`bb_update_ticket`、`bb_append_ticket_sections`、`bb_list_lanes`、`bb_upsert_lane`、`bb_archive_lane`）。不要手改 ticket 文件，除非用户明确要求裸文件流程且确认当前任务是本地 Blackboard 数据迁移/后端开发。
+- Ticket 的权威形态是 JSON BDD。创建 ticket 时调用 `bb_create_ticket` / `create_ticket`，必须显式传 `spec.summary`、`spec.stories`、`spec.risks`、`spec.progress_record` 和顶层 `attachments`，即使为空也传 `[]`。不要写 Markdown 正文、不要写 `ticket_spec`、不要把附件塞进 `extra.attachments`。
+- 最小创建参数形态：
+
+```json
+{
+  "project": "blackboard",
+  "lane": "bbd",
+  "title": "Ticket 标题",
+  "status": "todo",
+  "spec": {
+    "summary": "当前有效行为定义摘要",
+    "stories": [{ "given": "前置条件", "when": "触发行为", "then": "期望结果" }],
+    "risks": [],
+    "progress_record": []
+  },
+  "attachments": []
+}
+```
+
+- 更新 ticket 时调用 `bb_update_ticket` / `update_ticket`，只传要改的字段；更新附件使用 `frontmatter.attachments`，更新行为定义使用 `frontmatter.spec`。追加工作过程用 `bb_append_ticket_sections` / `append_ticket_sections`；对 JSON ticket 后端会写入 `progress_record`，不是 Markdown 正文。
+- Ticket ID、lane、status、extra、attachments、progress_record、索引维护和权限判断都由 `bb_*` 工具后端负责。Agent 不跨 project 猜号、不根据文件名推断权威状态、不直接读写 `__tickets__.json` 或 `__project__.json`。
 - Ticket 可能没有本地文件路径，也可能对当前 Agent 只读。工具返回 blocked / forbidden / not_found / conflict 时，停止本项 ticket/lane 写入并把工具结果作为阻塞事实汇报，不要绕过权限改文件。
 - 只有当任务本身是 Blackboard 本地后端/脚本/数据迁移开发，并且用户明确要求本地文件流程时，才把 `python "$BB_SCRIPTS_DIR/check_ticket_ids.py"`、`qmd embed` 作为本地数据门禁；云端或远端 ticket/lane 变更以 `bb_*` 工具响应为门禁。
 - 如果改动涉及 Blackboard Web 前端源码（`bb_web/src` 下），还需追加 `npm run build --prefix bb_web` 验证前端构建。

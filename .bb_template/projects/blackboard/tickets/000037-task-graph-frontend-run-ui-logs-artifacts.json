@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "id": "000037",
+  "lane": "bbd",
+  "title": "Task Graph 前端：Run UI、分支决策、循环轮次与日志查看",
+  "summary": "实现 Task Graph 运行态 UI，让用户能启动 graph run、观察节点状态、查看 Branch 决策、Loop 轮次、日志和 artifacts",
+  "stories": [
+    {
+      "id": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
+      "given": "用户打开 Task Graph 详情或编辑器",
+      "when": "用户点击运行按钮启动 graph run",
+      "then": "系统显示 run 面板，实时展示节点状态（SSE events 更新）、整体状态与耗时",
+      "sample": "节点显示 idle/queued/running/succeeded/failed/skipped/paused 状态"
+    },
+    {
+      "id": "b2c3d4e5-f6a7-5b8c-9d0e-1f2a3b4c5d6e",
+      "given": "graph run 包含 Branch 或 Loop 节点",
+      "when": "run 执行到分支决策或循环迭代",
+      "then": "Branch 节点显示实际选择的出口；Loop 节点显示当前/历史 iteration、退出原因和 max_iterations 状态",
+      "sample": "Loop 区分 Loop Body 与 Completed"
+    },
+    {
+      "id": "c3d4e5f6-a7b8-6c9d-0e1f-2a3b4c5d6e7f",
+      "given": "run 中某个节点执行完成或失败",
+      "when": "用户点击节点查看详情",
+      "then": "系统打开 logs/artifacts drawer，展示 stdout/stderr tail、LLM 输出 artifact、错误原因",
+      "sample": "Human Gate 暂停时显示继续/拒绝 UI"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "Task Graph cleanup: 完成 037 Task Graph Run UI 前端实现，新增运行态详情面板",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "Task Graph cleanup: 补齐 Task Graph run detail、run node、branch decision、loop iteration、artifact/log 的前端数据契约",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "Task Graph cleanup: 增加 mock run 持久化和 read/start client，后端 API 不可用时可用 fixture 完整验收",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "Task Graph cleanup: 将 catalog 卡片、详情预览和 editor 的运行入口接入统一 Run UI",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "为 Task Graph run detail 增加 SSE events 端点，前端 run panel 改为订阅 run 会话更新",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "将 task-graph-inbox-cleanup 的 no-candidate 结果改为 cleanup-one skipped，并在 artifact/log_tail 写入 reason=no_candidate",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "更新 Inbox 清理循环 system graph 和注册任务文案，避免把 bb-internal fast path 误显示成 AI/agent 执行",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "新增 graph-level inputs 契约，默认值持久化到 system/project graph JSON，运行创建时合并用户输入注入 run.context.input",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "Loop 支持 max_iterations_ref 绑定 {{inputs.max-iterations}}，registered task prompt vars 支持 {{inputs.*}} 绑定",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "前端 Catalog/Editor/Run 画布改为 UE 风格 Loop/Branch 执行 pin 显示，Loop 区分 Loop Body 与 Completed",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "前端新增运行前 input 参数填写区，Editor 内 graph inputs 编辑和变量绑定入口",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-09",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000035 000032",
+    "kind": "frontend",
+    "parent": "000028"
+  }
+}

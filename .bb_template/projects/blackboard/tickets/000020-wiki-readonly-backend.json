@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "000020",
+  "lane": "bbt",
+  "title": "Wiki 只读后端：目录树与文件内容 REST 接口（bb_core + bb_server）",
+  "summary": "父单 #000019 确定 wiki 作为 projects/<project>/wiki/ 目录、与 tickets/inbox 同级、第一阶段仅需'识别 + 展示'。本单交付这一阶段所需的最小后端能力：对 wiki 目录的只读访问。设计原则沿用现有 inbox/ticket 的 HTTP 风格：bb_core 负责领域类型与文件系统访问，bb_server 只做薄 HTTP 包装；MCP 工具层本期不新增，留待后续单。非目标（显式不做）：写入 / 上传接口、wiki 索引生成、跨项目搜索、语义检索、与 tickets 的反向链接。",
+  "stories": [
+    {
+      "id": "c352d03b-8f73-43ed-ab51-db2a03d746d0",
+      "given": "wiki 根目录固定为 projects/<project>/wiki/，允许任意深度子目录。",
+      "when": "客户端请求列出 wiki 目录文件树。",
+      "then": "返回 WikiTreeNode 结构的目录树，包含 kind（dir/file）、name、path、children 属性。"
+    },
+    {
+      "id": "98989b12-fa1e-466c-8ddd-38c815fd59f2",
+      "given": "wiki 目录文件树已返回。",
+      "when": "客户端请求读取某个 .md 文件内容（通过相对路径）。",
+      "then": "返回 WikiFileContent，包含 path 和 content；拒绝 .. / 绝对路径 / 符号链接越界。"
+    },
+    {
+      "id": "ad44f1b7-a98d-4226-a3d8-05c2b24496b9",
+      "given": "wiki 内有相对图片/svg 等静态资源。",
+      "when": "客户端请求 wiki 相对资源（通过 asset 端点）。",
+      "then": "返回正确 Content-Type 的静态资源（png/jpg/svg/gif/webp/pdf）。"
+    }
+  ],
+  "risks": [],
+  "progress_record": [],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-08",
+  "updated_at": "2026-05-08",
+  "extra": {
+    "depends_on": "000019"
+  }
+}

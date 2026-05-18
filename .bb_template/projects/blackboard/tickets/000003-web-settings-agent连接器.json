@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "id": "000003",
+  "lane": "bbd",
+  "title": "web Settings：Agent 连接器区块（状态灯 + Connect/Disconnect/Sync All）",
+  "summary": "web Settings：Agent 连接器区块（状态灯 + Connect/Disconnect/Sync All）",
+  "stories": [
+    {
+      "id": "211422aa-2b2c-45cf-b00e-a36df3fc7b96",
+      "given": "Blackboard 需要提供本地多 Agent 工具管理能力",
+      "when": "用户使用 Blackboard 进行多 Agent 协作",
+      "then": "实现统一的工作上下文可视化与管理"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-18",
+      "summary": "子 ticket 落号 2026-05-06，从产品基线 `000001` 拆出。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "**前端实现完成**（2026-05-06）：",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "`web/src/data/agentConnectors.ts`：load / sync / disconnect 三个 API 包装，离线降级返回 `source: 'offline'`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "`web/src/components/AgentConnectorRow.vue`：单行 UI，状态灯 + 路径 + Connect/Disconnect 按钮 + hover tooltip + symlink 角标。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "`web/src/components/AgentConnectorPanel.vue`：列表容器，loading / offline / source_missing / error 四类降级 + Sync All 一键 + 单点交互。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "`web/src/views/SettingsView.vue`：复用 AppNav，挂载 AgentConnectorPanel。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "`web/src/main.ts`：新增路由 `/settings`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "`web/src/components/AppNav.vue`：actions slot 旁加 `⚙ Settings` 入口。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "**CodeBuddy 双目标 UI 补正**（2026-05-06）：保持三条 Agent 连接器行；CodeBuddy 行展示 `AGENTS.md` 与 `Rules.mdc` 两个目标路径，不再把 Rules 伪装成独立 Agent 工具。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "**构建通过**：`npm run build --prefix blackboard/web` → vue-tsc + vite 全绿。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "端到端 UI 验证（人工）待用户在浏览器侧手动跑过。HTTP 路由已经在 `000002` 实施中端到端验证通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "2026-05-06：Settings 路由修复，Settings 合并为 Dashboard shell 内 `/projects/:project/settings` 工作区；修复 connector API 错误分类（网络不可达 vs HTTP 400/500）；修正 codebuddy-internal catalog 目标路径",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "2026-05-06：修复 bb-server `~` 展开跨平台兼容（macOS HOME / Linux HOME / Windows USERPROFILE / HOMEDRIVE+HOMEPATH）；修复 Windows 路径混合斜杠问题；修复 verbatim prefix `\\\\?\\C:\\` 展示还原",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "2026-05-07：Settings 连接器容错补齐，Codex 配置 TOML 损坏时只把对应 MCP target 标成 drift/error，不再让 Settings 整页失败；同时修复 Windows `\\\\?\\` registry 路径展示泄露。",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-07",
+  "extra": {
+    "depends_on": "000001",
+    "parent": "000001"
+  }
+}

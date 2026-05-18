@@ -199,6 +199,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "cron",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",
@@ -207,6 +208,16 @@ dependencies = [
  "toml",
  "toml_edit",
  "uuid",
+]
+
+[[package]]
+name = "bb_schema"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bb_core",
+ "clap",
+ "serde_json",
 ]
 
 [[package]]

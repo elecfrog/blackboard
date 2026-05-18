@@ -108,7 +108,10 @@ impl Blackboard {
 
     /// Rebuild the persistent ticket index (`__tickets__.json`).
     pub fn rebuild_ticket_index(&self) -> Result<(), InboxError> {
-        let tickets = self.list_tickets()?.tickets;
+        let mut tickets = self.list_tickets()?.tickets;
+        for ticket in &mut tickets {
+            ticket.spec = None;
+        }
         let current_counter = self.read_ticket_index_current_counter().unwrap_or(0);
         let max_ticket_id = self.max_existing_ticket_id()?;
         let effective_counter = current_counter.max(max_ticket_id);
@@ -285,6 +288,40 @@ impl Blackboard {
                     })
                 }
             };
+            if entry.name.ends_with(".json") {
+                if let Some(error) = entry.metadata_error.clone() {
+                    errors.push(format!("invalid JSON ticket in {}: {error}", entry.path));
+                    continue;
+                }
+                let id = entry.id.clone().unwrap_or_default();
+                if !is_six_digit_id(&id) {
+                    errors.push(format!("invalid id in {}: {}", entry.path, id));
+                    continue;
+                }
+                if let Ok(value) = id.parse::<u64>() {
+                    max_id = max_id.max(value);
+                }
+                let lane = entry.lane.clone().unwrap_or_default();
+                if validate_lane_id(&lane).is_err() {
+                    errors.push(format!("invalid lane in {}: {}", entry.path, lane));
+                } else if !lane_catalog.iter().any(|def| def.id == lane) {
+                    errors.push(format!(
+                        "lane `{lane}` in {} is not defined in __project__.json",
+                        entry.path
+                    ));
+                }
+                let new_prefix = format!("{id}-");
+                if !entry.name.starts_with(&new_prefix) {
+                    errors.push(format!("filename does not match id in {}", entry.path));
+                }
+                if let Some(previous) = seen.insert(id.clone(), entry.path.clone()) {
+                    errors.push(format!(
+                        "duplicate ticket id {id}: {previous}, {}",
+                        entry.path
+                    ));
+                }
+                continue;
+            }
             let fields = match split_ticket_frontmatter(&content) {
                 Ok((fields, _)) => fields,
                 Err(err) => {

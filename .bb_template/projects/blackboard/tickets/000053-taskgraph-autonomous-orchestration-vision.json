@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "000053",
+  "lane": "bbp",
+  "title": "TaskGraph Vision：多 Runtime 自主协作执行图",
+  "summary": "TaskGraph Vision：多 Runtime 自主协作执行图。用户只说几句话，TaskGraph 把任务拆成可恢复、可审计、可验收的多 Runtime 协作流；用户离开也能推进，回来只需要看结果、批权限、验收。",
+  "stories": [
+    {
+      "id": "e0748b8b-0fcd-44aa-9215-66f94a84f5bb",
+      "given": "用户给出目标后离开",
+      "when": "TaskGraph 系统自动推进到下一个需要人判断、授权或验收的位置",
+      "then": "用户回来时可以直接看结果、批权限、验收，不需要重新介入执行过程",
+      "sample": "用户在欧洲度假，给出\"帮我完成这个 feature 分支的开发\"后不再上线。TaskGraph 自动调度 OpenCode/Shell/Codex 协作推进，用户回来看到 Run Timeline 显示所有步骤完成。"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-14",
+      "summary": "建立 TaskGraph 新一轮平台级 Vision，作为后续拆分的北极星",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "done",
+  "created_at": "2026-05-14",
+  "updated_at": "2026-05-18",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000051 000052",
+    "kind": "vision-umbrella",
+    "requested_by": "user",
+    "schema_version": "1.0",
+    "scope": "autonomous-taskgraph-orchestration"
+  }
+}

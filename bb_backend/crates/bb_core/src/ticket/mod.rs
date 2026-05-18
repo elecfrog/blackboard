@@ -3,14 +3,14 @@
 use crate::{
     agents_registry, validate_lane_id, validate_ticket_lane, AppendTicketSectionsInput, Blackboard,
     BoardSummary, CreateTicketInput, DeprecateTicketInput, DeprecateTicketResult, InboxError,
-    Ticket, TicketById, TicketEntry, TicketList, TicketMetadataDiagnostic, TicketSearchMatch,
-    TicketSearchResult, TicketWriteResult, TicketWriteTicket, UpdateTicketInput,
+    Ticket, TicketById, TicketEntry, TicketFrontmatterPatch, TicketList, TicketMetadataDiagnostic,
+    TicketSearchMatch, TicketSearchResult, TicketWriteResult, TicketWriteTicket, UpdateTicketInput,
 };
 use chrono::Utc;
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
@@ -18,14 +18,21 @@ mod entry;
 mod frontmatter;
 mod index;
 mod render;
+mod spec;
 
 use crate::common::search::{matching_lines, validate_search_query};
 pub(crate) use entry::{is_six_digit_id, ticket_entry_from_content};
 use frontmatter::{
-    extract_extra_fields, reject_core_frontmatter_key, reject_extra_frontmatter_key,
-    render_frontmatter, sanitize_extra_for_write, split_ticket_frontmatter,
+    extract_attachments_field, extract_extra_fields, reject_core_frontmatter_key,
+    reject_extra_frontmatter_key, render_frontmatter, sanitize_extra_for_write,
+    split_ticket_frontmatter,
 };
 use render::{append_ticket_body_sections, render_ticket, TicketRenderInput};
+use spec::{
+    normalize_ticket_spec, parse_ticket_json_document, parse_ticket_spec_field,
+    render_ticket_json_document, render_ticket_spec_body, serialize_ticket_json_document,
+    serialize_ticket_spec, validate_ticket_attachments, TICKET_SPEC_FRONTMATTER_KEY,
+};
 
 pub const TICKET_STATUSES: [&str; 6] = [
     "todo",
@@ -43,6 +50,11 @@ pub fn default_ticket_status() -> &'static str {
 pub fn is_open_ticket_status(status: &str) -> bool {
     matches!(status, "todo" | "in_progress" | "blocked" | "review")
 }
+
+#[cfg(feature = "schema")]
+pub(crate) fn ticket_json_document_schema() -> serde_json::Value {
+    spec::ticket_json_document_schema()
+}
 pub(crate) const CONSISTENCY_CHECKS: [&str; 6] = [
     "id",
     "lane",
@@ -51,10 +63,17 @@ pub(crate) const CONSISTENCY_CHECKS: [&str; 6] = [
     "counter",
     "lane_catalog",
 ];
-pub const REQUIRED_METADATA_FIELDS: [&str; 5] = ["id", "lane", "title", "status", "updated_at"];
+pub const REQUIRED_METADATA_FIELDS: [&str; 6] = [
+    "id",
+    "lane",
+    "title",
+    "status",
+    "updated_at",
+    TICKET_SPEC_FRONTMATTER_KEY,
+];
 
 /// Core frontmatter fields that the system always owns and writes.
-pub const CORE_FRONTMATTER_FIELDS: [&str; 7] = [
+pub const CORE_FRONTMATTER_FIELDS: [&str; 8] = [
     "id",
     "lane",
     "family",
@@ -62,6 +81,7 @@ pub const CORE_FRONTMATTER_FIELDS: [&str; 7] = [
     "status",
     "created_at",
     "updated_at",
+    TICKET_SPEC_FRONTMATTER_KEY,
 ];
 
 pub(crate) struct TicketIdLock {
@@ -144,6 +164,10 @@ impl Blackboard {
         let lane = lane_entry.id.clone();
         let title = validate_required_string("title", &input.title)?;
         let workflow_status = validate_ticket_status(&input.status)?;
+        let attachments = input.attachments;
+        validate_ticket_attachments(&attachments)?;
+        let spec = normalize_ticket_spec(input.spec)?;
+        let spec_json = serialize_ticket_spec(&spec)?;
 
         let extra = sanitize_extra_for_write(&input.extra)?;
         if let Some(assignee) = extra.get("assignee") {
@@ -159,7 +183,7 @@ impl Blackboard {
         let date = Utc::now().format("%Y-%m-%d").to_string();
         let slug_source = input.slug.as_deref().unwrap_or(title);
         let slug = crate::slug_segment(slug_source, "ticket");
-        let file_name = format!("{id}-{slug}.md");
+        let file_name = format!("{id}-{slug}.json");
         validate_ticket_name(&file_name)?;
         let path = dir.join(&file_name);
         if path.exists() {
@@ -175,6 +199,8 @@ impl Blackboard {
             created_at: &date,
             updated_at: &date,
             status: workflow_status,
+            spec_json: &spec_json,
+            attachments: &attachments,
             extra: &extra,
             sections: &sections,
         });
@@ -190,6 +216,8 @@ impl Blackboard {
                 updated_at: date,
                 file_name: file_name.clone(),
                 path: format!("tickets/{file_name}"),
+                attachments,
+                spec: Some(spec),
                 extra,
             },
             maintenance: self.ticket_maintenance(),
@@ -198,11 +226,9 @@ impl Blackboard {
 
     pub fn update_ticket(&self, input: UpdateTicketInput) -> Result<TicketWriteResult, InboxError> {
         let id = validate_ticket_id(&input.id)?;
-        if input.frontmatter.is_none() {
-            return Err(InboxError::InvalidInput(
-                "update_ticket requires frontmatter".to_string(),
-            ));
-        }
+        let patch = input.frontmatter.ok_or_else(|| {
+            InboxError::InvalidInput("update_ticket requires frontmatter".to_string())
+        })?;
 
         let list = self.list_tickets()?;
         let matches: Vec<TicketEntry> = list
@@ -232,6 +258,10 @@ impl Blackboard {
             path: canonical_source.clone(),
             source,
         })?;
+        if entry.name.ends_with(".json") {
+            return self.update_json_ticket(id, &entry, &canonical_source, &original, patch);
+        }
+
         let (mut fields, body) = split_ticket_frontmatter(&original)?;
         let lane = match fields.get("lane").cloned() {
             Some(lane) => lane,
@@ -258,7 +288,9 @@ impl Blackboard {
             )));
         }
 
-        if let Some(patch) = input.frontmatter {
+        let mut replacement_body = None;
+        let mut migrate_markdown_to_json = false;
+        {
             if let Some(title) = patch.title {
                 fields.insert(
                     "title".to_string(),
@@ -275,6 +307,26 @@ impl Blackboard {
                 let meta = self.read_project_meta()?;
                 let entry = validate_ticket_lane(&new_lane, &meta.lanes)?;
                 fields.insert("lane".to_string(), entry.id.clone());
+            }
+            if let Some(spec) = patch.spec {
+                let spec = normalize_ticket_spec(spec)?;
+                let spec_json = serialize_ticket_spec(&spec)?;
+                fields.insert(TICKET_SPEC_FRONTMATTER_KEY.to_string(), spec_json);
+                replacement_body = Some(format!("\n{}", render_ticket_spec_body(&spec)));
+                migrate_markdown_to_json = true;
+            }
+            if let Some(attachments) = patch.attachments {
+                validate_ticket_attachments(&attachments)?;
+                if attachments.is_empty() {
+                    fields.remove("attachments");
+                } else {
+                    let serialized = serde_json::to_string(&attachments).map_err(|err| {
+                        InboxError::InvalidInput(format!(
+                            "attachments could not be serialized: {err}"
+                        ))
+                    })?;
+                    fields.insert("attachments".to_string(), serialized);
+                }
             }
             for (key, value) in patch.extra {
                 reject_extra_frontmatter_key(&key)?;
@@ -297,6 +349,61 @@ impl Blackboard {
         let date = Utc::now().format("%Y-%m-%d").to_string();
         fields.insert("updated_at".to_string(), date.clone());
 
+        if migrate_markdown_to_json {
+            let spec = parse_ticket_spec_field(&fields).map_err(InboxError::InvalidInput)?;
+            let final_status = fields
+                .get("status")
+                .cloned()
+                .unwrap_or_else(|| default_ticket_status().to_string());
+            let final_lane = fields.get("lane").cloned().unwrap_or_default();
+            let title = fields.get("title").cloned().unwrap_or_default();
+            let created_at = fields.get("created_at").cloned().unwrap_or_default();
+            let extra = extract_extra_fields(&fields);
+            let attachments = extract_attachments_field(&fields);
+            let json_name = format!("{}.json", entry.name.trim_end_matches(".md"));
+            validate_ticket_name(&json_name)?;
+            let json_path = dir.join(&json_name);
+            if json_path.exists() {
+                return Err(InboxError::TicketWriteConflict(format!(
+                    "ticket JSON file already exists: tickets/{json_name}"
+                )));
+            }
+            let content = render_ticket_json_document(
+                id,
+                &final_lane,
+                &title,
+                &created_at,
+                &date,
+                &final_status,
+                spec.clone(),
+                attachments.clone(),
+                extra.clone(),
+            )?;
+            write_new_file(&json_path, &content)?;
+            fs::remove_file(&canonical_source).map_err(|source| InboxError::Io {
+                path: canonical_source.clone(),
+                source,
+            })?;
+
+            return Ok(TicketWriteResult {
+                ticket: TicketWriteTicket {
+                    id: id.to_string(),
+                    lane: final_lane,
+                    title,
+                    status: final_status,
+                    created_at,
+                    updated_at: date,
+                    file_name: json_name.clone(),
+                    path: format!("tickets/{json_name}"),
+                    attachments,
+                    spec: Some(spec),
+                    extra,
+                },
+                maintenance: self.ticket_maintenance(),
+            });
+        }
+
+        let body = replacement_body.as_deref().unwrap_or(body);
         let content = render_frontmatter(&fields) + body;
         crate::write_file_atomic(&canonical_source, &content)?;
 
@@ -305,6 +412,7 @@ impl Blackboard {
             .cloned()
             .unwrap_or_else(|| default_ticket_status().to_string());
         let final_lane = fields.get("lane").cloned().unwrap_or_default();
+        let spec = parse_ticket_spec_field(&fields).ok();
         Ok(TicketWriteResult {
             ticket: TicketWriteTicket {
                 id: id.to_string(),
@@ -315,7 +423,92 @@ impl Blackboard {
                 updated_at: date,
                 file_name: entry.name.clone(),
                 path: format!("tickets/{}", entry.name),
+                attachments: extract_attachments_field(&fields),
+                spec,
                 extra: extract_extra_fields(&fields),
+            },
+            maintenance: self.ticket_maintenance(),
+        })
+    }
+
+    fn update_json_ticket(
+        &self,
+        id: &str,
+        entry: &TicketEntry,
+        path: &Path,
+        original: &str,
+        patch: TicketFrontmatterPatch,
+    ) -> Result<TicketWriteResult, InboxError> {
+        let mut document =
+            parse_ticket_json_document(original).map_err(InboxError::InvalidInput)?;
+        if document.id != id {
+            return Err(InboxError::InvalidInput(format!(
+                "ticket JSON id `{}` does not match requested id `{id}`",
+                document.id
+            )));
+        }
+
+        if let Some(title) = patch.title {
+            document.title = validate_required_string("title", &title)?.to_string();
+        }
+        if let Some(status) = patch.status {
+            document.status = validate_ticket_status(&status)?.to_string();
+        }
+        if let Some(new_lane) = patch.lane {
+            let meta = self.read_project_meta()?;
+            let entry = validate_ticket_lane(&new_lane, &meta.lanes)?;
+            document.lane = entry.id.clone();
+        }
+        if let Some(spec) = patch.spec {
+            let spec = normalize_ticket_spec(spec)?;
+            document.set_spec(spec);
+        }
+        if let Some(attachments) = patch.attachments {
+            validate_ticket_attachments(&attachments)?;
+            document.attachments = attachments;
+            document.extra.remove("attachments");
+        }
+        for (key, value) in patch.extra {
+            reject_extra_frontmatter_key(&key)?;
+            validate_required_string("extra key", &key)?;
+            if key == "assignee" {
+                agents_registry::validate_assignee_for_project(
+                    &self.workspace_root()?,
+                    self.name(),
+                    &value,
+                )?;
+            }
+            document.extra.insert(key, value);
+        }
+        for key in patch.remove {
+            reject_core_frontmatter_key(&key)?;
+            if key == "attachments" {
+                document.attachments.clear();
+            } else {
+                document.extra.remove(&key);
+            }
+        }
+
+        let date = Utc::now().format("%Y-%m-%d").to_string();
+        document.updated_at = date.clone();
+        validate_lane_id(&document.lane)?;
+        let spec = document.spec();
+        let content = serialize_ticket_json_document(&document)?;
+        crate::write_file_atomic(path, &content)?;
+
+        Ok(TicketWriteResult {
+            ticket: TicketWriteTicket {
+                id: id.to_string(),
+                lane: document.lane,
+                title: document.title,
+                status: document.status,
+                created_at: document.created_at,
+                updated_at: date,
+                file_name: entry.name.clone(),
+                path: format!("tickets/{}", entry.name),
+                attachments: document.attachments.clone(),
+                spec: Some(spec),
+                extra: document.extra,
             },
             maintenance: self.ticket_maintenance(),
         })
@@ -379,6 +572,8 @@ impl Blackboard {
                 updated_at: entry.updated_at.unwrap_or_default(),
                 file_name: entry.name.clone(),
                 path: format!("tickets/_deprecated/{}", entry.name),
+                attachments: entry.attachments,
+                spec: entry.spec,
                 extra: entry.extra,
             },
             removed_dependency_refs: cleanup.removed_dependency_refs,
@@ -426,6 +621,60 @@ impl Blackboard {
             path: canonical.clone(),
             source,
         })?;
+        if entry.name.ends_with(".json") {
+            let mut document =
+                parse_ticket_json_document(&original).map_err(InboxError::InvalidInput)?;
+            if document.id != id {
+                return Err(InboxError::InvalidInput(format!(
+                    "ticket JSON id `{}` does not match requested id `{id}`",
+                    document.id
+                )));
+            }
+            let date = Utc::now().format("%Y-%m-%d").to_string();
+            document.updated_at = date.clone();
+            for line in input.progress {
+                document.progress_record.push(crate::TicketProgressRecord {
+                    at: Some(date.clone()),
+                    summary: line.trim().to_string(),
+                    evidence: Vec::new(),
+                });
+            }
+            for line in input.record {
+                document.progress_record.push(crate::TicketProgressRecord {
+                    at: Some(date.clone()),
+                    summary: format!("Record: {}", line.trim()),
+                    evidence: Vec::new(),
+                });
+            }
+            for line in input.next_step {
+                document.progress_record.push(crate::TicketProgressRecord {
+                    at: Some(date.clone()),
+                    summary: format!("Next step: {}", line.trim()),
+                    evidence: Vec::new(),
+                });
+            }
+            let spec = document.spec();
+            let content = serialize_ticket_json_document(&document)?;
+            crate::write_file_atomic(&canonical, &content)?;
+
+            return Ok(TicketWriteResult {
+                ticket: TicketWriteTicket {
+                    id: id.to_string(),
+                    lane: document.lane,
+                    title: document.title,
+                    status: document.status,
+                    created_at: document.created_at,
+                    updated_at: date,
+                    file_name: entry.name.clone(),
+                    path: format!("tickets/{}", entry.name),
+                    attachments: document.attachments.clone(),
+                    spec: Some(spec),
+                    extra: document.extra,
+                },
+                maintenance: self.ticket_maintenance(),
+            });
+        }
+
         let (mut fields, body) = split_ticket_frontmatter(&original)?;
         let lane = match fields.get("lane").cloned() {
             Some(lane) => lane,
@@ -463,6 +712,7 @@ impl Blackboard {
             .get("status")
             .cloned()
             .unwrap_or_else(|| default_ticket_status().to_string());
+        let spec = parse_ticket_spec_field(&fields).ok();
 
         Ok(TicketWriteResult {
             ticket: TicketWriteTicket {
@@ -474,6 +724,8 @@ impl Blackboard {
                 updated_at: date,
                 file_name: entry.name.clone(),
                 path: format!("tickets/{}", entry.name),
+                attachments: extract_attachments_field(&fields),
+                spec,
                 extra: extract_extra_fields(&fields),
             },
             maintenance: self.ticket_maintenance(),
@@ -501,6 +753,9 @@ impl Blackboard {
             }
 
             let name = entry.file_name().to_string_lossy().to_string();
+            if !(name.ends_with(".md") || name.ends_with(".json")) {
+                continue;
+            }
             if validate_ticket_name(&name).is_ok() {
                 let path = entry.path();
                 let content = fs::read_to_string(&path).map_err(|source| InboxError::Io {
@@ -575,6 +830,8 @@ impl Blackboard {
                     status: entry.status.clone(),
                     created_at: entry.created_at.clone(),
                     updated_at: entry.updated_at.clone(),
+                    attachments: entry.attachments.clone(),
+                    spec: entry.spec.clone(),
                     extra: entry.extra.clone(),
                     metadata_error: entry.metadata_error.clone(),
                     metadata_warnings: entry.metadata_warnings.clone(),
@@ -610,6 +867,43 @@ impl Blackboard {
                 path: canonical.clone(),
                 source,
             })?;
+            if entry.name.ends_with(".json") {
+                let mut document =
+                    parse_ticket_json_document(&original).map_err(InboxError::InvalidInput)?;
+
+                let mut changed = false;
+                let mut dependency_removed = false;
+                for key in ["depends_on", "dependencies"] {
+                    if remove_ticket_id_from_relation_field(&mut document.extra, key, deprecated_id)
+                    {
+                        changed = true;
+                        dependency_removed = true;
+                    }
+                }
+
+                let attachment_removed = remove_ticket_attachment_refs_from_json(
+                    &mut document.attachments,
+                    deprecated_id,
+                );
+                changed |= attachment_removed;
+
+                if changed {
+                    document.updated_at = Utc::now().format("%Y-%m-%d").to_string();
+                    let content = serialize_ticket_json_document(&document)?;
+                    crate::write_file_atomic(&canonical, &content)?;
+
+                    if let Some(id) = entry.id.clone() {
+                        if dependency_removed {
+                            cleanup.removed_dependency_refs.push(id.clone());
+                        }
+                        if attachment_removed {
+                            cleanup.removed_attachment_refs.push(id);
+                        }
+                    }
+                }
+                continue;
+            }
+
             let Ok((mut fields, body)) = split_ticket_frontmatter(&original) else {
                 continue;
             };
@@ -795,6 +1089,17 @@ fn remove_ticket_attachment_refs(
     Ok(true)
 }
 
+fn remove_ticket_attachment_refs_from_json(
+    attachments: &mut Vec<crate::TicketAttachment>,
+    deprecated_id: &str,
+) -> bool {
+    let original_len = attachments.len();
+    attachments.retain(|attachment| {
+        !(attachment.kind.eq_ignore_ascii_case("ticket") && attachment.target == deprecated_id)
+    });
+    attachments.len() != original_len
+}
+
 pub fn validate_ticket_status(status: &str) -> Result<&'static str, InboxError> {
     let trimmed = status.trim();
     if trimmed != status {
@@ -817,7 +1122,28 @@ pub fn validate_ticket_id(id: &str) -> Result<&str, InboxError> {
 }
 
 pub fn validate_ticket_name(name: &str) -> Result<String, InboxError> {
-    let validated = crate::validate_note_name(name)?;
+    let trimmed = name.trim();
+    if trimmed.is_empty() || trimmed != name {
+        return Err(InboxError::InvalidName(name.to_string()));
+    }
+    if !(trimmed.ends_with(".md") || trimmed.ends_with(".json")) {
+        return Err(InboxError::InvalidName(name.to_string()));
+    }
+
+    let path = Path::new(trimmed);
+    if path.is_absolute() || path.components().count() != 1 {
+        return Err(InboxError::InvalidName(name.to_string()));
+    }
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) | Component::CurDir
+        )
+    }) {
+        return Err(InboxError::InvalidName(name.to_string()));
+    }
+
+    let validated = trimmed.to_string();
     let lower = validated.to_ascii_lowercase();
 
     if validated.contains('\\')

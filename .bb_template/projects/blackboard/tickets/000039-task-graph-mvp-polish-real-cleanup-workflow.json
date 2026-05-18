@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "id": "000039",
+  "lane": "bbq",
+  "title": "Task Graph MVP 打磨：真实清理工作流与验收体验 polish",
+  "summary": "打磨 Task Graph MVP 的真实清理工作流、运行反馈与验收体验，优化 inbox-cleanup-pipeline 循环上限、run artifact 汇总、catalog 展示",
+  "stories": [
+    {
+      "id": "a7b8c9d0-e1f2-0a3b-4c5d-6e7f8a9b0c1d",
+      "given": "inbox-cleanup-pipeline 使用前端 mock",
+      "when": "补成真实 Task Graph system graph",
+      "then": "清理流程改为 Task Graph Loop 编排，每轮只处理一条 inbox note",
+      "sample": "新增 bb-internal 注册任务路径"
+    },
+    {
+      "id": "b8c9d0e1-f2a3-1b4c-5d6e-7f8a9b0c1d2e",
+      "given": "Task Graph registered task opencode 执行",
+      "when": "运行清理工作流",
+      "then": "使用 opencode run --format json，解析 JSONL event 思路 text/tool_use/error/step_finish",
+      "sample": "BB-pm 读取 inbox 并决定如何沉淀"
+    },
+    {
+      "id": "c9d0e1f2-a3b4-2c5d-6e7f-8a9b0c1d2e3f",
+      "given": "run 执行过程",
+      "when": "opencode event 到达",
+      "then": "立即更新 log_tail，前端监听 run state 时能看到实时工具调用",
+      "sample": "增加运行中的节点日志写入"
+    },
+    {
+      "id": "d0e1f2a3-b4c5-3d6e-7f8a-9b0c1d2e3f4a",
+      "given": "Task Graph run 被取消",
+      "when": "用户取消 run",
+      "then": "interpreter 杀掉当前 runtime 子进程，当前节点收为 skipped/cancelled",
+      "sample": "补齐取消语义"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "Task Graph cleanup: 完成 Task Graph MVP 打磨，新建 000039 polish 单并标记 000028/000030-000038 为 done",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "将 inbox-cleanup-pipeline 从前端 mock 补成真实 Task Graph system graph",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "改清理流程为 Task Graph Loop 编排，每轮只处理一条 inbox note",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "新增 bb-internal 注册任务路径，避免 OpenCode MCP 断连影响真实清理",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "修复 inbox index 中文截断时的字符边界 panic",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "从页面运行真实清理流水线，成功沉淀并删除 3 条 Task Graph inbox note",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "将 Task Graph registered task 的 opencode 执行改为 opencode run --format json，复用 JSONL event 解析",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "移除 bb-internal 清理执行路径，让 task-graph-inbox-cleanup 真实运行 bb-pm",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "为 Task Graph run 增加运行中的节点日志写入，opencode event 到达时立即更新 log_tail",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "将 .json artifact 写入收口为真实 JSON，避免把 fenced markdown 文本写进 JSON artifact",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "补齐取消语义：run 被 cancel 后 interpreter 会杀掉当前 runtime 子进程，并把当前节点收为 skipped/cancelled",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "通过真实 system graph run 验证 bb-pm 更新 ticket 并删除 inbox note",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-10",
+      "summary": "修复 task-graph-inbox-cleanup prompt 直接读取 graph inputs，{{inputs.max-iterations}} 已可解析",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-10",
+      "summary": "让 LLM config.inputs 作为节点显式输入绑定层参与 prompt 渲染，保持 {{inputs.xxx}} 语义",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-09",
+  "updated_at": "2026-05-10",
+  "extra": {
+    "area": "TaskGraph",
+    "assignee": "codebuddy",
+    "depends_on": "000038",
+    "kind": "quality",
+    "parent": "000028"
+  }
+}

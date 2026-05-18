@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "id": "000044",
+  "lane": "bbq",
+  "title": "Rust core 模块清理：Agent MCP connector 归位",
+  "summary": "Rust core 模块清理：Agent MCP connector 归位",
+  "stories": [
+    {
+      "id": "508c48eb-6b18-494d-973f-5d3fd589a130",
+      "given": "Blackboard 系统已初始化",
+      "when": "执行 Rust core 模块清理：Agent MCP connector 归位 相关操作",
+      "then": "系统按预期完成 Rust core 模块清理：Agent MCP connector 归位 的功能"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "summary": "codex 开始梳理 core/cli MCP 命名边界，目标是把 Agent MCP 配置注入语义从 core 顶层 mcp_config 移入 agents_config 语义范围。"
+    },
+    {
+      "summary": "codex 开始执行：确认本轮按 BBQ 票据 000044 执行，重点是 Rust 模块移动/重命名，不扩大到前端或 ticket 数据清理。"
+    },
+    {
+      "summary": "codex 完成阶段工作，handoff 写入 `2026-05-10-codex-rust-core-agent-mcp-connector-模块清理.md`。"
+    },
+    {
+      "summary": "2026-05-10：将 bb_core/src/mcp_config.rs 移入 agents_config/mcp_connector.rs，测试迁入 agents_config/mcp_connector/tests.rs；收紧类型命名为 AgentMcpConfigFormat/AgentMcpServerConfig/AgentMcpTransport/AgentMcpServerTarget；调用点改为 mcp_connector::{inspect,upsert,remove}_server"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-10",
+  "updated_at": "2026-05-10",
+  "extra": {
+    "assignee": "codex"
+  }
+}

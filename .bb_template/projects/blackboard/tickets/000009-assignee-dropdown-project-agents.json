@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "id": "000009",
+  "lane": "bbd",
+  "title": "Assignee 下拉与项目成员过滤",
+  "summary": "Ticket detail/board assignee使用当前project可分配agent列表，支持清空与legacy显示，处理人下拉使用UnifiedPopupSelect切换即保存",
+  "stories": [
+    {
+      "id": "47e2a9c2-4943-417e-9e1d-e88f6b5ef3ae",
+      "given": "用户在Ticket detail或Board view切换project",
+      "when": "打开assignee下拉",
+      "then": "调用/api/projects/{project}/agents返回当前project可分配成员列表，支持清空和legacy assignee显示"
+    },
+    {
+      "id": "eec239d8-d1ae-4f39-b552-e72c3d0907b2",
+      "given": "用户从下拉选择处理人",
+      "when": "切换处理人",
+      "then": "使用UnifiedPopupSelect控件，切换即保存；处理人显示稳定agent id，避免display name重复表达"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-07",
+      "summary": "从用户夜间任务拆出，准备把assignee自由输入升级成项目成员下拉"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "完成ticket详情页assignee项目成员下拉与legacy assignee显示"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "修复ticket detail dark mode视觉破损"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "把处理人控件改成与workflow一致的UnifiedPopupSelect，移除保存按钮，切换即保存"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "处理人显示稳定agent id，避免display name · id重复表达"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "补齐detail panel/header/meta/progress/dependency/MarkdownRenderer/TOC在dark mode下的样式"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "全局UI字体切到Google Noto Sans SC"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-07",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000016",
+    "parent": "000005"
+  }
+}

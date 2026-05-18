@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "id": "000033",
+  "lane": "bbt",
+  "title": "Task Graph 后端：Workflow Interpreter 与 daemon 执行器",
+  "summary": "在 bb daemon 中实现 Task Graph workflow interpreter，支持顺序节点、Branch、Loop、Human Gate、LLM 节点和 registered task 节点的 MVP 执行闭环。",
+  "stories": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567892",
+      "given": "存在一个 Task Graph 定义，包含多种节点类型",
+      "when": "daemon 开始执行 run",
+      "then": "使用 run context + cursor/queue 的解释器模型，根据节点结果解析下一条控制流边",
+      "sample": "Interpreter 主循环：while queue not empty, pop node, execute, resolve next edges"
+    },
+    {
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678913",
+      "given": "遇到 LLM 节点需要执行",
+      "when": "interpreter 处理 LLM 节点",
+      "then": "复用 runtime adapter/build_runtime_command，按 node config 选择 runtime、agent、model、prompt_template，输出写入 artifact",
+      "sample": "调用现有 runtime adapter，输出 JSON event 流"
+    },
+    {
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789124",
+      "given": "遇到 registered task 节点需要执行",
+      "when": "interpreter 处理 registered task 节点",
+      "then": "复用 agents/tasks.toml 中已注册任务，以当前 project context 执行，记录 stdout/stderr tail",
+      "sample": "opencode run --format json，复用 JSONL 解析"
+    },
+    {
+      "id": "d4e5f6a7-b8c9-0123-def0-234567890125",
+      "given": "遇到 Branch 节点需要决策",
+      "when": "interpreter 处理 Branch 节点",
+      "then": "读取上游 node output/run context，按 first_match rules 选择出口；MVP 优先 deterministic JSON/path/operator 条件",
+      "sample": "BranchDecision 记录 selected_path"
+    },
+    {
+      "id": "e5f6a7b8-c9d0-1234-ef01-345678901236",
+      "given": "遇到 Loop 节点需要迭代",
+      "when": "interpreter 处理 Loop 节点",
+      "then": "支持 max_iterations 必填、iteration snapshot、退出原因记录；禁止无限循环",
+      "sample": "LoopIterationState 包含 index、exit_reason、hit_max_iterations"
+    },
+    {
+      "id": "f6a7b8c9-d0e1-2345-f012-456789012347",
+      "given": "遇到 Human Gate 节点",
+      "when": "interpreter 处理 Human Gate 节点",
+      "then": "run 进入 paused 状态，等待后续 API/人工动作恢复",
+      "sample": "HumanGate 节点执行时调用 set_run_paused"
+    },
+    {
+      "id": "0cdf96a6-ec1d-4c51-92e7-0164f4bc3f7e",
+      "given": "run 需要支持取消",
+      "when": "用户或系统发起 cancel 请求",
+      "then": "run status 转为 cancelled，队列清空，节点按需释放资源",
+      "sample": "cancel 语义已补齐"
+    }
+  ],
+  "risks": [
+    {
+      "id": "infinite-loop",
+      "description": "Loop 节点可能进入无限循环",
+      "mitigation": "max_iterations 必填，达到上限时强制退出并记录 hit_max_iterations",
+      "status": "mitigated"
+    },
+    {
+      "id": "branch-determinism",
+      "description": "Branch 决策的非确定性条件可能导致不可预测行为",
+      "mitigation": "MVP 优先 deterministic JSON/path/operator 条件",
+      "status": "mitigated"
+    },
+    {
+      "id": "human-gate-resume",
+      "description": "Human Gate 暂停后需要可靠恢复机制",
+      "mitigation": "run 进入 paused 状态，等待 API 恢复执行",
+      "status": "mitigated"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "实现 bb_core::task_graph::interpreter 模块（约 700 行），含 cursor/queue 解释器主循环、next-edge 解析器、各节点类型执行处理器",
+      "evidence": [
+        "bb_core/src/task_graph/interpreter.rs"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "新增 16 个 interpreter 测试（branch ×6、loop ×3、full run ×7），task_graph 测试共 70 个通过，HTTP 测试 11 个通过",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "Task Graph registered task 改为 opencode run --format json，复用 JSONL 解析 text/tool_use/error/step_finish event",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "移除 bb-internal 清理路径，task-graph-inbox-cleanup 真实运行 bb-pm；增加 run 节点实时日志写入 opencode event；.json artifact 改为真实 JSON；补齐 cancel 语义",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "Loop interpreter 持久化 loop frame，body path 自然结束时使用 active frame 返回 Loop controller",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "Loop iteration history 在控制权返回 Loop 节点时标记 active frame iteration 为完成",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "Loop 校验不再要求用户可见 return edge，兼容旧 graph 的 return target",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "默认 Loop pins 只暴露 exec_in、body、exit、index 四个 pin",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-09",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000031 000032",
+    "kind": "backend",
+    "parent": "000028"
+  }
+}

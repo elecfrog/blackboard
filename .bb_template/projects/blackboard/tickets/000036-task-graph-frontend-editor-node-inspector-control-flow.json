@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "000036",
+  "lane": "bbd",
+  "title": "Task Graph 前端：Editor、节点面板与控制流配置",
+  "summary": "实现 Task Graph Editor MVP 编辑闭环，支持拖入节点、连接控制流边、配置节点、保存 project graph",
+  "stories": [
+    {
+      "id": "020d6f51-7fa0-46a1-ba24-82af598497cc",
+      "given": "Task Graph Editor 需要支持多种节点类型",
+      "when": "实现 Start、End、LLM、Registered Task、Human Gate、Branch、Loop 节点拖入画布",
+      "then": "用户可创建完整 Task Graph MVP 示例"
+    },
+    {
+      "id": "2169c715-53b5-4fe1-82bd-4b6a1f78af53",
+      "given": "节点需要配置不同属性",
+      "when": "实现 Inspector 面板配置 LLM runtime/agent/model/prompt、Registered Task task_id、Branch rules、Loop max_iterations",
+      "then": "节点配置后保存重新打开布局和配置不丢失"
+    },
+    {
+      "id": "a9cc9783-4ee5-43e2-834a-f323cd81bffc",
+      "given": "非法 loop 缺少 max_iterations",
+      "when": "前端控制流校验",
+      "then": "给出 UI 错误提示"
+    },
+    {
+      "id": "21abc4eb-5ed9-4aab-a899-d36ad3b16dd0",
+      "given": "system graph 只读",
+      "when": "用户保存 project graph",
+      "then": "只有 project graph 可保存，system graph 保持只读"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "新增 TaskGraphEditorPanel.vue 支持 node palette 点击/拖入画布、GraphCanvas 节点拖拽、连线、删边",
+      "evidence": [
+        "bb_web/src/components/TaskGraphEditorPanel.vue"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "实现 Inspector 覆盖 LLM、Registered Task、Human Gate、Branch、Loop、End 配置字段",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "新增 saveProjectTaskGraph、loadRegisteredTaskCatalog 与 validateTaskGraph",
+      "evidence": [
+        "bb_web/src/data/taskGraphs.ts"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "实现前端控制流校验",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "验证：npm run build --prefix bb_web 通过",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-09",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "area": "TaskGraph",
+    "deliverable": "bb_web/src/components/TaskGraphEditorPanel.vue; bb_web/src/data/taskGraphs.ts; bb_web/src/components/GraphCanvas.vue",
+    "depends_on": "000029 000034 000035",
+    "kind": "frontend",
+    "parent": "000028"
+  }
+}

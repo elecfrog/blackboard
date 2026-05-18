@@ -82,11 +82,14 @@ pub struct NoteSearchMatch {
 pub type FrontmatterExtra = BTreeMap<String, String>;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct CreateTicketInput {
     pub lane: String,
     pub title: String,
     pub status: String,
+    pub spec: TicketSpec,
+    pub attachments: Vec<TicketAttachment>,
     #[serde(default)]
     pub slug: Option<String>,
     #[serde(default)]
@@ -96,6 +99,7 @@ pub struct CreateTicketInput {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TicketBodySections {
     #[serde(default)]
@@ -107,6 +111,65 @@ pub struct TicketBodySections {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct TicketSpec {
+    pub summary: String,
+    pub stories: Vec<TicketStory>,
+    pub risks: Vec<TicketRisk>,
+    pub progress_record: Vec<TicketProgressRecord>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct TicketStory {
+    #[serde(default)]
+    pub id: String,
+    pub given: String,
+    pub when: String,
+    pub then: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct TicketRisk {
+    pub id: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mitigation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct TicketProgressRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+    pub summary: String,
+    #[serde(default)]
+    pub evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct TicketAttachment {
+    pub kind: String,
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AppendTicketSectionsInput {
     pub id: String,
@@ -119,6 +182,7 @@ pub struct AppendTicketSectionsInput {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct UpdateTicketInput {
     pub id: String,
@@ -127,12 +191,14 @@ pub struct UpdateTicketInput {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct DeprecateTicketInput {
     pub id: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TicketFrontmatterPatch {
     #[serde(default)]
@@ -141,6 +207,10 @@ pub struct TicketFrontmatterPatch {
     pub status: Option<String>,
     #[serde(default)]
     pub lane: Option<String>,
+    #[serde(default)]
+    pub spec: Option<TicketSpec>,
+    #[serde(default)]
+    pub attachments: Option<Vec<TicketAttachment>>,
     #[serde(default)]
     pub extra: FrontmatterExtra,
     #[serde(default)]
@@ -164,6 +234,10 @@ pub struct TicketEntry {
     pub status: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    #[serde(default)]
+    pub attachments: Vec<TicketAttachment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec: Option<TicketSpec>,
     pub extra: FrontmatterExtra,
     pub metadata_error: Option<String>,
     pub metadata_warnings: Vec<String>,
@@ -188,6 +262,10 @@ pub struct TicketById {
     pub status: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    #[serde(default)]
+    pub attachments: Vec<TicketAttachment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spec: Option<TicketSpec>,
     pub extra: FrontmatterExtra,
     pub metadata_error: Option<String>,
     pub metadata_warnings: Vec<String>,
@@ -238,6 +316,9 @@ pub struct TicketWriteTicket {
     pub updated_at: String,
     pub file_name: String,
     pub path: String,
+    pub attachments: Vec<TicketAttachment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spec: Option<TicketSpec>,
     pub extra: FrontmatterExtra,
 }
 

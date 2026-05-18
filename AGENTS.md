@@ -45,3 +45,5 @@ Agent 写 ticket 时应满足：
 - 明确 MVP 行为、非目标、验收标准。
 - 子票只拆实现范围，不重新解释父票产品定义。
 - handoff 记录过程，ticket 保存当前事实。
+- 创建和更新 ticket 必须走 Blackboard MCP 结构化工具；新 ticket 使用 JSON BDD 形态，显式包含 `summary`、`stories`、`risks`、`progress_record`、`attachments`。即使 `risks`、`progress_record`、`attachments` 为空，也传 `[]`。
+- 附件是顶层 `attachments` 字段，不写入 `extra.attachments`。过程记录通过 `append_ticket_sections` 追加到 `progress_record`，不是 Markdown 正文。

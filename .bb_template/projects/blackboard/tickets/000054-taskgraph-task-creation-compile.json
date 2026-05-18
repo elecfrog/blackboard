@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "000054",
+  "lane": "bbt",
+  "title": "TaskGraph Task Creation & Compile：从意图到可执行计划",
+  "summary": "TaskIntent 转换为 TaskGraph Draft、模板选择或可执行的 CompiledTaskGraph",
+  "stories": [
+    {
+      "id": "f7e9741e-9750-4d62-a9c6-e0043afebab6",
+      "given": "用户通过 Chat 或 UI 描述了任务意图和可用上下文",
+      "when": "系统将 TaskIntent 解析为 TaskGraph Draft 或模板",
+      "then": "生成包含 project/worktree/runtime/model/variant、权限包、输入输出 pins 的草稿图"
+    },
+    {
+      "id": "bf7687b1-68d9-45ed-b452-6f95649d8074",
+      "given": "TaskGraph Draft 已生成，包含节点、边和 artifact contract",
+      "when": "Compile 阶段校验节点完整性、runtime 可用性、权限边界和图结构",
+      "then": "输出可执行的 CompiledTaskGraph / RunPlan，包含 approval points 和 artifact 输出规格"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-14",
+      "summary": "从 TaskGraph Vision 拆出 Task Creation & Compile 主干 ticket"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-14",
+  "updated_at": "2026-05-17",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000053",
+    "kind": "platform-track",
+    "parent": "000053",
+    "requested_by": "user",
+    "scope": "task-creation-compile"
+  }
+}

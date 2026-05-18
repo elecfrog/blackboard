@@ -269,7 +269,7 @@ def ensure_global_bb_root(root: Path) -> None:
     data_root.mkdir(parents=True, exist_ok=True)
     projects_root.mkdir(parents=True, exist_ok=True)
 
-    for entry in ["agents", "task_graphs", "templates"]:
+    for entry in ["agents", "schemas", "task_graphs", "templates"]:
         copy_dir_missing(seed / entry, data_root / entry)
 
     manifest = data_root / "blackboard.json"

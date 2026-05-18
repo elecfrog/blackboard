@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "000071",
+  "lane": "bbd",
+  "title": "Idea Canvas Frontend：canvas 列表与 sticky note 白板",
+  "summary": "实现 Idea Canvas 前端 MVP：左侧 canvas 列表，右侧自由画布，支持双击创建、编辑、拖动和删除 sticky note。",
+  "stories": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "given": "用户进入 Idea Canvas 页面",
+      "when": "用户双击 canvas 空白处",
+      "then": "创建一个新的 sticky note 并立即进入编辑状态"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440002",
+      "given": "sticky note 处于编辑状态",
+      "when": "用户输入文本并点击其他位置",
+      "then": "sticky note 文本被保存并显示"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440003",
+      "given": "canvas 上存在 sticky note",
+      "when": "用户拖动 sticky note",
+      "then": "sticky note 位置更新并保持"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440004",
+      "given": "canvas 上存在 sticky note",
+      "when": "用户点击删除操作",
+      "then": "sticky note 被移除"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440005",
+      "given": "用户刷新页面",
+      "when": "页面重新加载",
+      "then": "canvas 和 sticky note 状态保持不变"
+    },
+    {
+      "id": "cca50be9-b301-4bb2-8784-352d5218c0f0",
+      "given": "用户在 Idea Canvas 左侧 canvas 列表看到一张 canvas",
+      "when": "用户点击该 canvas item 右侧的删除图标",
+      "then": "列表项保持单个整体视觉 item，删除图标内嵌在右侧，不拆成两个断裂按钮"
+    },
+    {
+      "id": "585e868d-6589-4af6-bf65-ff9e83df10fc",
+      "given": "用户点击 canvas 删除图标",
+      "when": "系统准备删除当前 canvas",
+      "then": "系统必须显示 Blackboard 风格的业务确认弹窗；用户确认后才删除，取消或点击遮罩只关闭弹窗，不能使用 window.confirm"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-18",
+      "summary": "收拢 Idea Canvas 删除 handoff：左侧 canvas item 已增加内嵌删除入口，删除当前 canvas 后清理 note 保存 timer 并自动选中下一张；删除行为改为 Blackboard 风格确认弹窗，不再使用 window.confirm。",
+      "evidence": [
+        "2026-05-17-codex-idea-canvas-canvas-删除按钮.md",
+        "2026-05-17-codex-idea-canvas-删除确认弹窗修正.md"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-17",
+  "updated_at": "2026-05-18",
+  "extra": {
+    "area": "Idea Canvas",
+    "depends_on": "000026 000070",
+    "kind": "frontend",
+    "parent": "000026"
+  }
+}

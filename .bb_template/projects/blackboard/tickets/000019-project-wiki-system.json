@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "000019",
+  "lane": "bbp",
+  "title": "项目级 Wiki 系统：文件布局、上传与前端渲染",
+  "summary": "bb目前每个项目下有tickets/和inbox/两类内容，缺少对项目级知识沉淀的承载；用户已在外部工作流产出，希望在bb项目侧同级引入。目标结构：projects/<project>/wiki/，根目录index.md作为入口，可包含architecture/modules/topics/references等子目录。范围约束（本单只覆盖看得见的第一阶段）：文件上传/摆放、前端浏览与渲染；后端QMD系统级索引与检索能力延后单独开单。",
+  "stories": [
+    {
+      "id": "323837f7-d7bc-4ba6-a7a2-601caa251fb4",
+      "given": "bb项目已存在tickets/和inbox/两类内容，用户有项目级知识沉淀需求。",
+      "when": "用户在bb项目侧引入第三类一等资源wiki，约定projects/<project>/wiki/目录结构。",
+      "then": "wiki作为项目级知识沉淀载体，可通过bb前端浏览与展示。"
+    },
+    {
+      "id": "49a4ee38-bbec-4faa-8f94-5b071f53208b",
+      "given": "wiki目录结构已约定（index.md入口，architecture/modules/topics/references子目录可选）。",
+      "when": "用户在wiki目录放入.md文件。",
+      "then": "bb前端能正确识别wiki目录结构，渲染.md文件内容，展示相对链接和图片。"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-08",
+      "summary": "实现019 Wiki系统，新增bb_server wiki HTTP routes、bb_core wiki模块、前端WikiPanel组件、前端路由与Wiki Tab集成"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "子单#000020/#000021/#000022首轮实现验收未通过，由统管单#000023一次性擦屁股收尾。后端wiki.rs+http.rs重写、路径安全双保险、asset端点补齐；前端data/wiki.ts拆分、WikiTreeItem独立、WikiPanel相对链接与img重写、wikiEmpty空状态、wiki路由改:path; cargo test -p bb_core -p bb_server 46/46绿，pnpm -C bb_web run build通过。"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-08",
+  "updated_at": "2026-05-08",
+  "extra": {
+    "assignee": "opencode"
+  }
+}

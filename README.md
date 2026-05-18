@@ -23,6 +23,7 @@ python3 scripts/desktop.py
 
 [Tickets 图片占位]
 
+- Ticket由BDD规范模式驱动，被描述为一个结构化Schema，令Agent和Human统一需求认知和功能形态
 - 支持 Kanban、依赖图、列表三种视图。
 - 用统一状态追踪任务从待办、执行、验收到完成的流转。
 

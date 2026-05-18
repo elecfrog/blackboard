@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "id": "000060",
+  "lane": "bbt",
+  "title": "TaskGraph 060：Graph Compile 与 Superstep Execution Kernel",
+  "summary": "TaskGraph 060：Graph Compile 与 Superstep Execution Kernel。定义一张图如何按 superstep 开始、暂停、恢复、并发、失败、重试、取消和进入下一轮；只负责执行内核，不定义全部数据类型和业务节点 taxonomy。核心模型基于 LangGraph Pregel：checkpoint-first 持久化、barrier apply writes、并发 NodeRun、统一 event log。",
+  "stories": [
+    {
+      "id": "87d64ce6-85ab-4655-8fb3-bfd7d59ff43e",
+      "given": "用户或系统发起一个 TaskGraph run",
+      "when": "TaskGraph 进入执行阶段",
+      "then": "系统按 superstep 推进执行；每轮有明确 runnable set、barrier、pending writes、checkpoint、event log；崩溃后能从 checkpoint 恢复",
+      "sample": "Explorer -> Implementer -> Verifier -> Handoff 固定模板图"
+    },
+    {
+      "id": "0a00cbde-da07-461b-8649-3d985844884f",
+      "given": "一个 TaskRun 已创建但尚未开始执行",
+      "when": "系统读取最新 TaskRun checkpoint，基于 graph spec、node run 状态、channel version 和 permission gate 选择本轮 runnable nodes",
+      "then": "并发启动本轮 NodeRun；NodeRun 只产出 writes/events/artifacts/interrupt，不直接修改全局状态",
+      "sample": "一次 superstep 内多节点可并行执行"
+    },
+    {
+      "id": "1b49bf0d-28ca-4ede-a2a1-d5cf41b82b9c",
+      "given": "本轮所有 NodeRun 已完成、失败、超时或中断",
+      "when": "barrier 等本轮 NodeRun 完成",
+      "then": "统一 apply writes，推进 channel versions；先 checkpoint-first 持久化，再发 run events 给 UI/通知",
+      "sample": "pending writes 在 barrier 前收集为 PendingWrite，写入 superstep checkpoint"
+    },
+    {
+      "id": "f84ae446-f083-413c-9bec-a468a04a632c",
+      "given": "TaskRun 执行过程中遇到中断、权限审批、用户取消、失败、超时或重试",
+      "when": "TaskRun 进入 blocked/needs_approval/failed/cancelled 状态",
+      "then": "系统记录对应事件到 run event log；TaskRun 可从最新 checkpoint 恢复继续跑",
+      "sample": "interrupt/approval/resume/cancel/retry/timeout 都有明确事件和状态"
+    }
+  ],
+  "risks": [
+    {
+      "id": "langgraph_push_send_incomplete",
+      "description": "060 仍未完整复刻 LangGraph 的 PUSH/TASKS/Send 动态任务派发；reserved channel 和 Pregel task model 已建但 Send packet 写入/读取未接入执行路径",
+      "mitigation": "后续 061/062 继续补齐 Send/Command writer 入 IR",
+      "status": "open"
+    },
+    {
+      "id": "interrupt_semantics_incomplete",
+      "description": "interruptBefore/interruptAfter 还需要按 LangGraph 的 channel version + triggered tasks 语义实现",
+      "mitigation": "继续对齐 versions_seen 语义",
+      "status": "open"
+    },
+    {
+      "id": "channel_reducer_parity",
+      "description": "Channel 类型目前按 Blackboard compiled channel kind 实现 MVP；后续 061 需要补 LastValue/Topic/Aggregate/ArtifactRef 的 reducer parity 与 durable channel store",
+      "mitigation": "061 深化 channel store",
+      "status": "accepted"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-14",
+      "summary": "从 #000055 拆出 Execution 基建子单",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "基于 LangGraphJS modules/pregel 与 modules/checkpoint* 蒸馏重写边界，聚焦 TaskGraph superstep-based 执行内核",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "完成 superstep execution kernel：SuperstepCheckpoint/RunEvent/PendingWrite/current_superstep/last_checkpoint_id，coordinator superstep checkpoint+event-log，run event-log 与 checkpoint 列表 HTTP API",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "新增 bb_backend/crates/bb_core/src/task_graph/compiler.rs：将 raw TaskGraph 编译为 CompiledGraph，包含 CompiledProcess/CompiledChannel/CompiledWriter/trigger_to_nodes",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "CompiledChannel 增加 LangGraph-style channel class（EphemeralValue/LastValue/Topic/NamedBarrierValue），apply_writes 按 channel class 更新",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "新增 task_graph/README.md 模块地图",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "将 task_graph/node_exec/ 改名为 nodes/，内部 control_nodes→control、runtime_nodes→runtime、sub_graph_node→subgraph",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "收敛 task_graph 根目录文件，按职责分组为 definition/、compile/、engine/、nodes/、schedules/",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "删除 task_graph/engine/ 模块，将 runner/coordinator/executor/outcome 并入 pregel/，Pregel 成为唯一 graph execution engine 边界",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "新增 PregelLoop 内核，抽出 prepared/commit kernel，接入 coordinator；统一 barrier checkpoint 产出",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "PregelLoop 改为持有长期 state，coordinator 不再临时重建 loop；新增 recursion_limit 接入 PregelLoop.stop",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-16",
+      "summary": "新增 loop validation 检查 body_entry/body_exit 非空且引用存在节点，验证 body_entry 匹配 loop node 的 body edge targets",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-14",
+      "summary": "整合 LangGraphJS pregel/checkpoint/api/sdk/supervisor/swarm 模块研究，创建 wiki/proposal/taskgraph-superstep-agent-orchestration.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "创建 pregel-topology-mutation spec_draft.md 与 existing_truth.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "验证 cargo fmt/check/test 通过，npm run build 通过",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-17",
+      "summary": "000060 closed；topology mutation follow-up 为 completed 000069",
+      "evidence": []
+    }
+  ],
+  "attachments": [
+    {
+      "kind": "wiki",
+      "target": "proposal/taskgraph-superstep-agent-orchestration.md",
+      "label": "Superstep TaskGraph Proposal"
+    }
+  ],
+  "status": "done",
+  "created_at": "2026-05-14",
+  "updated_at": "2026-05-18",
+  "extra": {
+    "area": "TaskGraph",
+    "assignee": "codex",
+    "depends_on": "000055",
+    "explicitly_excludes": "business-agent-role-palette,prompt-source,agent-profile-design",
+    "kind": "langgraph-distillation-execution-kernel",
+    "layer": "execution-core",
+    "parent": "000055",
+    "proposal": "wiki/proposal/taskgraph-superstep-agent-orchestration.md",
+    "requested_by": "user",
+    "rewrite_version": "2026-05-15-corrected-langgraph-boundary",
+    "schema_version": "1.0",
+    "scope": "compile-superstep-scheduler-checkpoint-event-log"
+  }
+}

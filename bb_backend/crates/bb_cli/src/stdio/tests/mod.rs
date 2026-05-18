@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use tempfile::TempDir;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -172,6 +172,19 @@ fn sample_tool_arguments(name: &str) -> Value {
             "lane": "bbd",
             "title": "Tool Contract Ticket",
             "status": "todo",
+            "spec": {
+                "summary": "Exercise the MCP tool contract.",
+                "stories": [
+                    {
+                        "given": "A stdio MCP client has a valid Blackboard project",
+                        "when": "it creates a ticket through create_ticket",
+                        "then": "the backend writes a JSON BDD ticket"
+                    }
+                ],
+                "risks": [],
+                "progress_record": []
+            },
+            "attachments": [],
             "slug": "tool-contract-ticket",
             "sections": { "progress": ["created for tool contract test"] },
         }),
@@ -307,6 +320,39 @@ impl Drop for EnvVarGuard {
     }
 }
 
+struct ToolEnvGuard {
+    _profile: EnvVarGuard,
+    _daemon: EnvVarGuard,
+    _daemon_agent: EnvVarGuard,
+    _lock: MutexGuard<'static, ()>,
+}
+
+impl ToolEnvGuard {
+    fn profile(profile: Option<&str>) -> Self {
+        let lock = ENV_LOCK.lock().unwrap();
+        let profile = match profile {
+            Some(profile) => EnvVarGuard::set("BB_MCP_TOOL_PROFILE", profile),
+            None => EnvVarGuard::unset("BB_MCP_TOOL_PROFILE"),
+        };
+        Self {
+            _profile: profile,
+            _daemon: EnvVarGuard::unset("BB_DAEMON"),
+            _daemon_agent: EnvVarGuard::unset("BB_DAEMON_AGENT"),
+            _lock: lock,
+        }
+    }
+
+    fn bbpm_daemon() -> Self {
+        let lock = ENV_LOCK.lock().unwrap();
+        Self {
+            _profile: EnvVarGuard::unset("BB_MCP_TOOL_PROFILE"),
+            _daemon: EnvVarGuard::set("BB_DAEMON", "1"),
+            _daemon_agent: EnvVarGuard::set("BB_DAEMON_AGENT", "bb-pm"),
+            _lock: lock,
+        }
+    }
+}
+
 fn set_home_for_test(home: &Path) -> EnvVarGuard {
     EnvVarGuard::set("HOME", home.as_os_str())
 }
@@ -322,9 +368,7 @@ fn error_response(id: Value, code: i64, message: String) -> String {
 #[test]
 fn lists_tools_and_calls_inbox_tools_with_project_routing() {
     let (_temp, workspace) = fixture();
-    let _env_lock = ENV_LOCK.lock().unwrap();
-    let _daemon = EnvVarGuard::unset("BB_DAEMON");
-    let _daemon_agent = EnvVarGuard::unset("BB_DAEMON_AGENT");
+    let _tool_env = ToolEnvGuard::profile(None);
 
     let list = parse(
         handle_line(
@@ -344,31 +388,18 @@ fn lists_tools_and_calls_inbox_tools_with_project_routing() {
         vec![
             "list_projects",
             "find_work_context",
-            "list_agents",
-            "upsert_agent",
             "list_inbox_notes",
             "read_inbox_note",
-            "list_tickets",
-            "read_ticket",
             "read_ticket_by_id",
             "create_ticket",
             "update_ticket",
-            "deprecate_ticket",
             "append_ticket_sections",
             "begin_ticket_work",
             "complete_handoff",
-            "board_summary",
             "list_lanes",
-            "upsert_lane",
-            "archive_lane",
-            "upsert_project_agent",
-            "remove_project_agent",
             "search_notes",
             "search_tickets",
             "create_inbox_note",
-            "list_agent_connectors",
-            "sync_agent_connector",
-            "disconnect_agent_connector",
         ]
     );
 
@@ -394,13 +425,23 @@ fn lists_tools_and_calls_inbox_tools_with_project_routing() {
             &workspace,
             r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"delete_inbox_note","arguments":{"project":"demo","name":"2026-05-04-codex-test.md"}}}"#,
         ).unwrap());
-    assert_eq!(denied["error"]["code"], -32603);
+    assert_eq!(denied["error"]["code"], -32601);
+    assert!(denied["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("profile `agent`"));
+
+    let hidden = parse(handle_line(
+            &workspace,
+            r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"sync_agent_connector","arguments":{"id":"codex"}}}"#,
+        ).unwrap());
+    assert_eq!(hidden["error"]["code"], -32601);
 }
 
 #[test]
 fn all_listed_tools_return_standard_content_results() {
     let (temp, workspace) = fixture();
-    let _env_lock = ENV_LOCK.lock().unwrap();
+    let _tool_env = ToolEnvGuard::profile(Some("dev-all"));
     let home = temp.path().join("home");
     fs::create_dir_all(&home).unwrap();
     let _home = set_home_for_test(&home);
@@ -427,9 +468,7 @@ fn all_listed_tools_return_standard_content_results() {
 #[test]
 fn daemon_only_delete_inbox_note_returns_standard_content_result() {
     let (_temp, workspace) = fixture();
-    let _env_lock = ENV_LOCK.lock().unwrap();
-    let _daemon = EnvVarGuard::set("BB_DAEMON", "1");
-    let _daemon_agent = EnvVarGuard::set("BB_DAEMON_AGENT", "bb-pm");
+    let _tool_env = ToolEnvGuard::bbpm_daemon();
 
     let list = parse(
         handle_line(
@@ -445,6 +484,7 @@ fn daemon_only_delete_inbox_note_returns_standard_content_result() {
         .map(|tool| tool["name"].as_str().unwrap())
         .collect();
     assert!(tool_names.contains(&"delete_inbox_note"));
+    assert!(!tool_names.contains(&"sync_agent_connector"));
 
     let response = call_tool(
         &workspace,
@@ -456,8 +496,59 @@ fn daemon_only_delete_inbox_note_returns_standard_content_result() {
 }
 
 #[test]
+fn admin_profile_lists_only_workspace_and_admin_tools() {
+    let (_temp, workspace) = fixture();
+    let _tool_env = ToolEnvGuard::profile(Some("admin"));
+
+    let list = parse(
+        handle_line(
+            &workspace,
+            r#"{"jsonrpc":"2.0","id":310,"method":"tools/list"}"#,
+        )
+        .unwrap(),
+    );
+    let tool_names: Vec<&str> = list["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        tool_names,
+        vec![
+            "list_projects",
+            "list_agents",
+            "upsert_agent",
+            "deprecate_ticket",
+            "board_summary",
+            "list_lanes",
+            "upsert_lane",
+            "archive_lane",
+            "upsert_project_agent",
+            "remove_project_agent",
+            "list_agent_connectors",
+            "sync_agent_connector",
+            "disconnect_agent_connector",
+        ]
+    );
+
+    let denied = call_tool(
+        &workspace,
+        311,
+        "create_ticket",
+        sample_tool_arguments("create_ticket"),
+    );
+    assert_eq!(denied["error"]["code"], -32601);
+    assert!(denied["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("profile `admin`"));
+}
+
+#[test]
 fn missing_project_is_rejected_with_parameter_error() {
     let (_temp, workspace) = fixture();
+    let _tool_env = ToolEnvGuard::profile(None);
 
     let rejected = parse(handle_line(
             &workspace,
@@ -483,6 +574,7 @@ fn missing_project_is_rejected_with_parameter_error() {
 #[test]
 fn creates_note_and_rejects_traversal_over_json_rpc() {
     let (_temp, workspace) = fixture();
+    let _tool_env = ToolEnvGuard::profile(None);
 
     let create = parse(handle_line(
             &workspace,
@@ -503,6 +595,7 @@ fn creates_note_and_rejects_traversal_over_json_rpc() {
 #[test]
 fn lists_and_reads_ticket_tools() {
     let (_temp, workspace) = fixture();
+    let _tool_env = ToolEnvGuard::profile(Some("dev-all"));
 
     let listed = parse(handle_line(
             &workspace,
@@ -548,6 +641,7 @@ fn lists_and_reads_ticket_tools() {
 #[test]
 fn creates_and_updates_tickets_over_json_rpc() {
     let (_temp, workspace) = fixture();
+    let _tool_env = ToolEnvGuard::profile(None);
 
     // `assignee` is no longer a top-level parameter; it is provided via
     // the open `extra` KV map. `current` is gone entirely. The
@@ -555,7 +649,7 @@ fn creates_and_updates_tickets_over_json_rpc() {
     // validated against the project's lane catalog.
     let created = parse(handle_line(
             &workspace,
-            r#"{"jsonrpc":"2.0","id":64,"method":"tools/call","params":{"name":"create_ticket","arguments":{"project":"demo","lane":"bbd","title":"Structured Ticket","status":"todo","slug":"structured ticket","extra":{"assignee":"opencode"},"sections":{"progress":["created from MCP"]}}}}"#,
+            r#"{"jsonrpc":"2.0","id":64,"method":"tools/call","params":{"name":"create_ticket","arguments":{"project":"demo","lane":"bbd","title":"Structured Ticket","status":"todo","slug":"structured ticket","spec":{"summary":"Create a structured ticket through MCP.","stories":[{"given":"A caller has a valid project and lane","when":"it calls create_ticket with JSON BDD fields","then":"the backend writes a JSON ticket and returns maintenance status"}],"risks":[],"progress_record":[]},"attachments":[],"extra":{"assignee":"opencode"},"sections":{"progress":["created from MCP"]}}}}"#,
         ).unwrap());
     let text = created["result"]["content"][0]["text"].as_str().unwrap();
     let payload: Value = serde_json::from_str(text).unwrap();
@@ -593,6 +687,7 @@ fn creates_and_updates_tickets_over_json_rpc() {
 #[test]
 fn rejects_raw_or_unknown_ticket_write_fields() {
     let (_temp, workspace) = fixture();
+    let _tool_env = ToolEnvGuard::profile(None);
 
     let rejected = parse(handle_line(
             &workspace,
@@ -609,7 +704,7 @@ fn rejects_raw_or_unknown_ticket_write_fields() {
     // (lane provided correctly) so the only unknown field is `id`.
     let rejected = parse(handle_line(
             &workspace,
-            r#"{"jsonrpc":"2.0","id":67,"method":"tools/call","params":{"name":"create_ticket","arguments":{"project":"demo","id":"000999","lane":"bbd","title":"Bad","status":"todo","extra":{"assignee":"opencode"}}}}"#,
+            r#"{"jsonrpc":"2.0","id":67,"method":"tools/call","params":{"name":"create_ticket","arguments":{"project":"demo","id":"000999","lane":"bbd","title":"Bad","status":"todo","spec":{"summary":"Bad ticket.","stories":[{"given":"A caller sends an id","when":"create_ticket validates input","then":"the backend rejects the caller-owned id"}],"risks":[],"progress_record":[]},"attachments":[],"extra":{"assignee":"opencode"}}}}"#,
         ).unwrap());
     assert_eq!(rejected["error"]["code"], -32602);
     assert!(rejected["error"]["message"]
@@ -622,7 +717,7 @@ fn rejects_raw_or_unknown_ticket_write_fields() {
     // renamed to `lane` and is rejected at the same level here.
     let rejected = parse(handle_line(
             &workspace,
-            r#"{"jsonrpc":"2.0","id":70,"method":"tools/call","params":{"name":"create_ticket","arguments":{"project":"demo","lane":"bbd","title":"Bad","assignee":"opencode","status":"todo"}}}"#,
+            r#"{"jsonrpc":"2.0","id":70,"method":"tools/call","params":{"name":"create_ticket","arguments":{"project":"demo","lane":"bbd","title":"Bad","assignee":"opencode","status":"todo","spec":{"summary":"Bad ticket.","stories":[{"given":"A caller sends a legacy assignee field","when":"create_ticket validates input","then":"the backend rejects top-level assignee"}],"risks":[],"progress_record":[]},"attachments":[]}}}"#,
         ).unwrap());
     assert_eq!(rejected["error"]["code"], -32602);
     assert!(rejected["error"]["message"]
@@ -633,7 +728,7 @@ fn rejects_raw_or_unknown_ticket_write_fields() {
     // The former top-level `family` field is also unknown now.
     let rejected = parse(handle_line(
             &workspace,
-            r#"{"jsonrpc":"2.0","id":72,"method":"tools/call","params":{"name":"create_ticket","arguments":{"project":"demo","lane":"bbd","family":"bbd","title":"Bad","status":"todo"}}}"#,
+            r#"{"jsonrpc":"2.0","id":72,"method":"tools/call","params":{"name":"create_ticket","arguments":{"project":"demo","lane":"bbd","family":"bbd","title":"Bad","status":"todo","spec":{"summary":"Bad ticket.","stories":[{"given":"A caller sends a legacy family field","when":"create_ticket validates input","then":"the backend rejects top-level family"}],"risks":[],"progress_record":[]},"attachments":[]}}}"#,
         ).unwrap());
     assert_eq!(rejected["error"]["code"], -32602);
     assert!(rejected["error"]["message"]
@@ -667,6 +762,7 @@ fn rejects_raw_or_unknown_ticket_write_fields() {
 #[test]
 fn rejects_unsafe_ticket_tool_arguments() {
     let (_temp, workspace) = fixture();
+    let _tool_env = ToolEnvGuard::profile(Some("dev-all"));
 
     // Traversal in name is rejected
     let rejected = parse(handle_line(
@@ -679,6 +775,7 @@ fn rejects_unsafe_ticket_tool_arguments() {
 #[test]
 fn searches_notes_and_tickets() {
     let (_temp, workspace) = fixture();
+    let _tool_env = ToolEnvGuard::profile(None);
 
     let notes = parse(handle_line(
             &workspace,
@@ -711,6 +808,7 @@ fn searches_notes_and_tickets() {
 #[test]
 fn rejects_empty_search_queries() {
     let (_temp, workspace) = fixture();
+    let _tool_env = ToolEnvGuard::profile(None);
 
     let rejected = parse(handle_line(
             &workspace,
@@ -728,6 +826,7 @@ fn rejects_empty_search_queries() {
 #[test]
 fn workflow_tools_find_begin_and_complete_ticket_work() {
     let (temp, workspace) = fixture();
+    let _tool_env = ToolEnvGuard::profile(None);
 
     let context = parse(handle_line(
         &workspace,
@@ -773,6 +872,7 @@ fn workflow_tools_find_begin_and_complete_ticket_work() {
 #[test]
 fn notifications_do_not_write_protocol_frames() {
     let (_temp, workspace) = fixture();
+    let _tool_env = ToolEnvGuard::profile(None);
     assert!(handle_line(
         &workspace,
         r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#

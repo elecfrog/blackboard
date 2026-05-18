@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "id": "000043",
+  "lane": "bbq",
+  "title": "Rust 核心模块拆分 review 与第二阶段实施",
+  "summary": "Rust 核心模块拆分 review 与第二阶段实施",
+  "stories": [
+    {
+      "id": "7c001e92-4462-4a96-8d1b-9809151c8eac",
+      "given": "Blackboard 系统已初始化",
+      "when": "执行 Rust 核心模块拆分 review 与第二阶段实施 相关操作",
+      "then": "系统按预期完成 Rust 核心模块拆分 review 与第二阶段实施 的功能"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "summary": "已确认 project=blackboard，lane=bbq。"
+    },
+    {
+      "summary": "已确认 `000042` 完成，当前继续第二阶段拆分。"
+    },
+    {
+      "summary": "本轮实施目标确定为拆分 `bb_core/src/task_graph/node_exec.rs`。"
+    },
+    {
+      "summary": "`node_exec.rs` 拆分已通过 `cargo check` 和 `cargo test`。"
+    },
+    {
+      "summary": "继续实施第二个拆分目标：`bb_core/src/ticket.rs` helper 层拆分。"
+    },
+    {
+      "summary": "完成第二阶段 Rust 模块拆分：bb_core task_graph 的 node_exec、run_state、validation、runtime 继续按职责分层。"
+    },
+    {
+      "summary": "完成 ticket / wiki / agents_config / agents_registry 的模型、索引、路径、校验、渲染等子模块拆分，保留原 public API re-export。"
+    },
+    {
+      "summary": "完成 bb_cli HTTP task_graph 与 MCP tools schema 拆分；第一阶段 HTTP project_picker/tickets/wiki 拆分保持在同一验证批次内。"
+    },
+    {
+      "summary": "继续拆分 node_exec 下偏大的 control_nodes/runtime_nodes 子模块，将 branch/loop/simple control 与 llm/registered task 执行路径分开。"
+    },
+    {
+      "summary": "codex 完成阶段工作，handoff 写入 `2026-05-10-codex-rust-core-module-split-phase-2.md`。"
+    },
+    {
+      "summary": "2026-05-10：完成 bb_core task_graph 的 node_exec/run_state/validation/runtime 分层拆分；完成 ticket/wiki/agents_config/agents_registry 模型子模块拆分；完成 bb_cli HTTP task_graph 与 MCP tools schema 拆分；保留原 public API re-export 维持路径兼容"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-10",
+  "updated_at": "2026-05-10",
+  "extra": {
+    "assignee": "codex",
+    "bb_tools_used": "list_projects:pass; find_work_context:pass; create_ticket:pass; append_ticket_sections:pass; complete_handoff:pass; update_ticket:pass",
+    "handoff_note": "2026-05-10-codex-rust-core-module-split-phase-2.md",
+    "parent_ticket": "000042",
+    "requested_by": "user",
+    "scope": "rust-core-module-splitting-phase-2",
+    "validation_required": "cargo fmt; cargo check --workspace; cargo test --workspace",
+    "validation_result": "cargo fmt:pass; cargo check workspace:pass; cargo test workspace:pass (bb_cli 63, bb_core 189, doc-tests 0); git diff --check code paths:pass"
+  }
+}

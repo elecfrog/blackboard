@@ -1,20 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { MarkdownRenderer, TableOfContents } from '@/ui/markdown'
 import { Archive, ExternalLink, GitFork, Menu, Plus, Trash2, X } from 'lucide-vue-next'
+import TicketStructuredDocument from '@/components/TicketStructuredDocument.vue'
 import UnifiedPopupSelect from '@/components/UnifiedPopupSelect.vue'
 import type { ProjectAgentProfile } from '@/data/agents'
 import type { BlackboardTicket, LaneDef, TicketAttachment } from '@/data/tickets'
 import {
-  attachmentsFromExtra,
-  extractProgressText,
-  loadTicketContent,
+  loadTicketDetail,
   resolveLaneMeta,
   ticketStatusOrder,
   ticketRoute,
 } from '@/data/tickets'
-import { locale, t, ticketStatusLabel } from '@/i18n'
+import { t, ticketStatusLabel } from '@/i18n'
 
 const props = defineProps<{
   project: string
@@ -39,24 +37,25 @@ const emit = defineEmits<{
 const router = useRouter()
 
 const lane = computed(() => resolveLaneMeta(props.ticket.lane, props.lanes))
-const progressPreview = computed(() => extractProgressText(props.ticket.content ?? ''))
 const currentAssignee = computed(() => props.ticket.extra.assignee?.trim() || '')
 
-// On-demand content loading: the list endpoint no longer returns ticket body.
-// When the detail panel opens (or the ticket changes), fetch the content.
-const ticketContent = ref('')
-const contentLoading = ref(false)
+const detailedTicket = ref<BlackboardTicket | null>(null)
+const detailLoading = ref(false)
+const detailError = ref('')
+const documentTicket = computed(() => detailedTicket.value ?? props.ticket)
 const deprecateConfirmVisible = ref(false)
 const ticketMenuOpen = ref(false)
 
-async function fetchContent() {
-  contentLoading.value = true
+async function fetchDetail() {
+  detailLoading.value = true
+  detailError.value = ''
   try {
-    ticketContent.value = await loadTicketContent(props.project, props.ticket.id)
-  } catch {
-    ticketContent.value = ''
+    detailedTicket.value = await loadTicketDetail(props.project, props.ticket.id)
+  } catch (err) {
+    detailedTicket.value = null
+    detailError.value = err instanceof Error ? err.message : String(err)
   } finally {
-    contentLoading.value = false
+    detailLoading.value = false
   }
 }
 
@@ -65,7 +64,7 @@ watch(
   () => {
     deprecateConfirmVisible.value = false
     ticketMenuOpen.value = false
-    fetchContent()
+    fetchDetail()
   },
   { immediate: true },
 )
@@ -113,7 +112,7 @@ const relatedTickets = computed(() =>
 )
 const attachmentKindOptions = ['wiki', 'ticket', 'file', 'url', 'artifact', 'run', 'external']
 const currentAttachments = computed(() =>
-  normalizeAttachmentList(props.ticket.attachments ?? attachmentsFromExtra(props.ticket.extra)),
+  normalizeAttachmentList(props.ticket.attachments),
 )
 const attachmentDrafts = ref<TicketAttachment[]>([])
 const attachmentError = ref('')
@@ -124,7 +123,7 @@ const attachmentsDirty = computed(
 )
 
 watch(
-  () => [props.ticket.id, props.ticket.attachments, props.ticket.extra.attachments],
+  () => [props.ticket.id, props.ticket.attachments],
   () => {
     attachmentDrafts.value = currentAttachments.value.map(cloneAttachment)
     attachmentError.value = ''
@@ -351,13 +350,13 @@ function openAttachment(attachment: TicketAttachment) {
         </div>
       </section>
 
-      <section v-if="progressPreview" class="ticket-detail-progress">
-        <span>{{ t('currentProgress') }}</span>
-        <p>{{ progressPreview }}</p>
-      </section>
-
-      <section v-if="relatedTickets.length > 0" class="ticket-detail-links">
-        <h3>{{ t('dependencies') }}</h3>
+      <section v-if="relatedTickets.length > 0" class="ticket-detail-section ticket-detail-links">
+        <header class="ticket-detail-section-head">
+          <div class="ticket-detail-section-title">
+            <h3>{{ t('dependencies') }}</h3>
+            <span class="ticket-detail-section-count">{{ relatedTickets.length }}</span>
+          </div>
+        </header>
         <button
           v-for="item in relatedTickets"
           :key="item.id"
@@ -369,86 +368,85 @@ function openAttachment(attachment: TicketAttachment) {
         </button>
       </section>
 
-      <section class="ticket-detail-attachments">
-        <div class="ticket-detail-section-head">
-          <h3>{{ t('attachments') }}</h3>
-          <button class="ticket-detail-small-action" type="button" @click="addAttachment">
-            <Plus class="bb-top-action-svg" aria-hidden="true" />
-            {{ t('add') }}
-          </button>
-        </div>
+      <div class="ticket-detail-content-grid ticket-detail-content-grid--single">
+        <article class="ticket-detail-document">
+          <TicketStructuredDocument
+            :ticket="documentTicket"
+            :loading="detailLoading"
+            :error="detailError"
+          />
 
-        <div v-if="attachmentDrafts.length > 0" class="ticket-attachment-list">
-          <div
-            v-for="(attachment, index) in attachmentDrafts"
-            :key="`${index}-${attachment.kind}-${attachment.target}`"
-            class="ticket-attachment-row"
-          >
-            <select v-model="attachment.kind" class="ticket-attachment-kind" :aria-label="t('attachmentKind')">
-              <option v-for="kind in attachmentKindOptions" :key="kind" :value="kind">
-                {{ kind }}
-              </option>
-            </select>
-            <input
-              v-model.trim="attachment.target"
-              class="ticket-attachment-target"
-              type="text"
-              :placeholder="t('attachmentTarget')"
-            />
-            <input
-              v-model.trim="attachment.label"
-              class="ticket-attachment-label"
-              type="text"
-              :placeholder="t('attachmentLabel')"
-            />
-            <button
-              class="bb-icon-button ticket-attachment-icon"
-              type="button"
-              :aria-label="t('open')"
-              :disabled="!attachmentHref(attachment)"
-              @click="openAttachment(attachment)"
-            >
-              <ExternalLink class="bb-icon-glyph" aria-hidden="true" />
-            </button>
-            <button
-              class="bb-icon-button ticket-attachment-icon"
-              type="button"
-              :aria-label="t('removeAttachment')"
-              @click="removeAttachment(index)"
-            >
-              <Trash2 class="bb-icon-glyph" aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-        <p v-else class="ticket-attachment-empty">{{ t('noAttachments') }}</p>
+          <section class="ticket-detail-section ticket-detail-attachments">
+            <div class="ticket-detail-section-head">
+              <div class="ticket-detail-section-title">
+                <h3>{{ t('attachments') }}</h3>
+                <span class="ticket-detail-section-count">{{ attachmentDrafts.length }}</span>
+              </div>
+              <button class="ticket-detail-small-action" type="button" @click="addAttachment">
+                <Plus class="bb-top-action-svg" aria-hidden="true" />
+                {{ t('add') }}
+              </button>
+            </div>
 
-        <div class="ticket-detail-attachment-actions">
-          <span v-if="attachmentError" class="ticket-detail-attachment-error">
-            {{ attachmentError }}
-          </span>
-          <button
-            class="ticket-detail-save-attachments"
-            type="button"
-            :disabled="attachmentsSaving || !attachmentsDirty"
-            @click="saveAttachments"
-          >
-            {{ attachmentsSaving ? t('saving') : t('save') }}
-          </button>
-        </div>
-      </section>
+            <div v-if="attachmentDrafts.length > 0" class="ticket-attachment-list">
+              <div
+                v-for="(attachment, index) in attachmentDrafts"
+                :key="`${index}-${attachment.kind}-${attachment.target}`"
+                class="ticket-attachment-row"
+              >
+                <select v-model="attachment.kind" class="ticket-attachment-kind" :aria-label="t('attachmentKind')">
+                  <option v-for="kind in attachmentKindOptions" :key="kind" :value="kind">
+                    {{ kind }}
+                  </option>
+                </select>
+                <input
+                  v-model.trim="attachment.target"
+                  class="ticket-attachment-target"
+                  type="text"
+                  :placeholder="t('attachmentTarget')"
+                />
+                <input
+                  v-model.trim="attachment.label"
+                  class="ticket-attachment-label"
+                  type="text"
+                  :placeholder="t('attachmentLabel')"
+                />
+                <button
+                  class="bb-icon-button ticket-attachment-icon"
+                  type="button"
+                  :aria-label="t('open')"
+                  :disabled="!attachmentHref(attachment)"
+                  @click="openAttachment(attachment)"
+                >
+                  <ExternalLink class="bb-icon-glyph" aria-hidden="true" />
+                </button>
+                <button
+                  class="bb-icon-button ticket-attachment-icon"
+                  type="button"
+                  :aria-label="t('removeAttachment')"
+                  @click="removeAttachment(index)"
+                >
+                  <Trash2 class="bb-icon-glyph" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+            <p v-else class="ticket-attachment-empty">{{ t('noAttachments') }}</p>
 
-      <div class="ticket-detail-content-grid">
-        <article v-if="contentLoading" class="ticket-detail-document">
-          <p>{{ t('loading') }}</p>
+            <div class="ticket-detail-attachment-actions">
+              <span v-if="attachmentError" class="ticket-detail-attachment-error">
+                {{ attachmentError }}
+              </span>
+              <button
+                class="ticket-detail-save-attachments"
+                type="button"
+                :disabled="attachmentsSaving || !attachmentsDirty"
+                @click="saveAttachments"
+              >
+                {{ attachmentsSaving ? t('saving') : t('save') }}
+              </button>
+            </div>
+          </section>
         </article>
-        <template v-else>
-          <article class="ticket-detail-document">
-            <MarkdownRenderer :content="ticketContent" :locale="locale" />
-          </article>
-          <aside class="ticket-detail-toc">
-            <TableOfContents :content="ticketContent" :locale="locale" />
-          </aside>
-        </template>
       </div>
 
       <div

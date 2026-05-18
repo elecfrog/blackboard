@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "000064",
+  "lane": "bbd",
+  "title": "TaskGraph 前端 Graph 与 Run UI：节点编辑、状态覆盖与 Artifact 面板",
+  "summary": "升级 TaskGraph catalog/editor/preview/run panel 为可观察、可调试、可操作的前端执行台，支持节点分类、typed pins、运行时状态覆盖与 artifact 查看。",
+  "stories": [
+    {
+      "id": "793e613e-3f8b-42af-81c5-1df0c4fab7f4",
+      "given": "用户需要在 TaskGraph 前端编辑节点、覆盖运行时状态、查看 artifact 和操作审批/取消/重试。",
+      "when": "用户使用 Graph Editor 进行节点编排，或在 Run UI 中观察任务运行状态并执行操作。",
+      "then": "前端能够清晰呈现节点类型、typed pins、运行状态、错误、事件时间线、artifact，并提供审批/取消/重试等操作入口。"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-14",
+      "summary": "从 #000055 拆出前端 Graph 与 Run UI 子单",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "codex 完善 ticket 描述、范围边界与实施计划，对齐父单并盘点现有组件",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "完成 TaskGraph Editor canvas-first 第一轮优化：Graph Inputs/Settings 改为顶部摘要条+浮层编辑，canvas 成主工作区",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "按 UE Blueprint Pin 风格调整 GraphCanvas pin 渲染：exec 流改用三角 glyph，data pin 保留圆点和标签",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "实现 TaskGraph run data contract 前端补充：current_graph_revision、active_nodes、topology mutation result types 等",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-14",
+  "updated_at": "2026-05-17",
+  "extra": {
+    "area": "TaskGraph",
+    "assignee": "codex",
+    "depends_on": "000055",
+    "kind": "execution-subtrack",
+    "parent": "000055",
+    "requested_by": "user",
+    "scope": "frontend-graph-run-ui"
+  }
+}

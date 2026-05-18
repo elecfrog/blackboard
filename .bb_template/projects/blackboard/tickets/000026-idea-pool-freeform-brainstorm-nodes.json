@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "000026",
+  "lane": "bbp",
+  "title": "Idea Canvas：轻量自由的想法白板",
+  "summary": "Idea Canvas 是轻量自由的想法白板，提供低压力、自由、松散的空间，让用户把暂时还不想整理成 ticket 的想法先放下来。",
+  "stories": [
+    {
+      "id": "b78b9d39-3cac-40a2-9d8b-5c111a3e7202",
+      "given": "用户打开 Idea Canvas",
+      "when": "用户在左侧选择或创建一个 canvas",
+      "then": "右侧展示该 canvas 的白板空间"
+    },
+    {
+      "id": "f62e5f0b-a0b7-43c6-96c7-a232994b20db",
+      "given": "用户在 canvas 画布上",
+      "when": "用户双击白板空白处",
+      "then": "创建一个新的 sticky note，可直接编辑文本"
+    },
+    {
+      "id": "4c2dd564-cca0-4bc3-a2bd-78e8725e0802",
+      "given": "用户在 canvas 上有 sticky note",
+      "when": "用户拖动 sticky note 到新位置",
+      "then": "sticky note 位置更新并持久化"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-17",
+      "summary": "实现 Idea Canvas 后端 project 级存储与 /api/projects/{project}/idea-canvases CRUD",
+      "evidence": [
+        "代码位置：bb_backend/crates/bb_core/src/idea_canvas/mod.rs, bb_cli/src/http/idea_canvas.rs"
+      ]
+    },
+    {
+      "at": "2026-05-17",
+      "summary": "实现前端独立 Idea Canvas 工作区，左侧 canvas 列表，右侧 canvas，双击创建 sticky note",
+      "evidence": [
+        "代码位置：bb_web/src/components/IdeaCanvasPanel.vue, bb_web/src/data/ideaCanvas.ts, bb_web/src/views/BoardView.vue"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-08",
+  "updated_at": "2026-05-17",
+  "extra": {
+    "area": "Idea Canvas",
+    "kind": "product",
+    "product_object": "idea_canvas"
+  }
+}

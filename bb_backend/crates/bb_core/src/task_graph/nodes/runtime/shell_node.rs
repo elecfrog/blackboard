@@ -11,6 +11,7 @@ use chrono::Utc;
 use crate::task_graph::definition::types::{
     ShellConfig, ShellPermission, TaskGraphEdge, TaskGraphError, TaskGraphNode,
 };
+use crate::task_graph::nodes::eval;
 use crate::task_graph::pregel::outcome::NodeOutcome;
 use crate::task_graph::pregel::runner::RunnerOptions;
 use crate::task_graph::run_state::{
@@ -85,18 +86,19 @@ struct ShellProcessResult {
 pub(crate) fn execute_shell_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
-    _run: &TaskGraphRun,
+    run: &TaskGraphRun,
     _edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
 ) -> Result<NodeOutcome, TaskGraphError> {
     let ws = &opts.workspace_root;
     let project = &opts.project;
     let run_id = &opts.run_id;
 
-    let config: ShellConfig =
+    let mut config: ShellConfig =
         serde_json::from_value(node.config.clone()).map_err(|e| TaskGraphError::Parse {
             path: std::path::PathBuf::from(format!("node:{}", node.id)),
             source: e,
         })?;
+    render_shell_config_templates(&mut config, opts, run);
 
     let start_time = Utc::now().to_rfc3339();
     let started = Instant::now();
@@ -382,6 +384,36 @@ pub(crate) fn execute_shell_node(
             graph_mutations: vec![],
         })
     }
+}
+
+fn render_shell_config_templates(
+    config: &mut ShellConfig,
+    opts: &RunnerOptions,
+    run: &TaskGraphRun,
+) {
+    config.cwd = render_shell_template(&config.cwd, opts, run);
+    config.command = render_shell_template(&config.command, opts, run);
+    config.args = config
+        .args
+        .iter()
+        .map(|arg| render_shell_template(arg, opts, run))
+        .collect();
+    config.env = config
+        .env
+        .iter()
+        .map(|(key, value)| (key.clone(), render_shell_template(value, opts, run)))
+        .collect();
+}
+
+fn render_shell_template(value: &str, opts: &RunnerOptions, run: &TaskGraphRun) -> String {
+    eval::render_prompt_template(
+        value,
+        &opts.project,
+        &opts.workspace_root,
+        &opts.scripts_dir,
+        &run.context,
+        None,
+    )
 }
 
 fn prepare_shell(

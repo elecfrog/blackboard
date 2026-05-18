@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "id": "000076",
+  "lane": "bbq",
+  "title": "Ticket Audit：schema 校验与 LLM 修复闭环",
+  "summary": "把 Rust code 生成的 ticket schema 接入日常 ticket audit graph：先用脚本校验本地 ticket 数据，再在发现可修复问题时交给 LLM 按报告修复，最后再次运行同一校验脚本，形成可重复的检查-修复-复查闭环。",
+  "stories": [
+    {
+      "id": "e6ce588e-043f-4803-a924-2e497d7793e4",
+      "given": "项目中已经存在由 Rust 事实源生成的 .bb_template/schemas/ticket.schema.json",
+      "when": "BBPM 运行 task-ticket-audit 维护图",
+      "then": "图必须先执行脚本级 ticket audit，使用 schema 校验每个 JSON ticket，并输出机器可读 report，不能只依赖 LLM 自查",
+      "sample": "报告写入 .bb_template/runtime/ticket-audit/blackboard-latest.json，stdout 只保留 ok/status/finding_count/verification 等摘要。"
+    },
+    {
+      "id": "25a1c511-99a9-4d2a-b84c-1f052f6f2ddd",
+      "given": "ticket audit 脚本发现 ticket JSON、索引或维护命令存在可修复问题",
+      "when": "task-ticket-audit 进入 repair 分支",
+      "then": "LLM 只能根据 audit report 修复列出的 ticket 字段，修复后必须再次运行同一 audit 脚本；复查仍失败时继续小步重试，直到通过或达到最大轮数",
+      "sample": "循环顺序是 audit_tickets.py -> LLM repair -> repair output schema_validate -> audit_tickets.py；exit_code 2 表示继续修，0 表示完成。"
+    },
+    {
+      "id": "e0f18d06-e2a9-41a2-9ac8-88585a33dbce",
+      "given": "ticket 数据已经干净",
+      "when": "task-ticket-audit 运行在日常维护场景",
+      "then": "图应直接通过并保留审计报告，验证 schema 文件、bb_schema check、rebuild_ticket_index、check_ticket_ids、qmd embed 均可运行",
+      "sample": "一次干净运行不应调用 LLM 修复节点，只输出 passed。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "schema_subset",
+      "description": "Python audit 脚本内置的是项目当前 schema 所需的 JSON Schema 子集，不是完整 JSON Schema 引擎。",
+      "mitigation": "脚本同时调用 Rust bb_schema check，日常使用以生成 schema + Rust 校验作为事实源。",
+      "status": "accepted"
+    },
+    {
+      "id": "repair_scope",
+      "description": "LLM 修复可能误改未列入报告的 ticket 或索引文件。",
+      "mitigation": "prompt 明确只修 report 列出的 ticket 字段，索引交给 rebuild_ticket_index；图后置 audit 失败会继续拦住坏输出。",
+      "status": "mitigated"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-18",
+      "summary": "已实现 audit_tickets.py，并把 task-ticket-audit 改成 audit -> repair -> validate -> re-audit 的闭环。",
+      "evidence": [
+        "scripts/audit_tickets.py",
+        ".bb_template/task_graphs/system/task-ticket-audit.json",
+        ".bb_template/agents/prompts/ticket-audit.md"
+      ]
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "已验证干净数据下图可以直接通过，最新报告 status=passed。",
+      "evidence": [
+        "cargo run --manifest-path bb_backend/Cargo.toml -p bb_cli -- --root .bb_template daemon --graph system/task-ticket-audit --project blackboard --once",
+        ".bb_template/runtime/ticket-audit/blackboard-latest.json"
+      ]
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "codex 完成阶段工作，handoff 写入 `2026-05-18-codex-ticket-audit-schema-repair-loop.md`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "Record: 验证：python3 scripts/audit_tickets.py --project blackboard --repo-root . --run-schema-check --run-maintenance: passed，72 JSON tickets，0 legacy markdown，0 findings。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "Record: 验证：cargo run --manifest-path bb_backend/Cargo.toml -p bb_cli -- --root .bb_template daemon --graph system/task-ticket-audit --project blackboard --once: passed，run-20260518-120612-258cb10c。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "Record: 验证：cargo check --manifest-path bb_backend/Cargo.toml --workspace: passed。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "Record: 验证：cargo test --manifest-path bb_backend/Cargo.toml -p bb_core task_graph::tests::tests::test_validate_system_graph_fixture: passed。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "Record: 验证：python3 scripts/check_ticket_ids.py --project blackboard: passed；qmd embed: passed；git diff --check: passed。",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "review",
+  "created_at": "2026-05-18",
+  "updated_at": "2026-05-18",
+  "extra": {
+    "area": "ticket-audit",
+    "parent": "000075",
+    "source": "schema-tooling"
+  }
+}

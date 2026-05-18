@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "000014",
+  "lane": "bbt",
+  "title": "统一 Ticket 状态模型：移除 bucket 双轨状态",
+  "summary": "统一 Ticket 状态模型，只保留 todo/in_progress/blocked/review/done/archived 一套状态，覆盖 Board/Tickets/Graph",
+  "stories": [
+    {
+      "id": "d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f8a",
+      "given": "Blackboard 后端、REST/MCP、Web 存在多套状态模型",
+      "when": "执行状态模型收敛改造",
+      "then": "统一为 todo/in_progress/blocked/review/done/archived 单一状态模型"
+    },
+    {
+      "id": "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b",
+      "given": "前端存在散落的中文状态常量",
+      "when": "统一通过 i18n.ts 的 ticketStatusLabel() 输出状态",
+      "then": "前端状态展示统一通过 i18n 输出，移除散落中文状态常量"
+    },
+    {
+      "id": "f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f8a9b0c",
+      "given": "现有 Markdown ticket 与 __tickets__.json 索引存在旧状态残留",
+      "when": "执行数据迁移清除旧 active/doing/bucket 字段",
+      "then": "现有数据迁移完成，旧状态字段残留已清除"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-07",
+      "summary": "Codex 开始统一 Ticket 状态模型，目标只保留 todo/in_progress/blocked/review/done/archived 一套状态，覆盖 Board/Tickets/Graph"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "Codex 已将后端、REST/MCP、Web Board/Tickets/Graph 收敛到 todo/in_progress/blocked/review/done/archived 单一状态模型"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "前端状态展示统一通过 i18n.ts 的 ticketStatusLabel() 输出，移除散落中文状态常量"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "已迁移现有 Markdown ticket 与 __tickets__.json 索引，清除旧 active/doing/bucket 字段残留"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-07",
+  "updated_at": "2026-05-08",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000013"
+  }
+}

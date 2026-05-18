@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "000042",
+  "lane": "bbq",
+  "title": "Rust 文件模块拆分 review 与实施验证",
+  "summary": "Rust 文件模块拆分 review 与实施验证",
+  "stories": [
+    {
+      "id": "3927776a-f604-469b-88e9-b6fe437d8bcf",
+      "given": "Task Graph 当前使用四向自由连接模型，节点没有显式声明 Pin，连线无法区分控制流和数据流",
+      "when": "用户需要创建节点间连接或理解复杂图的执行流程",
+      "then": "节点显式声明 InPin 和 OutPin，Pin 分 Exec（执行流）和 Data（数据流）两类，连线有方向约束且类型兼容"
+    },
+    {
+      "id": "0b4110ab-7bff-4804-9fa2-c4ffbfd060f0",
+      "given": "系统中存在使用旧格式 JSON 的 Task Graph（没有 pins 字段）",
+      "when": "系统加载这些旧格式 graph 文件",
+      "then": "自动根据 node_type 生成默认 pins，保持向后兼容"
+    }
+  ],
+  "risks": [],
+  "progress_record": [],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-10",
+  "updated_at": "2026-05-10",
+  "extra": {
+    "assignee": "codex",
+    "bb_tools_used": "list_projects:pass; search_tickets:pass; board_summary:pass; create_ticket:pass; append_ticket_sections:pass; update_ticket:pass; create_inbox_note:pass",
+    "handoff_note": "2026-05-10-codex-rust-http-module-split-review-implementation.md",
+    "requested_by": "user",
+    "scope": "rust-code-module-splitting",
+    "validation_required": "cargo build/check; cargo test",
+    "validation_result": "cargo fmt:pass; cargo check workspace:pass; cargo test workspace:pass; git diff --check code paths:pass"
+  }
+}

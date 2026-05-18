@@ -23,6 +23,7 @@ max_concurrent_tasks = 3
 
 [agents.custom_env]
 BB_DAEMON = "1"
+BB_DAEMON_AGENT = "bb-pm"
 
 [[agents.mcp_servers]]
 name = "bb"

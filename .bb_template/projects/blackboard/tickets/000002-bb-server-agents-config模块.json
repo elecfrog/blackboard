@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "id": "000002",
+  "lane": "bbt",
+  "title": "bb-server agents_config 模块：Agent 配置连接器后端",
+  "summary": "bb-server agents_config 模块：Agent 配置连接器后端",
+  "stories": [
+    {
+      "id": "cd4edb7b-9634-4790-99f7-482860b320d1",
+      "given": "Blackboard 需要提供本地多 Agent 工具管理能力",
+      "when": "用户使用 Blackboard 进行多 Agent 协作",
+      "then": "实现统一的工作上下文可视化与管理"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-18",
+      "summary": "子 ticket 落号 2026-05-06，从产品基线 `000001` 拆出。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "**后端实现完成**（2026-05-06）：bb-core `agents_config` 模块（catalog + 状态机 + list/sync/disconnect 三组核心函数 + 11 条单测）、bb-server stdio 三个 MCP 工具、HTTP 三条路由全部就位。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "**CodeBuddy 特化补正**（2026-05-06）：保持三条 Agent 连接器（Codex / CodeBuddy / OpenCode），其中 CodeBuddy 单连接器同步两份目标文件：`~/.codebuddy/AGENTS.md` 与 `~/.codebuddy/rules/blackboard-rules.mdc`；Rules `.mdc` 写入时自动追加 `alwaysApply: true` + `type: always` frontmatter，保证 CodeBuddy 自动应用。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "**测试全绿**：`cargo test` → bb-core 52 通过 / bb-server 24 通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "**HTTP 端到端验证通过**（2026-05-06）：",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "`GET /api/agents/connectors` 返回三条 Agent 连接器；CodeBuddy 的返回对象包含两个 `targets`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "`POST .../{id}/sync` 三连击 → 三条连接器全部 `synced`，CodeBuddy 两份目标文件均与事实源一致。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "`DELETE .../codex` → 回 `missing`，父目录保留。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "再 `POST .../codex/sync` → 重新 `synced`，本机三个 Agent 工具的全局规则均对齐到 `blackboard/agents/AGENTS.md`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "等待 `000003` 接通后做\"web Settings 页一键 Connect\"端到端联调。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "2026-05-06：CodeBuddy 双 target 实现完成，保持三条连接器，codebuddy 同步 AGENTS.md + Rules.mdc 两个目标，Rules.mdc 设置 alwaysApply: true + type: always；修正 check-ticket-ids.sh 旧 family/assignee 校验规则",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-07",
+  "extra": {
+    "depends_on": "000001",
+    "parent": "000001"
+  }
+}

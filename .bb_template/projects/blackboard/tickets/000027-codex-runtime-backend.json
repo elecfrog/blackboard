@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "000027",
+  "lane": "bbt",
+  "title": "Codex Runtime Backend：实现 app-server JSON-RPC 2.0 通信层",
+  "summary": "Codex Runtime Backend 通过 codex exec 实现 app-server JSON-RPC 2.0 通信层，支持 computer-use/browser-use。",
+  "stories": [
+    {
+      "id": "7a08a90c-2ea0-430a-869c-d81bfe20fe50",
+      "given": "codex exec 支持 computer-use/browser-use（features list 确认 stable+true）",
+      "when": "daemon 启动 codex runtime",
+      "then": "通过 codex exec --json -C <dir> -s danger-full-access --ephemeral 路径执行"
+    },
+    {
+      "id": "62881d6c-ffe5-4683-a6fc-c0a9e4ff9045",
+      "given": "daemon 需要根据 runtime 字段分支到不同 agent",
+      "when": "daemon 构建 runtime command",
+      "then": "build_runtime_command helper 根据 tasks.toml 中的 runtime 字段分支到 opencode/codex"
+    },
+    {
+      "id": "0abb022b-f592-4674-896c-fda52aea7063",
+      "given": "需要验证 Codex 运行时能力",
+      "when": "执行 frontend-smoke-test",
+      "then": "使用 Computer Use 驱动的 UI 视觉验收，不再依赖 shell/curl/Playwright"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "完成调研，确认必须走 app-server 路径（exec 不支持 computer-use/browser-use）",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "发现 codex exec 已支持 computer-use/browser-use，实现 codex runtime backend 走 codex exec 路径",
+      "evidence": [
+        "codex features list 显示 computer_use=stable/true, browser_use=stable/true, unified_exec=stable/true"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "daemon 新增 build_runtime_command helper，CLI 新增 --codex 参数",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "创建 frontend-smoke-test prompt 模板，dry-run 验证通过",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-08",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "depends_on": "000018",
+    "parent": "000018"
+  }
+}

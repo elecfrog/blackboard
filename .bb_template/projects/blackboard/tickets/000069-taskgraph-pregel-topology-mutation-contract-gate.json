@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "id": "000069",
+  "lane": "bbt",
+  "title": "TaskGraph 060 Follow-up: Pregel Topology Mutation and Contract Gate",
+  "summary": "实现 TaskGraph 060 后续：Pregel topology mutation、schema_validate contract gate 与 KB workflow",
+  "stories": [
+    {
+      "id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+      "given": "000060 TaskGraph 的 Graph Compile / Pregel / Superstep Execution Kernel 已实现",
+      "when": "需要执行 topology mutation 操作",
+      "then": "scout/writer fanout、schema_validate 路由、LLM repair 分支合并或触发 staging artifact"
+    },
+    {
+      "id": "e5f6a7b8-c9d0-1234-efab-345678901234",
+      "given": "kb-wiki-build-workflow 运行 MiniMax supervisor",
+      "when": "执行 kb-wiki-build-workflow",
+      "then": "scout/writer mutation staging artifact review repair loop 正常工作"
+    },
+    {
+      "id": "f6a7b8c9-d0e1-2345-fabc-456789012345",
+      "given": "schema_validate 已实现",
+      "when": "执行 validate -> route -> repair -> final gate",
+      "then": "KB 的 validate 步骤正确执行并进入下一阶段"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-17",
+      "summary": "基于 000060 实现 topology mutation，schema_validate contract gate 完成验证",
+      "evidence": [
+        "cargo fmt --all",
+        "cargo test -p bb_core task_graph --lib",
+        "kb-wiki-build-workflow run-20260517-091918-841162ec succeeded"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-17",
+  "updated_at": "2026-05-17",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000060",
+    "kind": "topology-mutation-contract-gate",
+    "layer": "execution-core",
+    "parent": "000060",
+    "requested_by": "user",
+    "scope": "pregel-topology-mutation-schema-validate-repair-kb-workflow-practice"
+  }
+}

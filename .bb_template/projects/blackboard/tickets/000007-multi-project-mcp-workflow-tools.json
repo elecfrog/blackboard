@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "id": "000007",
+  "lane": "bbt",
+  "title": "多 Project MCP 工作流工具",
+  "summary": "新增find_work_context、begin_ticket_work、complete_handoff组合工具，支持跨project扫active ticket、设置in_progress与assignee、写瘦handoff并回填ticket",
+  "stories": [
+    {
+      "id": "2c15eb18-e7af-4961-9898-ea3e7ac75f0b",
+      "given": "Agent需要查找work context",
+      "when": "调用find_work_context且无project参数",
+      "then": "返回跨4个projects的active tickets列表；project+query返回{filename,line,path,snippet}匹配体"
+    },
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "given": "Agent找到work context后开始工作",
+      "when": "调用begin_ticket_work",
+      "then": "设置in_progress状态、assignee并追加progress bullet，maintenance.consistency=passed"
+    },
+    {
+      "id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+      "given": "Agent完成任务需要收尾",
+      "when": "调用complete_handoff",
+      "then": "在inbox按YYYY-MM-DD-<source>-<topic>.md生成瘦handoff，ticket状态改为review，正文progress/record/next_step三节全追加"
+    }
+  ],
+  "risks": [
+    {
+      "id": "complete-handoff-done-ticket-regression",
+      "description": "complete_handoff对已done的ticket会无条件把status打回review",
+      "mitigation": "另行开票处理"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-07",
+      "summary": "从用户夜间任务拆出，准备实现多project工作流MCP工具"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "完成多project MCP工作流工具：find_work_context、begin_ticket_work、complete_handoff"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "用户按方案2验收通过，三工具A+B+C冒烟全链路跑通"
+    },
+    {
+      "at": "2026-05-10",
+      "summary": "修复find_work_context返回协议，改为统一MCP text content tool result"
+    },
+    {
+      "at": "2026-05-10",
+      "summary": "同步修复complete_handoff同类返回协议问题"
+    },
+    {
+      "at": "2026-05-10",
+      "summary": "补齐complete_handoff tools/list inputSchema必填id字段"
+    },
+    {
+      "at": "2026-05-10",
+      "summary": "通查MCP工具返回路径统一content text result；修复create_inbox_note/tools/list schema误要求id；补充清单驱动回归测试"
+    },
+    {
+      "at": "2026-05-10",
+      "summary": "codex完成阶段工作，handoff写入2026-05-10-codex-find-work-context-mcp-返回协议修复.md和2026-05-10-codex-mcp-工具全量-content-协议回归.md"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-10",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000006",
+    "parent": "000005"
+  }
+}

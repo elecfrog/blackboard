@@ -19,7 +19,7 @@ Rules:
 - Prefer direct evidence to broad similarity. If several tickets could match, retain the note and report why it is ambiguous.
 - Do not create new tickets.
 - Do not move any ticket to `done`; inbox cleanup should preserve facts, not close work unless the note explicitly records an already completed ticket transition.
-- For every note you delete, first append the durable facts into the relevant existing ticket section with `append_ticket_sections`.
+- For every note you delete, first append the durable facts into the relevant existing ticket with `append_ticket_sections`; JSON tickets store this in `progress_record`, not Markdown body text.
 - Delete only notes whose facts were fully incorporated, using `delete_inbox_note`.
 - Retain notes when the target ticket is unclear or the content should not yet be condensed.
 - If any MCP write or delete fails, stop and report the failure. Do not fall back to manual file edits.

@@ -8,6 +8,7 @@
 - `tool_search` 找不到 Blackboard 工具不等于 Blackboard MCP 不存在，也不等于 ticket/inbox/lane 操作被阻塞。Codex 必须继续执行下面的 **Remote MCP 兜底协议**；只有兜底协议也确认失败，才允许报告 Blackboard 工具不可用。
 - 只有当用户明确给出 ticket ID、要求操作 ticket/lane、或任务本身必须依赖 Blackboard 历史上下文才能安全推进时，才在工作前加载并使用 Blackboard 工具。
 - 在 Codex 里，Blackboard 工具可能显示为命名空间形式，例如 `mcp__bb__.list_projects`、`mcp__bb__.find_work_context`、`mcp__bb__.create_inbox_note`；这与 `bb_list_projects` 等裸 MCP 工具名是同一组能力的展示差异。
+- Blackboard MCP 默认是 `agent` 工具 profile，只暴露日常 project/ticket/inbox 工具。`tools/list` 没有返回的管理/清理工具不能靠手改本地文件绕过；需要由服务端以 `BB_MCP_TOOL_PROFILE=admin`、`BB_MCP_TOOL_PROFILE=dev-all`，或 `BB_DAEMON=1` + `BB_DAEMON_AGENT=bb-pm` 显式启动对应 profile。
 - 最终回答和 inbox 交接里记录实际调用名和结果，例如 `mcp__bb__.list_projects: 通过`，不要把“初始工具列表未显示”误报成 Blackboard 工具不存在。
 
 ## Codex Remote MCP 兜底协议
@@ -23,7 +24,7 @@
 1. 读取本机 Codex 配置中的 Blackboard MCP 地址：优先使用 `~/.codex/config.toml` 的 `[mcp_servers.bb].url`；如果读取失败，默认使用 `http://127.0.0.1:3001/mcp`。
 2. 先检查后端是否运行：请求 `GET http://127.0.0.1:3001/healthz`，或用配置 URL 同 host 的 `/healthz`。只要返回成功，就视为后端在线。
 3. 对 MCP URL 发送 JSON-RPC `initialize` 请求。响应 header 中的 `mcp-session-id` 是后续请求必需字段。
-4. 带 `mcp-session-id` 调用 JSON-RPC `tools/list`。如果返回 `list_projects`、`read_ticket_by_id`、`create_ticket`、`update_ticket`、`append_ticket_sections`、`create_inbox_note` 等工具，则 Blackboard MCP 可用。
+4. 带 `mcp-session-id` 调用 JSON-RPC `tools/list`。如果返回 `list_projects`、`read_ticket_by_id`、`create_ticket`、`update_ticket`、`append_ticket_sections`、`create_inbox_note` 等默认 Agent 工具，则 Blackboard MCP 可用。
 5. 之后所有 Blackboard 操作通过 JSON-RPC `tools/call` 调用原始工具名，例如 `list_projects`、`search_tickets`、`read_ticket_by_id`、`create_ticket`、`update_ticket`、`append_ticket_sections`、`create_inbox_note`。
 6. Remote MCP `/mcp tools/call` 是结构化 Blackboard MCP 工具调用，满足 ticket 工具门禁；不要因为 active tools 面板没有 `mcp__bb__` namespace 就退回手改 Markdown。
 
@@ -39,6 +40,18 @@
 
 ```json
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"read_ticket_by_id","arguments":{"project":"blackboard","id":"000060"}}}
+```
+
+创建 JSON BDD ticket 的最小形态：
+
+```json
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"create_ticket","arguments":{"project":"blackboard","lane":"bbd","title":"Ticket 标题","status":"todo","spec":{"summary":"当前有效行为定义摘要","stories":[{"given":"前置条件","when":"触发行为","then":"期望结果"}],"risks":[],"progress_record":[]},"attachments":[]}}}
+```
+
+更新附件或行为定义的形态：
+
+```json
+{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"update_ticket","arguments":{"project":"blackboard","id":"000074","frontmatter":{"attachments":[{"kind":"wiki","target":"proposal/demo.md","label":"Demo"}]}}}}
 ```
 
 注意：
@@ -62,8 +75,10 @@
 
 ## Blackboard Ticket 工具门禁
 
-- 对 ticket 或 lane 做任何变更时，必须使用 `bb_*` 结构化 MCP 工具（如 `bb_create_ticket`、`bb_update_ticket`、`bb_append_ticket_sections`、`bb_list_lanes`、`bb_upsert_lane`、`bb_archive_lane`）。不要手改 ticket Markdown，除非用户明确要求裸文件流程且确认当前 project 使用本地文件存储。
-- Ticket ID、lane、status、frontmatter / extra、正文追加、索引维护和权限判断都由 `bb_*` 工具后端负责。Agent 不跨 project 猜号、不根据文件名推断权威状态、不直接读写 `__tickets__.json` 或 `__project__.json`。
+- 对 ticket 或 lane 做任何变更时，必须使用 `bb_*` 结构化 MCP 工具（如 `bb_create_ticket`、`bb_update_ticket`、`bb_append_ticket_sections`、`bb_list_lanes`、`bb_upsert_lane`、`bb_archive_lane`）。不要手改 ticket 文件，除非用户明确要求裸文件流程且确认当前任务是本地 Blackboard 数据迁移/后端开发。
+- Ticket 的权威形态是 JSON BDD。创建 ticket 时调用 `bb_create_ticket` / `create_ticket`，必须显式传 `spec.summary`、`spec.stories`、`spec.risks`、`spec.progress_record` 和顶层 `attachments`，即使为空也传 `[]`。不要写 Markdown 正文、不要写 `ticket_spec`、不要把附件塞进 `extra.attachments`。
+- 更新 ticket 时调用 `bb_update_ticket` / `update_ticket`，只传要改的字段；更新附件使用 `frontmatter.attachments`，更新行为定义使用 `frontmatter.spec`。追加工作过程用 `bb_append_ticket_sections` / `append_ticket_sections`；对 JSON ticket 后端会写入 `progress_record`，不是 Markdown 正文。
+- Ticket ID、lane、status、extra、attachments、progress_record、索引维护和权限判断都由 `bb_*` 工具后端负责。Agent 不跨 project 猜号、不根据文件名推断权威状态、不直接读写 `__tickets__.json` 或 `__project__.json`。
 - Ticket 可能没有本地文件路径，也可能对当前 Agent 只读。工具返回 blocked / forbidden / not_found / conflict 时，停止本项 ticket/lane 写入并把工具结果作为阻塞事实汇报，不要绕过权限改文件。
 - 只有当任务本身是 Blackboard 本地后端/脚本/数据迁移开发，并且用户明确要求本地文件流程时，才把 `python "$BB_SCRIPTS_DIR/check_ticket_ids.py"`、`qmd embed` 作为本地数据门禁；云端或远端 ticket/lane 变更以 `bb_*` 工具响应为门禁。
 - 如果改动涉及 Blackboard Web 前端源码（`bb_web/src` 下），还需追加 `npm run build --prefix bb_web` 验证前端构建。

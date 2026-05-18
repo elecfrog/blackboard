@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "id": "000038",
+  "lane": "bbq",
+  "title": "Task Graph MVP 集成验收：内置样例工作流端到端跑通",
+  "summary": "用 BB 内置 system graph 样例完成 Task Graph MVP 端到端验收，覆盖 catalog、customize、编辑、运行、branch、loop、human gate、日志和 artifact",
+  "stories": [
+    {
+      "id": "d4e5f6a7-b8c9-7d0e-1f2a-3b4c5d6e7f8a",
+      "given": "用户打开 Task Graph catalog",
+      "when": "用户选择并运行 BB 内置 system graph 样例",
+      "then": "样例工作流 Start -> LLM 生成检查计划 -> registered_task frontend-smoke-test -> Branch 判断 -> LLM 生成修复建议 -> Human Gate -> Loop 重试最多 3 次 -> End 完整执行",
+      "sample": "system graph 可直接运行；system graph 可 fork 成 project graph"
+    },
+    {
+      "id": "e5f6a7b8-c9d0-8e1f-2a3b-4c5d6e7f8a9b",
+      "given": "project graph 存在",
+      "when": "用户编辑 project graph 并保存",
+      "then": "run snapshot 可追溯；run UI 展示状态",
+      "sample": "project graph 可编辑保存"
+    },
+    {
+      "id": "f6a7b8c9-d0e1-9f2a-3b4c-5d6e7f8a9b0c",
+      "given": "Task Graph MVP 功能运行",
+      "when": "执行端到端验收",
+      "then": "Ticket Graph 依赖编辑、Tickets 三视图、daemon 现有 tasks.toml 单点任务不退化",
+      "sample": "回归范围覆盖"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "Task Graph cleanup: 完成 038 Task Graph MVP 端到端验收实施，新增 run API create/list/read/cancel HTTP 验收测试",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "Task Graph cleanup: 新增 architecture/task-graph-mvp-e2e-validation.md，沉淀 frontend-smoke-loop 样例工作流验收记录",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "Task Graph cleanup: 更新 blackboard wiki index，将 Task Graph MVP E2E 验收记录纳入导航",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "Task Graph cleanup: 完成 core/interpreter、HTTP API、前端 build 和 8060 浏览器端到端 smoke 自测",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-09",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "area": "TaskGraph",
+    "assignee": "codebuddy",
+    "depends_on": "000033 000036 000037",
+    "kind": "quality",
+    "parent": "000028"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "000004",
+  "lane": "bbp",
+  "title": "Blackboard 转为正常 C/S 数据路径，移除离线快照语义",
+  "summary": "前端数据层从静态 JSON fallback 改为只读 /api/** runtime 数据，移除离线快照语义，bb-server 成为唯一运行时数据源。",
+  "stories": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440004",
+      "given": "bb-server 未启动时用户访问 Blackboard Web",
+      "when": "用户访问 Board/Tickets/Inbox/Settings 任一页面",
+      "then": "Web 明确提示 API 不可用，而不是降级到静态快照"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440005",
+      "given": "bb-server 正常启动并运行在 3001 端口",
+      "when": "用户访问 Board/Tickets/Inbox/Settings 任一页面",
+      "then": "页面从 /api/** 运行时 API 渲染实时数据"
+    }
+  ],
+  "risks": [
+    {
+      "id": "no-fallback-data",
+      "description": "bb-server 不可用时前端完全不可用",
+      "mitigation": "产品语义已确认：明确报错优于静默降级"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-06",
+      "summary": "产品方向确认，Blackboard 不再以离线快照/前端尽量 ReadOnly 为目标"
+    },
+    {
+      "at": "2026-05-06",
+      "summary": "Web 数据层已移除 projects/tickets/inbox/lanes 的静态 JSON runtime fallback，Board/Inbox UI 不再展示离线快照语义"
+    },
+    {
+      "at": "2026-05-06",
+      "summary": "bb-server HTTP 文档与注释已改为正常 C/S runtime API，/api/projects 响应补充 generated_at"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-08",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000001",
+    "parent": "000001"
+  }
+}

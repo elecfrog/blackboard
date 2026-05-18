@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "id": "000013",
+  "lane": "bbt",
+  "title": "BB 服务独立部署与独立 repo 运行收口",
+  "summary": "收口 Blackboard 独立 repo 下 bb-server、bb_web、启动脚本与本地部署验证路径",
+  "stories": [
+    {
+      "id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "given": "用户克隆了 Blackboard 独立 repo",
+      "when": "用户执行 python3 scripts/setup.py",
+      "then": "所有依赖安装完成，本地开发环境就绪"
+    },
+    {
+      "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+      "given": "本地开发环境已通过 setup.py 就绪",
+      "when": "用户执行 python3 scripts/dev.py",
+      "then": "bb_backend 和 bb_web 启动成功，端口监听正常"
+    },
+    {
+      "id": "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
+      "given": "bb_server 已启动",
+      "when": "用户执行 bb_server daemon --agent bb-pm",
+      "then": "daemon 正常运行，处理 inbox handoff 并完成 ticket 凝练"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-07",
+      "summary": "Codex 创建本 ticket，收口 Blackboard 独立 repo 下 bb-server、bb_web、启动脚本与本地部署验证路径"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "Codex 新增 scripts/setup.py 与 scripts/dev.py，形成 clone/pull 后先 setup、日常开发跑 dev.py 的固定入口，并移除旧 restart-bb.py"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "Codex 新增根 .gitignore，忽略 Python __pycache__ 与 pyc 产物"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "Codex 移除非跨平台 shell 门禁 scripts/check-ticket-ids.sh，改为 Python 标准库实现 scripts/check_ticket_ids.py"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "Codex 移除已完成历史使命的一次性 migrate-family-to-lane.mjs，生产化 scripts 只保留可重复使用的 setup/dev/check 工具"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "修复 scripts/restart-bb.py 端口清理逻辑，macOS/Linux 用 lsof 查监听 PID，保留 Windows netstat/taskkill 路径"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "将重启脚本里的后端描述统一为 bb_backend"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "bb_server 新增 daemon 子命令原型（本地无头 runtime manager），增加 .bb_runtime 状态文件记录处理结果"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "新增 bb-pm handoff 派发流程，按 project 扫描 inbox note 并构造单条处理 prompt，默认每轮 1 条"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "daemon 增加 --dry-run/--once/--project/--retry-failed/--max-dispatch-per-scan 等试点参数"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "真实试跑 bb_server daemon --agent bb-pm，完成首条 inbox handoff 的 ticket 凝练与删除"
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "调整 daemon 状态判定逻辑，识别权限拒绝/dry-run/retained/failed/completed 状态"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-07",
+  "updated_at": "2026-05-08",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000005"
+  }
+}

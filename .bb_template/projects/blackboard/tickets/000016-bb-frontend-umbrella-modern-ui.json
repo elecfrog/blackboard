@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "id": "000016",
+  "lane": "bbd",
+  "title": "前端美化专项",
+  "summary": "前端美化专项，收纳和管理前端体验优化、视觉打磨、交互一致性与现代化UI改造",
+  "stories": [
+    {
+      "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "given": "用户访问 Blackboard Web 各个页面",
+      "when": "需要执行 UI 优化和视觉打磨",
+      "then": "界面保持一致性和现代化风格，验证通过"
+    },
+    {
+      "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "given": "Codex Agent 接手前端美化任务",
+      "when": "执行具体 UI 优化时",
+      "then": "把范围、验证和完成记录沉淀到本单或明确关联到本单"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-07",
+      "summary": "创建 BB 系统前端总单，用于收纳和管理前端体验优化、视觉打磨、交互一致性与现代化 UI 改造",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "完成 Graph 标题副标题、toolbar 引导文案、Board summary 路径隐藏与 Settings Agent connector 文案美化",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "完成 Graph dark mode pin rings 修复，仅可见小圆点描边，hit target 保持透明",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "完成 bb_web/DESIGN.md 改写为 Blackboard Notion-like workbench 设计规范",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "放松 Lucide 替换后侧栏导航行间距，Board/Tickets/Graph 行更高可读",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "修复 Board topbar action 布局，locale/theme/lane/refresh 按钮在 i18n 切换时保持固定宽度",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "移除 sidebar Board/Tickets 计数胶囊，新增 Inbox 计数胶囊",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "统一 workspace sidebar 活动态、Agent workbench 选中态/hero/头像/指标、Settings connector 行/同步按钮/计数胶囊为黑白中性色",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-07",
+  "updated_at": "2026-05-08",
+  "extra": {
+    "area": "bb_web",
+    "assignee": "codex",
+    "kind": "umbrella",
+    "scope": "frontend-ui-ux"
+  }
+}

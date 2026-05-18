@@ -11,6 +11,147 @@ use serde_json::{json, Map, Value};
 mod schema;
 pub(crate) use schema::tools_list;
 
+const ALL_TOOL_NAMES: &[&str] = &[
+    "list_projects",
+    "find_work_context",
+    "list_agents",
+    "upsert_agent",
+    "list_inbox_notes",
+    "read_inbox_note",
+    "delete_inbox_note",
+    "list_tickets",
+    "read_ticket",
+    "read_ticket_by_id",
+    "create_ticket",
+    "update_ticket",
+    "deprecate_ticket",
+    "append_ticket_sections",
+    "begin_ticket_work",
+    "complete_handoff",
+    "board_summary",
+    "list_lanes",
+    "upsert_lane",
+    "archive_lane",
+    "upsert_project_agent",
+    "remove_project_agent",
+    "search_notes",
+    "search_tickets",
+    "create_inbox_note",
+    "list_agent_connectors",
+    "sync_agent_connector",
+    "disconnect_agent_connector",
+];
+
+const AGENT_TOOL_NAMES: &[&str] = &[
+    "list_projects",
+    "find_work_context",
+    "list_inbox_notes",
+    "read_inbox_note",
+    "read_ticket_by_id",
+    "create_ticket",
+    "update_ticket",
+    "append_ticket_sections",
+    "begin_ticket_work",
+    "complete_handoff",
+    "list_lanes",
+    "search_notes",
+    "search_tickets",
+    "create_inbox_note",
+];
+
+const BBPM_TOOL_NAMES: &[&str] = &[
+    "list_projects",
+    "find_work_context",
+    "list_inbox_notes",
+    "read_inbox_note",
+    "delete_inbox_note",
+    "list_tickets",
+    "read_ticket",
+    "read_ticket_by_id",
+    "update_ticket",
+    "deprecate_ticket",
+    "append_ticket_sections",
+    "complete_handoff",
+    "board_summary",
+    "list_lanes",
+    "search_notes",
+    "search_tickets",
+    "create_inbox_note",
+];
+
+const ADMIN_TOOL_NAMES: &[&str] = &[
+    "list_projects",
+    "list_agents",
+    "upsert_agent",
+    "board_summary",
+    "list_lanes",
+    "upsert_lane",
+    "archive_lane",
+    "upsert_project_agent",
+    "remove_project_agent",
+    "deprecate_ticket",
+    "list_agent_connectors",
+    "sync_agent_connector",
+    "disconnect_agent_connector",
+];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ToolProfile {
+    Agent,
+    Bbpm,
+    Admin,
+    DevAll,
+}
+
+impl ToolProfile {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Agent => "agent",
+            Self::Bbpm => "bbpm",
+            Self::Admin => "admin",
+            Self::DevAll => "dev-all",
+        }
+    }
+
+    pub(crate) fn allows(self, name: &str) -> bool {
+        match self {
+            Self::Agent => AGENT_TOOL_NAMES.contains(&name),
+            Self::Bbpm => BBPM_TOOL_NAMES.contains(&name),
+            Self::Admin => ADMIN_TOOL_NAMES.contains(&name),
+            Self::DevAll => ALL_TOOL_NAMES.contains(&name),
+        }
+    }
+}
+
+pub(crate) fn current_tool_profile() -> ToolProfile {
+    if is_bbpm_daemon() {
+        return ToolProfile::Bbpm;
+    }
+    match std::env::var("BB_MCP_TOOL_PROFILE")
+        .unwrap_or_default()
+        .as_str()
+    {
+        "bbpm" | "bb-pm" => ToolProfile::Bbpm,
+        "admin" => ToolProfile::Admin,
+        "dev-all" | "all" => ToolProfile::DevAll,
+        _ => ToolProfile::Agent,
+    }
+}
+
+fn ensure_tool_available(name: &str) -> Result<(), (i64, String)> {
+    let profile = current_tool_profile();
+    if ALL_TOOL_NAMES.contains(&name) && !profile.allows(name) {
+        return Err((
+            -32601,
+            format!(
+                "tool `{name}` is not available for MCP profile `{}`",
+                profile.as_str()
+            ),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn handle_tool_call(
     workspace: &Workspace,
     params: &Value,
@@ -23,6 +164,7 @@ pub(crate) fn handle_tool_call(
         .get("arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
+    ensure_tool_available(name)?;
 
     match name {
         "list_projects" => return to_tool_result(workspace.list_projects()),
@@ -86,13 +228,6 @@ pub(crate) fn handle_tool_call(
             to_tool_result(board.read_note(note_name))
         }
         "delete_inbox_note" => {
-            if !is_bbpm_daemon() {
-                return Err((
-                    -32603,
-                    "delete_inbox_note is only available to bb-pm when launched by bb daemon"
-                        .to_string(),
-                ));
-            }
             let note_name = rest.get("name").and_then(Value::as_str).ok_or_else(|| {
                 (
                     -32602,

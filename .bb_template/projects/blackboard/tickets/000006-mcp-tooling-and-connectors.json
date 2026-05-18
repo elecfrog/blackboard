@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "000006",
+  "lane": "bbt",
+  "title": "MCP 重构与增强：工具 Schema 模块化 + 三家 Agent MCP 注入",
+  "summary": "把 MCP 工具定义从 stdio.rs 传输层拆分到 mcp_tools.rs，实现工具目录共享；新增 Agent 连接器支持把 bb-server remote MCP endpoint 注入到三家 Agent 配置。",
+  "stories": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440009",
+      "given": "新增一个 MCP 工具需要修改 Blackboard",
+      "when": "开发者新增工具定义",
+      "then": "只需修改 mcp_tools.rs，stdio 与 remote /mcp 共用同一套工具目录"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440010",
+      "given": "用户在 Settings 页面点击 Sync All",
+      "when": "连接器执行同步",
+      "then": "Codex/CodeBuddy/OpenCode 三家配置文件分别注入 bb server 配置，其他 key 原样保留"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440011",
+      "given": "用户点击 Disconnect",
+      "when": "连接器执行断开",
+      "then": "三家配置文件里 bb key 全部消失，其余 key 原样保留"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-07",
+      "summary": "完成 MCP 工具 Schema 模块化，tools/list 返回 26 个工具，cargo test 通过"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "完成 mcp_config 模块（三格式inspect/upsert/remove）+ agents_config 扩（McpServer变体）+ 13条新测试 + 前端状态灯，cargo test 全绿"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "sync 推平软链不再静默，新增 AgentConnectorSyncEvent::FlattenedSymlink 事件"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-07",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000005",
+    "parent": "000005"
+  }
+}

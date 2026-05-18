@@ -34,9 +34,7 @@ import type {
   TicketWriteResult,
 } from '@/data/tickets'
 import {
-  attachmentsFromExtra,
   deprecateTicket,
-  extractProgressText,
   isOpenTicketStatus,
   loadBlackboardData,
   loadBoardSummary,
@@ -281,18 +279,45 @@ const laneDropdownOptions = computed<BbDropdownOption[]>(() => [
 const queryMatchedTickets = computed(() => {
   const q = query.value.trim().toLowerCase()
   return tickets.value.filter((ticket) => {
-    const progress = extractProgressText(ticket.content ?? '')
     const assignee = ticket.extra.assignee ?? ''
     return !q || [
       ticket.id,
       ticket.lane,
       ticket.title,
       assignee,
-      progress,
+      ticketSpecSearchText(ticket),
       ticket.status,
     ].some((value) => value.toLowerCase().includes(q))
   })
 })
+
+function ticketSpecSearchText(ticket: BlackboardTicket): string {
+  return [
+    ticket.spec?.summary,
+    ...(ticket.spec?.stories ?? []).flatMap((story) => [
+      story.given,
+      story.when,
+      story.then,
+      story.sample ?? '',
+    ]),
+    ...(ticket.spec?.risks ?? []).flatMap((risk) => [
+      risk.description,
+      risk.mitigation ?? '',
+      risk.status ?? '',
+    ]),
+    ...(ticket.spec?.progress_record ?? []).flatMap((record) => [
+      record.at ?? '',
+      record.summary,
+      ...(record.evidence ?? []),
+    ]),
+  ].join(' ')
+}
+
+function ticketPreviewText(ticket: BlackboardTicket): string {
+  const records = ticket.spec?.progress_record ?? []
+  const latestRecord = records.length > 0 ? records[records.length - 1]?.summary : ''
+  return latestRecord || ticket.spec?.summary || ''
+}
 
 const laneFilteredTickets = computed(() =>
   queryMatchedTickets.value.filter((ticket) =>
@@ -604,7 +629,7 @@ function mergeTicketWriteResult(result: TicketWriteResult) {
             file_path: result.ticket.path || item.file_path,
             extra: result.ticket.extra ?? item.extra,
             dependencies: dependenciesFromExtra(result.ticket.extra ?? item.extra, item.id),
-            attachments: attachmentsFromExtra(result.ticket.extra ?? item.extra),
+            attachments: result.ticket.attachments,
           }
         : item,
     ),
@@ -718,11 +743,7 @@ async function updateTicketAttachments(ticket: BlackboardTicket, attachments: Ti
             ...item,
             attachments: normalized,
             updated_at: new Date().toISOString().slice(0, 10),
-            extra: normalized.length
-              ? { ...item.extra, attachments: JSON.stringify(normalized) }
-              : Object.fromEntries(
-                  Object.entries(item.extra).filter(([key]) => key !== 'attachments'),
-                ),
+            extra: item.extra,
           }
         : item,
     ),
@@ -1050,7 +1071,7 @@ async function deprecateSelectedTicket(ticket: BlackboardTicket) {
                 <span class="ticket-id">{{ ticket.id }}</span>
                 <span class="bb-ticket-title-cell">
                   <strong>{{ ticket.title }}</strong>
-                  <small>{{ extractProgressText(ticket.content ?? '') || t('noProgress') }}</small>
+                  <small>{{ ticketPreviewText(ticket) || t('noProgress') }}</small>
                 </span>
                 <span class="family-pill" :style="{ '--family-color': laneMetaFor(ticket.lane).color }">
                   {{ ticket.lane }} · {{ laneMetaFor(ticket.lane).label }}

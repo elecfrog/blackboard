@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "000070",
+  "lane": "bbt",
+  "title": "Idea Canvas Backend：canvas/sticky note 轻量持久化与 API",
+  "summary": "实现 Idea Canvas 后端最小闭环：project 级 canvas/sticky note 轻量持久化与 HTTP API",
+  "stories": [
+    {
+      "id": "a7b8c9d0-e1f2-3456-abcd-567890123456",
+      "given": "用户需要在某个 project 下管理 Idea Canvas",
+      "when": "用户创建新的 canvas",
+      "then": "Canvas 数据持久化到 projects/<project>/idea_canvases/canvas-<id>.json，可通过 API 查询"
+    },
+    {
+      "id": "b8c9d0e1-f2a3-4567-bcde-678901234567",
+      "given": "Canvas 已存在",
+      "when": "用户在 canvas 上添加 sticky note",
+      "then": "Sticky note 数据持久化，包含 id、text、x、y、color、created_at、updated_at"
+    },
+    {
+      "id": "c9d0e1f2-a3b4-5678-cdef-789012345678",
+      "given": "Sticky note 已存在",
+      "when": "用户更新 sticky note 文本、位置或颜色，或删除 sticky note",
+      "then": "变更持久化到存储，重启后数据仍存在"
+    },
+    {
+      "id": "d0e1f2a3-b4c5-6789-defa-890123456789",
+      "given": "后端服务运行",
+      "when": "客户端请求 GET/POST/PATCH/DELETE /api/projects/{project}/idea-canvases",
+      "then": "返回正确 HTTP 状态码和数据，后端测试覆盖核心 CRUD"
+    }
+  ],
+  "risks": [],
+  "progress_record": [],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-17",
+  "updated_at": "2026-05-17",
+  "extra": {
+    "area": "Idea Canvas",
+    "depends_on": "000026",
+    "kind": "backend",
+    "parent": "000026"
+  }
+}

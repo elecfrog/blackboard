@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "000008",
+  "lane": "bbt",
+  "title": "Agent Registry 写入 API",
+  "summary": "Agent Registry写入能力落地，HTTP与MCP写接口覆盖全局agent upsert、project membership写入/删除，前端不再拼TOML",
+  "stories": [
+    {
+      "id": "b684cdaa-6db8-4a0f-95fb-c58edfe8fe85",
+      "given": "需要为agents/agents.toml提供结构化写入入口",
+      "when": "调用upsert_agent/upsert_project_agent/remove_project_agent",
+      "then": "后端校验project、agent id、lane、必填字符串和重复项，写入成功并返回更新后数据"
+    },
+    {
+      "id": "c7d8e9f0-a1b2-3c4d-5e6f-7890abcdef01",
+      "given": "前端需要读取project可分配agent列表",
+      "when": "打开Ticket detail或Board assignee下拉",
+      "then": "调用/api/projects/{project}/agents返回当前project可分配成员，支持legacy assignee显示"
+    }
+  ],
+  "risks": [
+    {
+      "id": "windows-path-prefix",
+      "description": "当前live bb-server仍是旧进程，/api/agents的source_path仍显示Windows \\\\?\\前缀",
+      "mitigation": "代码侧展示清洗已修复，需要重启后端服务后才会体现在页面与API返回中"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-06",
+      "summary": "codex验收check-ticket-ids.sh通过，确认per-project DAG门禁生效"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "Agent Registry写入能力已落地并验收，agents/agents.toml继续作为注册事实源"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "HTTP与MCP写接口已覆盖全局agent upsert、project membership upsert/removal，前端不再拼TOML"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "项目assignee下拉已接入/api/projects/{project}/agents，ticket assignee更新仍走受控patch_ticket"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "本轮复核后将ticket状态从review更新为done"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-07",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000006",
+    "parent": "000005"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "000067",
+  "lane": "bbt",
+  "title": "Document AgentSession permission boundary and current limitations",
+  "summary": "记录 AgentSession 作为外部运行时协调器的权限边界与当前局限：未实现本地工具集中授权门，权限行为委托给各运行时自身。",
+  "stories": [
+    {
+      "id": "793e613e-3f8b-42af-81c5-1df0c4fab7f4",
+      "given": "用户需要了解 AgentSession 对 OpenCode/Codex/CodeBuddy 的权限控制机制。",
+      "when": "用户通过 AgentSession 启动外部运行时并执行操作。",
+      "then": "用户了解 AgentSession 当前不拦截或授权个别运行时工具调用，权限行为由各运行时自行管理。"
+    }
+  ],
+  "risks": [],
+  "progress_record": [],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-16",
+  "updated_at": "2026-05-16",
+  "extra": {
+    "area": "agent_session",
+    "source": "codex-2026-05-16",
+    "topic": "permissions"
+  }
+}

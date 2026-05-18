@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "id": "000074",
+  "lane": "bbd",
+  "title": "Ticket Detail：JSON Ticket 的文档式 section 与卡片展示",
+  "summary": "前端 Ticket 详情页必须直接消费新的 JSON ticket 形态，不再把 Markdown 正文作为新 ticket 的展示来源；页面展示成接近文档的 section 布局，其中 stories、risks、progress_record 先用卡片样式展示，便于用户评估新的 BDD ticket 阅读体验。 本轮补充：074 还包含 section 标题行统一、附件交互区去重并下移、以及正文 section 与依赖/附件 controls 的同款视觉规则。",
+  "stories": [
+    {
+      "id": "c43ff444-00f2-4e89-b65c-1470d2b9dc63",
+      "given": "用户打开一张新的 JSON ticket 详情页",
+      "when": "前端拿到包含 title、summary、stories、risks、progress_record、attachments、status、lane、extra 的 ticket 数据",
+      "then": "详情页必须以文档式布局展示 ticket：顶部保留标题与基础元信息，正文按 Summary、Stories、Risks、Progress Record 等同层 section 排列；新 ticket 不再经过 MarkdownRenderer 或 Markdown header 解析来得到正文结构",
+      "sample": "页面整体仍像一份可阅读的 ticket 文档；section 类似原 Markdown header 的阅读分段，但数据只能来自 JSON 字段。"
+    },
+    {
+      "id": "3927b63a-4b31-45bf-98f4-c51378b174fb",
+      "given": "JSON ticket 包含一组 BDD stories",
+      "when": "用户查看 Stories section",
+      "then": "前端必须把每条 story 渲染为独立卡片，并清晰展示 Given、When、Then 三个行为字段；如果 story 带 sample，则作为辅助说明显示，不能和验收事实混在一起",
+      "sample": "每张 story card 内部固定显示 Given / When / Then 三行，sample 用更轻的文本层级放在卡片底部。"
+    },
+    {
+      "id": "85a15d34-3f21-4b20-8ac0-22f837b8070b",
+      "given": "JSON ticket 包含 risks",
+      "when": "用户查看 Risks section",
+      "then": "前端必须把每条 risk 渲染为卡片，展示 description、可选 mitigation 和 status，让风险不再埋在正文段落里",
+      "sample": "risk card 优先显示风险描述，mitigation/status 作为次级字段；空 risks 时显示轻量空状态。"
+    },
+    {
+      "id": "56e78e46-8e6c-4c40-8177-7f5172122f22",
+      "given": "JSON ticket 包含 progress_record",
+      "when": "用户查看 Progress Record section",
+      "then": "前端必须把每条 progress_record 渲染为卡片，展示 at、summary 和 evidence，让过程记录和当前行为定义分开阅读",
+      "sample": "progress card 按时间顺序展示；evidence 作为小列表或链接样式文本呈现。"
+    },
+    {
+      "id": "b77d5a3d-8c28-4232-bae0-1e4bdb8d07ad",
+      "given": "Ticket 详情页展示 Summary、Stories、Risks、Progress Record、Dependencies 或 Attachments section",
+      "when": "页面渲染每个 section 的标题行",
+      "then": "标题行必须统一为左侧 name + count，右侧只保留该 section 的明确操作按钮；count 不应漂到 section 最右侧",
+      "sample": "附件 section 左侧显示 附件 + 1，右侧显示 + 添加；Stories/Risks/Progress 同样左侧显示 count。"
+    },
+    {
+      "id": "b2f2735b-e1af-42cb-a9b6-0905543acd9b",
+      "given": "JSON ticket 包含 attachments",
+      "when": "用户在详情页查看或编辑附件",
+      "then": "页面只保留一个交互式 Attachments section，并放在 Progress Record 后的正文流中；不得同时显示顶部只读附件和底部编辑附件",
+      "sample": "000060 预览页只出现一个附件 section，里面可编辑 kind/target/label。"
+    },
+    {
+      "id": "1e705157-5b5c-444f-9cd0-ee7428216a57",
+      "given": "JSON ticket 的正文 sections 与依赖/附件 controls 同时存在",
+      "when": "前端渲染 TicketDetailPanel",
+      "then": "Summary、Stories、Risks、Progress Record、Dependencies、Attachments 使用一致的 section 外观和间距，不出现外层 document 卡片再嵌 section 卡片的双层视觉",
+      "sample": "ticket-detail-section 承担统一卡片 section 外观；ticket-detail-document 不再额外像卡片。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "api_payload_missing_spec_fields",
+      "description": "当前前端数据模型可能仍以 Markdown content 为中心，如果列表或详情接口没有暴露 stories、risks、progress_record，页面无法直接渲染新 section。",
+      "mitigation": "先确认 bb_web/src/data/tickets.ts 和后端 ticket API 的 JSON 字段契约；必要时补齐类型与接口返回，不在前端重新解析 Markdown。",
+      "status": "open"
+    },
+    {
+      "id": "card_layout_overcrowded",
+      "description": "stories、risks、progress_record 全部用卡片展示时，详情页可能变得过重，影响文档式阅读感。",
+      "mitigation": "第一版先做清晰可读的 card section，控制边框、间距和字号；根据实际截图再调整密度。",
+      "status": "open"
+    },
+    {
+      "id": "duplicate_attachment_sections",
+      "description": "详情页可能同时渲染只读 attachments 和交互 attachments，造成用户看到两个附件区域。",
+      "mitigation": "TicketStructuredDocument 不再渲染 attachments；TicketDetailPanel 只保留一个交互式附件 section。",
+      "status": "resolved"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-18",
+      "summary": "用户决定把 074 作为 073 的前端展示子票，第一轮目标是用多个 section 展示 JSON ticket，其中 stories、risks、progress_record 先采用卡片样式。",
+      "evidence": [
+        "conversation: 用户说 074 作为 073 子单",
+        "conversation: 用户说新的展示方式由多个 section 组成，stories、risk 和 progress_record 先做卡片样式"
+      ]
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "前后端已切到 JSON ticket 结构化展示路径，并把 attachments 定为顶层必填数组；060 的旧 extra.attachments 已迁移到顶层 attachments。",
+      "evidence": [
+        "bb_web/src/components/TicketStructuredDocument.vue",
+        "bb_backend/crates/bb_core/src/ticket/spec.rs",
+        ".bb_template/schemas/ticket.schema.json",
+        ".bb_template/projects/blackboard/tickets/000060-taskgraph-execution-foundation.json"
+      ]
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "收拢 074 handoff：已实现 JSON section/card 展示，统一 section 标题为左侧 name/count，移除重复附件 section，并把交互式附件编辑器放入正文流底部。",
+      "evidence": [
+        "2026-05-18-codex-ticket-074-json-detail-section-cards.md",
+        "2026-05-18-codex-ticket-074-json-section-style-unification.md",
+        "2026-05-18-codex-ticket-074-attachments-section-dedupe.md",
+        "2026-05-18-codex-ticket-074-remove-readonly-attachment-section.md",
+        "2026-05-18-codex-ticket-074-section-header-count-left.md"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "in_progress",
+  "created_at": "2026-05-18",
+  "updated_at": "2026-05-18",
+  "extra": {
+    "area": "Ticket",
+    "assignee": "codex",
+    "depends_on": "000073",
+    "kind": "frontend-display",
+    "parent": "000073",
+    "scope": "ticket-json-detail-section-cards"
+  }
+}

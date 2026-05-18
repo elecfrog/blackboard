@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "000017",
+  "lane": "bbd",
+  "title": "Graph View 专项优化：UE 风格连线与交互打磨",
+  "summary": "Graph View 依赖图视觉、连线、布局和交互打磨，将实心三角箭头改为 UE 蓝图风格",
+  "stories": [
+    {
+      "id": "a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "given": "用户查看 Graph view 依赖图",
+      "when": "需要识别节点之间的依赖关系",
+      "then": "依赖线以圆角 spline 曲线展示，hover 时加粗高亮"
+    },
+    {
+      "id": "b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e",
+      "given": "用户拖拽节点创建依赖",
+      "when": "拖拽 preview edge 时",
+      "then": "预览线以实线圆角 wire 展示"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-07",
+      "summary": "首轮 UE 风格连线已实现：移除 Graph SVG marker 实心三角箭头，依赖线改为圆角 spline，hover 时加粗高亮",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "Graph 节点新增左侧 accent bar 与按 workflow status 着色的 pill",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "Graph pin hover 视觉继续打磨：四向 pin 去掉内部箭头，只保留小圆点",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "修复重排布局中专项后续单跑到同层顶部的问题；auto layout 增加 sole successor 自顶向下校正",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-07",
+  "updated_at": "2026-05-08",
+  "extra": {
+    "area": "TicketDependencyGraph",
+    "assignee": "codex",
+    "depends_on": "000011",
+    "kind": "专项优化",
+    "parent": "000016"
+  }
+}

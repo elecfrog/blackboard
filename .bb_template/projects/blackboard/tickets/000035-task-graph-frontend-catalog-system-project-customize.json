@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "id": "000035",
+  "lane": "bbd",
+  "title": "Task Graph 前端：Catalog、System/Project 分层与 Customize 入口",
+  "summary": "实现 Task Graph 入口页，展示 BB 内置 system graphs 与当前 project graphs，提供运行、查看、创建和 customize/fork 入口",
+  "stories": [
+    {
+      "id": "17582f0a-141f-41c5-80c8-653907bd7f48",
+      "given": "BB 内置 system graphs 与当前 project graphs 需要统一入口",
+      "when": "实现 Task Graph Catalog 页面区分 Built-in/System 与 Project/User",
+      "then": "用户可看到 system/project 两类 graph；system graph 只读；project graph 可进入编辑"
+    },
+    {
+      "id": "6e50e5f3-3f05-45a5-b265-fafe6244b510",
+      "given": "用户需要 customize system graph",
+      "when": "用户编辑 system graph 时触发 fork 到当前 project",
+      "then": "用户进入 project graph editor，不直接修改内置图"
+    },
+    {
+      "id": "3100df6f-7916-4602-9aca-072fcff742b9",
+      "given": "后端 API 未完成",
+      "when": "使用契约 ticket fixture + project localStorage fallback",
+      "then": "前端可独立推进，API 到位后替换为真实请求"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "新增 bb_web/src/data/taskGraphs.ts 实现 catalog/read/create/fork/run 数据客户端",
+      "evidence": [
+        "bb_web/src/data/taskGraphs.ts"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "新增 TaskGraphCatalogPanel.vue 提供 system/project 分层 catalog 和入口",
+      "evidence": [
+        "bb_web/src/components/TaskGraphCatalogPanel.vue"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "新增 Task Graph 路由并接入左侧导航与 ProjectSwitcher",
+      "evidence": [
+        "/projects/:project/task-graphs"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "验证：npm run build --prefix bb_web 通过",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-09",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "area": "TaskGraph",
+    "deliverable": "bb_web/src/components/TaskGraphCatalogPanel.vue; bb_web/src/data/taskGraphs.ts",
+    "depends_on": "000029",
+    "kind": "frontend",
+    "parent": "000028"
+  }
+}

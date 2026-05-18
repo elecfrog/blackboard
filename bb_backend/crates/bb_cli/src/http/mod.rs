@@ -135,15 +135,11 @@ pub fn app_with_options(workspace: Workspace, options: HttpServeOptions) -> Rout
         )
         .route(
             "/api/projects/{project}/tickets/{id}",
-            patch(tickets::patch_ticket),
+            get(tickets::ticket_detail).patch(tickets::patch_ticket),
         )
         .route(
             "/api/projects/{project}/tickets/{id}/deprecate",
             post(tickets::deprecate_ticket),
-        )
-        .route(
-            "/api/projects/{project}/tickets/{id}/content",
-            get(tickets::ticket_content),
         )
         .route(
             "/api/projects/{project}/idea-canvases",

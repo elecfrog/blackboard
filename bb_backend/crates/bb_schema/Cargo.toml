@@ -1,0 +1,16 @@
+[package]
+name = "bb_schema"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "bb-schema"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+bb_core = { path = "../bb_core", features = ["schema"] }
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "000012",
+  "lane": "bbt",
+  "title": "TOML 到 JSON 与目录结构迁移收口",
+  "summary": "清理活跃规则、README、MCP/REST 描述、脚本、测试、后端缓存维护与运行时 API 中仍指向旧 TOML/目录/计数器模型的内容，完成 tickets/active|done|archived 目录到 flat tickets/ 的迁移收口。",
+  "stories": [
+    {
+      "id": "7243ea29-ae8f-4b83-9136-28925b2e2127",
+      "given": "bb_backend 运行时需要分配新的 ticket id",
+      "when": "调用 create_ticket 接口",
+      "then": "后端不再写 .ticket-id 文件，改读 __tickets__.json.current_counter 并结合现有最大 ticket ID 防撞生成新 ID",
+      "sample": "创建新 ticket 时，后端查询 current_counter 并分配下一个可用编号。"
+    },
+    {
+      "id": "d13a1366-0a77-4e0b-bea6-275d68e5038b",
+      "given": "__tickets__.json 索引文件存在且完整",
+      "when": "read_ticket_index 被调用",
+      "then": "保留非零 current_counter，不重建索引；只在缺失/损坏或迁移残留 000000 时才 bootstrap 重建",
+      "sample": "索引文件正常时直接返回，不触发重建逻辑。"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-07",
+      "summary": "从用户反馈拆出迁移收口单，聚焦 project.toml → __project__.json、tickets/active|done|archived → flat tickets、.ticket-id → 后端索引/分配逻辑的残留清理。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "确认 __tickets__.json.current_counter 是持久化权威计数；后端只在索引缺失或 000000 + 已有 tickets 的迁移场景 bootstrap 写回。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "完成后端分配逻辑改造：create_ticket 不再写 .ticket-id，改读 __tickets__.json.current_counter 并结合现有最大 ticket ID 防撞。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "清理活跃规则和文档里的 tickets/active|done|archived、project.toml、export:tickets、next-ticket-id.sh 旧模型引用。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "移除 directory_status 兼容字段，__tickets__.json 与 API 只保留 bucket。",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-07",
+  "updated_at": "2026-05-07",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000004",
+    "parent": "000004"
+  }
+}

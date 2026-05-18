@@ -57,7 +57,7 @@ impl Workspace {
             source,
         })?;
 
-        for dirname in ["agents", "projects", "task_graphs", "templates"] {
+        for dirname in ["agents", "projects", "schemas", "task_graphs", "templates"] {
             let source = seed_root.join(dirname);
             if source.is_dir() {
                 copy_dir_missing(&source, &target_root.join(dirname))?;

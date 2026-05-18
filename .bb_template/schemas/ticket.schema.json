@@ -1,0 +1,236 @@
+{
+  "$defs": {
+    "TicketAttachment": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "label": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "target"
+      ],
+      "type": "object"
+    },
+    "TicketProgressRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "type": "object"
+    },
+    "TicketRisk": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,79}$",
+          "type": "string"
+        },
+        "mitigation": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "description"
+      ],
+      "type": "object"
+    },
+    "TicketStory": {
+      "additionalProperties": false,
+      "properties": {
+        "given": {
+          "description": "前置条件。",
+          "minLength": 1,
+          "type": "string"
+        },
+        "id": {
+          "description": "系统生成的 story id；LLM 不应手写语义 id。",
+          "format": "uuid",
+          "type": "string"
+        },
+        "sample": {
+          "description": "可选示例，指导 LLM/用户如何填写本 story；不是验收事实。",
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "then": {
+          "description": "可观察、可验收的期望结果。",
+          "minLength": 1,
+          "type": "string"
+        },
+        "when": {
+          "description": "用户或系统触发的行为。",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "given",
+        "when",
+        "then"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://blackboard.local/schemas/ticket.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attachments": {
+      "items": {
+        "$ref": "#/$defs/TicketAttachment"
+      },
+      "type": "array"
+    },
+    "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "type": "string"
+    },
+    "extra": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "propertyNames": {
+        "not": {
+          "const": "attachments"
+        }
+      },
+      "type": "object"
+    },
+    "id": {
+      "pattern": "^[0-9]{6}$",
+      "type": "string"
+    },
+    "lane": {
+      "pattern": "^[a-z][a-z0-9-]{1,31}$",
+      "type": "string"
+    },
+    "progress_record": {
+      "items": {
+        "$ref": "#/$defs/TicketProgressRecord"
+      },
+      "type": "array"
+    },
+    "risks": {
+      "items": {
+        "$ref": "#/$defs/TicketRisk"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "status": {
+      "enum": [
+        "todo",
+        "in_progress",
+        "blocked",
+        "review",
+        "done",
+        "archived"
+      ],
+      "type": "string"
+    },
+    "stories": {
+      "items": {
+        "$ref": "#/$defs/TicketStory"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "summary": {
+      "description": "当前有效行为定义的一句话摘要，不记录过程。",
+      "minLength": 1,
+      "type": "string"
+    },
+    "title": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "updated_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "lane",
+    "title",
+    "summary",
+    "stories",
+    "risks",
+    "progress_record",
+    "attachments",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "Blackboard JSON Ticket",
+  "type": "object"
+}

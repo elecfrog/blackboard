@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "000050",
+  "lane": "bbt",
+  "title": "Agent Profile — Skills：per-agent 技能列表声明与注入",
+  "summary": "Agent Profile per-agent 技能列表声明与注入",
+  "stories": [
+    {
+      "id": "f6ad339e-6cc3-4825-b972-1c40185881bb",
+      "given": "Agent 在 BlackBoard 系统中有对应的 Profile 定义，需要声明其可用的 Skill 列表",
+      "when": "daemon 启动时需要为每个 Agent 注入对应的 Skill，使 Agent 能在特定任务上使用声明的技能",
+      "then": "Agent 能在运行时访问声明的 Skill，Profile 中声明的 skills 与实际注入的能力一致"
+    }
+  ],
+  "risks": [],
+  "progress_record": [],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-12",
+  "updated_at": "2026-05-16",
+  "extra": {
+    "area": "AgentProfile",
+    "depends_on": "000048",
+    "parent": "000048"
+  }
+}

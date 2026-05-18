@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "000045",
+  "lane": "bbq",
+  "title": "Rust 模块文件夹自包含清理",
+  "summary": "Rust 模块文件夹自包含清理",
+  "stories": [
+    {
+      "id": "7c4c80c3-213e-4a53-9d33-28d888ce11dd",
+      "given": "Blackboard 系统已初始化",
+      "when": "执行 Rust 模块文件夹自包含清理 相关操作",
+      "then": "系统按预期完成 Rust 模块文件夹自包含清理 的功能"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "summary": "codex 开始处理 `bb_core/src/wiki.rs` 与 `bb_core/src/wiki/` 混合布局，目标是让 wiki 模块目录自包含。"
+    },
+    {
+      "summary": "codex 开始执行：确认本轮只做 Rust wiki 模块自包含与同类残留扫描，不动无关并发改动。"
+    },
+    {
+      "summary": "用户指出问题不是 wiki 单点，而是 Rust 代码大量 hybrid module 未收敛；本轮范围扩大为同名目录存在时，根模块统一迁入目录 `mod.rs`，测试跟随模块目录管理。"
+    },
+    {
+      "summary": "用户继续指出 `bb_core/src/inbox.rs` 仍是未拆的大模块；本轮继续扩大到 inbox 模块职责拆分，不只处理已经存在同名目录的 hybrid modules。"
+    },
+    {
+      "summary": "全量测试首次在移动 `task_graph/tests.rs` 后暴露 `include_str!` 相对路径失效，需要先修正 fixture 路径。"
+    },
+    {
+      "summary": "用户指出 `ticket/search.rs` 下包含通用 search helper，并且模块引用 `InboxError` 命名不合理；确认这是 ticket/inbox 交叉边界和历史 error 命名问题。"
+    },
+    {
+      "summary": "codex 完成阶段工作，handoff 写入 `2026-05-10-codex-rust-模块文件夹自包含清理.md`。"
+    },
+    {
+      "summary": "2026-05-10：清除 bb_core/src 与 bb_cli/src 下所有同名 foo.rs + foo/ hybrid module，统一迁到 foo/mod.rs；将 wiki/inbox/ticket 拆分为自包含子模块；新增 common 模块移入通用 search helper；将 core error 主类型改为 BlackboardError，保留 InboxError 作兼容 alias"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-10",
+  "updated_at": "2026-05-10",
+  "extra": {
+    "assignee": "codex"
+  }
+}

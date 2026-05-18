@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "id": "000024",
+  "lane": "bbt",
+  "title": "Project 数据目录外置：支持用户指定项目根路径",
+  "summary": "支持用户指定项目外部数据目录，替代固定在 Blackboard 源码仓库内的路径",
+  "stories": [
+    {
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "given": "用户希望将项目数据存放在 Blackboard 仓库外部",
+      "when": "用户通过创建或打开流程指定外部目录",
+      "then": "项目数据写入外部目录，Blackboard 正确解析和加载项目",
+      "sample": "用户选择 ~/documents/myproject 作为项目目录，Blackboard 在该目录下创建模板结构"
+    }
+  ],
+  "risks": [
+    {
+      "id": "cross-platform-path",
+      "description": "不同操作系统路径格式差异",
+      "mitigation": "使用各平台原生目录选择器（macOS osascript, Windows Win32 Common Item Dialog）",
+      "status": "resolved"
+    },
+    {
+      "id": "registry-consistency",
+      "description": "跨机器 project location 同步问题",
+      "mitigation": "projects/__projects__.json 作为中央 registry，每机器独立索引",
+      "status": "resolved"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-08",
+      "summary": "用户明确要求 Blackboard project 数据目录不能固定在源码仓库内",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "修复 machine_host_name() macOS/Linux 回退",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "实现 macOS 目录选择器 via osascript",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "resolve_registry_data_root_inner() 增加相对路径回退 + 自动持久化",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "实现 Workspace::list_projects / read_project_meta / open_project 支持外部 data_root",
+      "evidence": [
+        "bb_core/src/lib.rs",
+        "bb_server/src/http.rs"
+      ]
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "bb_core + bb_server 覆盖外部目录挂载、Ticket 创建、REST API",
+      "evidence": [
+        "bb_server/http.rs"
+      ]
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "前端 Project 元数据 Typing 更新 + Project 下拉框 Footer 重构",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "Windows 目录选择器迁移至 Win32 Common Item Dialog",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "projects/__projects__.json 作为中央 Registry",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-08",
+  "updated_at": "2026-05-08",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000013",
+    "parent": "000005"
+  }
+}

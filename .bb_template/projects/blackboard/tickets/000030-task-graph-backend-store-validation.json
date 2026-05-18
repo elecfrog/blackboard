@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "id": "000030",
+  "lane": "bbt",
+  "title": "Task Graph 后端：System/Project Graph 存储与校验",
+  "summary": "在 bb_core 中实现 Task Graph 领域模型、system graph registry、project graph store 和结构化校验，作为后续 API 与 executor 的基础。",
+  "stories": [
+    {
+      "id": "e5f6a7b8-c9d0-7e1f-2a3b-4c5d6e7f8a9b",
+      "given": "Task Graph MVP 前后端契约已定稿",
+      "when": "后端需要实现 graph 存储与校验能力",
+      "then": "bb_core 提供 system graph registry 读取与 project graph store CRUD，支持结构化校验"
+    },
+    {
+      "id": "f6a7b8c9-d0e1-8f2a-3b4c-5d6e7f8a9b0c",
+      "given": "契约定义了 graph definition JSON schema",
+      "when": "实现控制流合法性校验",
+      "then": "支持 Branch/Loop 受控回边，拒绝非法节点、非法边、非法 task 引用和不受控循环"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "新增 bb_core/src/task_graph/ 模块（mod.rs, types.rs, store.rs, validation.rs, tests.rs），types.rs 含 TaskGraphDefinition/Node/Edge/NodeConfig/Error/Summary，store.rs 支持 system graph 只读与 project graph CRUD（含版本递增），validation.rs 实现 13 条控制流规则 + node config 类型匹配 + task_id/runtime 引用校验，27 个单元测试全通过",
+      "evidence": [
+        "bb_core/src/task_graph/mod.rs",
+        "bb_core/src/task_graph/types.rs",
+        "bb_core/src/task_graph/store.rs",
+        "bb_core/src/task_graph/validation.rs",
+        "bb_core/src/task_graph/tests.rs"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "新增 task_graphs/system/frontend-smoke-loop.json fixture，在 lib.rs 注册 pub mod task_graph",
+      "evidence": [
+        "task_graphs/system/frontend-smoke-loop.json"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-09",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000029",
+    "kind": "backend",
+    "parent": "000028"
+  }
+}

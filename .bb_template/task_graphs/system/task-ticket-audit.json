@@ -2,19 +2,38 @@
   "schema_version": 1,
   "id": "task-ticket-audit",
   "scope": "system",
-  "title": "Ticket 元数据巡检",
-  "description": "单节点子流水线：包装 ticket-audit task 为可被父流水线调用的子流水线。",
-  "version": 1,
+  "title": "Ticket Schema Audit / Repair",
+  "description": "Ticket 日常巡检：脚本读取 code-generated ticket schema 校验真实 JSON ticket；有问题时把报告交给 LLM 修复，再用同一脚本复验，直到通过或达到最大轮数。",
+  "version": 3,
   "readonly": true,
   "metadata": {
     "tags": [
       "task-wrapper",
-      "frontend",
-      "smoke"
+      "ticket",
+      "audit",
+      "schema"
     ],
-    "owner": "blackboard"
+    "owner": "blackboard",
+    "related_tickets": [
+      "000075"
+    ],
+    "run_policy": {
+      "allow_concurrent_runs": false,
+      "max_concurrent_runs": 1,
+      "queue_enabled": true,
+      "max_queue_wait_ms": 1800000
+    }
   },
   "inputs": [
+    {
+      "id": "max-iterations",
+      "label": "最大修复轮数",
+      "type": "number",
+      "default": 3,
+      "description": "每轮执行：脚本检查 -> LLM 修复 -> 脚本复验。",
+      "min": 1.0,
+      "max": 10.0
+    }
   ],
   "nodes": [
     {
@@ -37,17 +56,189 @@
       ]
     },
     {
-      "id": "llm-exec",
-      "type": "llm",
-      "label": "Ticket 元数据巡检",
+      "id": "ticket-audit-loop",
+      "type": "loop",
+      "label": "Ticket Audit Repair Loop",
+      "description": "body_exit 的 shell checker 返回 exit_code=2 表示仍有 ticket findings，需要继续让 LLM 修复。",
       "position": {
-        "x": 320,
+        "x": 300,
         "y": 120
+      },
+      "config": {
+        "body_entry": "ticket-audit-check",
+        "body_exit": "ticket-audit-post-check",
+        "condition": {
+          "input_ref": "$.nodes.ticket-audit-post-check.output",
+          "op": "equals",
+          "path": "$.exit_code",
+          "value": 2
+        },
+        "max_iterations": 3,
+        "max_iterations_ref": "{{inputs.max-iterations}}",
+        "on_max_iterations": "fail"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "exit",
+          "label": "Exit",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "index",
+          "label": "Index",
+          "direction": "out",
+          "category": "data",
+          "value_type": "int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "ticket-audit-check",
+      "type": "shell",
+      "label": "Ticket Schema Check",
+      "description": "读取 .bb_template/schemas/ticket.schema.json，对真实 ticket 文件做 schema/business/script 级检查。",
+      "position": {
+        "x": 640,
+        "y": 40
+      },
+      "config": {
+        "command": "python3",
+        "args": [
+          "{{env.scripts_dir}}/audit_tickets.py",
+          "--project",
+          "{{env.project}}",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--run-schema-check",
+          "--run-maintenance"
+        ],
+        "expected_exit_codes": [
+          0,
+          2
+        ],
+        "timeout_ms": 300000,
+        "permission": "project_write",
+        "capture": {
+          "max_bytes": 65536,
+          "strip_ansi": true
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "ticket-audit-route",
+      "type": "branch",
+      "label": "Audit Route",
+      "position": {
+        "x": 960,
+        "y": 40
+      },
+      "config": {
+        "default_rule_id": "clean",
+        "input_ref": "$.nodes.ticket-audit-check.output",
+        "mode": "condition",
+        "rules": [
+          {
+            "id": "clean",
+            "label": "Clean",
+            "when": {
+              "op": "equals",
+              "path": "$.exit_code",
+              "value": 0
+            }
+          },
+          {
+            "id": "dirty",
+            "label": "Dirty",
+            "when": {
+              "op": "equals",
+              "path": "$.exit_code",
+              "value": 2
+            }
+          }
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "rule:clean",
+          "label": "Clean",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "rule:dirty",
+          "label": "Dirty",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "ticket-audit-repair",
+      "type": "llm",
+      "label": "Ticket Repair",
+      "description": "读取脚本报告，只修报告列出的 ticket，再输出结构化修复摘要。",
+      "position": {
+        "x": 1260,
+        "y": -60
       },
       "config": {
         "runtime": "opencode",
         "agent": "bb-pm",
-        "model": null,
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "inputs": {
+          "audit-summary": "{{nodes.ticket-audit-check.output.stdout_tail}}",
+          "report-path": "{{env.root}}/runtime/ticket-audit/{{env.project}}-latest.json"
+        },
         "prompt": {
           "mode": "file",
           "template": "agents/prompts/ticket-audit.md"
@@ -83,11 +274,226 @@
       ]
     },
     {
+      "id": "ticket-repair-output-validate",
+      "type": "schema_validate",
+      "label": "Repair Output Validate",
+      "description": "LLM 修复摘要 contract gate；真实 ticket 正确性仍由后续 shell checker 决定。",
+      "position": {
+        "x": 1560,
+        "y": -60
+      },
+      "config": {
+        "fail_on_invalid": true,
+        "inputs": {
+          "value": "{{nodes.ticket-audit-repair.output}}"
+        },
+        "schema_name": "ticket_audit_repair_output",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "summary",
+            "changed",
+            "skipped",
+            "ticket_validation",
+            "verification"
+          ],
+          "properties": {
+            "summary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "changed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "fields",
+                  "reason"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[0-9]{6}$"
+                  },
+                  "fields": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "skipped": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "reason"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[0-9]{6}$"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "ticket_validation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "audit_status_before",
+                "finding_count_before",
+                "report_path"
+              ],
+              "properties": {
+                "audit_status_before": {
+                  "type": "string",
+                  "enum": [
+                    "passed",
+                    "failed"
+                  ]
+                },
+                "finding_count_before": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "report_path": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "verification": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "audit_report_consumed",
+                "repair_attempted"
+              ],
+              "properties": {
+                "audit_report_consumed": {
+                  "type": "string",
+                  "enum": [
+                    "passed",
+                    "failed"
+                  ]
+                },
+                "repair_attempted": {
+                  "type": "string",
+                  "enum": [
+                    "passed",
+                    "failed",
+                    "not_needed"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "ticket-audit-post-check",
+      "type": "shell",
+      "label": "Post Repair Check",
+      "description": "LLM 修复后复验；exit_code=0 才允许 loop 退出。",
+      "position": {
+        "x": 1880,
+        "y": 40
+      },
+      "config": {
+        "command": "python3",
+        "args": [
+          "{{env.scripts_dir}}/audit_tickets.py",
+          "--project",
+          "{{env.project}}",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--run-schema-check",
+          "--run-maintenance"
+        ],
+        "expected_exit_codes": [
+          0,
+          2
+        ],
+        "timeout_ms": 300000,
+        "permission": "project_write",
+        "capture": {
+          "max_bytes": 65536,
+          "strip_ansi": true
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
       "id": "end-success",
       "type": "end",
       "label": "Success",
       "position": {
-        "x": 620,
+        "x": 2220,
         "y": 120
       },
       "config": {
@@ -106,19 +512,69 @@
   ],
   "edges": [
     {
-      "id": "edge-start-llm",
+      "id": "edge-start-loop",
       "from": "start",
-      "to": "llm-exec",
+      "to": "ticket-audit-loop",
       "kind": "exec",
       "from_pin": "exec_out",
       "to_pin": "exec_in"
     },
     {
-      "id": "edge-llm-end",
-      "from": "llm-exec",
-      "to": "end-success",
+      "id": "edge-loop-check",
+      "from": "ticket-audit-loop",
+      "to": "ticket-audit-check",
+      "kind": "exec",
+      "from_pin": "body",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-check-route",
+      "from": "ticket-audit-check",
+      "to": "ticket-audit-route",
       "kind": "exec",
       "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-clean-post-check",
+      "from": "ticket-audit-route",
+      "to": "ticket-audit-post-check",
+      "kind": "exec",
+      "from_pin": "rule:clean",
+      "to_pin": "exec_in",
+      "source_handle": "rule:clean"
+    },
+    {
+      "id": "edge-dirty-repair",
+      "from": "ticket-audit-route",
+      "to": "ticket-audit-repair",
+      "kind": "exec",
+      "from_pin": "rule:dirty",
+      "to_pin": "exec_in",
+      "source_handle": "rule:dirty"
+    },
+    {
+      "id": "edge-repair-validate",
+      "from": "ticket-audit-repair",
+      "to": "ticket-repair-output-validate",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-repair-validate-post-check",
+      "from": "ticket-repair-output-validate",
+      "to": "ticket-audit-post-check",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-loop-exit-end",
+      "from": "ticket-audit-loop",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exit",
       "to_pin": "exec_in"
     }
   ]

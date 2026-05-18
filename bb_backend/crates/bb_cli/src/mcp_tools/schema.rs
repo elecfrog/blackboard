@@ -1,12 +1,90 @@
 use serde_json::{json, Value};
 
-use super::is_bbpm_daemon;
+use super::current_tool_profile;
+
+fn ticket_spec_schema() -> Value {
+    json!({
+        "type": "object",
+        "description": "Strict BDD ticket definition. Title stays in the top-level ticket title field; this object owns summary, stories, risks, and progress_record.",
+        "properties": {
+            "summary": { "type": "string", "minLength": 1 },
+            "stories": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", "description": "Optional on input. The backend generates it when omitted; LLMs should preserve existing ids and should not invent semantic ids." },
+                        "given": { "type": "string", "minLength": 1 },
+                        "when": { "type": "string", "minLength": 1 },
+                        "then": { "type": "string", "minLength": 1 },
+                        "sample": { "type": "string", "minLength": 1, "description": "Optional local example showing how this story should be filled; guidance only, not acceptance truth." }
+                    },
+                    "required": ["given", "when", "then"],
+                    "additionalProperties": false
+                }
+            },
+            "risks": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,79}$" },
+                        "description": { "type": "string", "minLength": 1 },
+                        "mitigation": { "type": "string", "minLength": 1 },
+                        "status": { "type": "string", "minLength": 1 }
+                    },
+                    "required": ["id", "description"],
+                    "additionalProperties": false
+                }
+            },
+            "progress_record": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "at": { "type": "string", "minLength": 1 },
+                        "summary": { "type": "string", "minLength": 1 },
+                        "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                    },
+                    "required": ["summary"],
+                    "additionalProperties": false
+                }
+            }
+        },
+        "required": ["summary", "stories", "risks", "progress_record"],
+        "additionalProperties": false
+    })
+}
+
+fn ticket_attachment_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "kind": { "type": "string", "minLength": 1 },
+            "target": { "type": "string", "minLength": 1 },
+            "label": { "type": "string", "minLength": 1 },
+            "description": { "type": "string", "minLength": 1 }
+        },
+        "required": ["kind", "target"],
+        "additionalProperties": false
+    })
+}
 
 pub(crate) fn tools_list() -> Value {
     let project_field = json!({
         "type": "string",
         "pattern": "^[^./\\\\][^./\\\\]{0,63}$",
         "description": "Target project name from the Blackboard workspace registry."
+    });
+    let ticket_spec_field = ticket_spec_schema();
+    let ticket_attachment_field = ticket_attachment_schema();
+    let ticket_extra_field = json!({
+        "type": "object",
+        "propertyNames": {
+            "not": { "const": "attachments" }
+        },
+        "additionalProperties": { "type": "string" }
     });
     let mut result = json!({
         "tools": [
@@ -118,7 +196,7 @@ pub(crate) fn tools_list() -> Value {
             },
             {
                 "name": "list_tickets",
-                "description": "List Markdown ticket files and parsed frontmatter metadata under the project's tickets/. Read-only.",
+                "description": "List ticket files under the project's tickets/. New tickets are JSON; legacy Markdown tickets are listed only as migration inputs. Read-only.",
                 "inputSchema": {
                     "type": "object",
                     "properties": { "project": project_field },
@@ -128,7 +206,7 @@ pub(crate) fn tools_list() -> Value {
             },
             {
                 "name": "read_ticket",
-                "description": "Read one Markdown ticket by filename within a project. Read-only.",
+                "description": "Read one ticket file by filename within a project. Read-only.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -141,7 +219,7 @@ pub(crate) fn tools_list() -> Value {
             },
             {
                 "name": "read_ticket_by_id",
-                "description": "Read one Markdown ticket by strict six-digit ID within a project. Read-only.",
+                "description": "Read one ticket by strict six-digit ID within a project. Read-only.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -154,7 +232,7 @@ pub(crate) fn tools_list() -> Value {
             },
             {
                 "name": "create_ticket",
-                "description": "Create one ticket from structured fields under the specified project. Allocates the next project-local ID from existing tickets and writes Markdown under the project tickets directory.",
+                "description": "Create one JSON BDD ticket from structured fields under the specified project. Allocates the next project-local ID from existing tickets.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -162,8 +240,10 @@ pub(crate) fn tools_list() -> Value {
                         "lane": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
                         "title": { "type": "string", "minLength": 1 },
                         "status": { "type": "string", "enum": ["todo", "in_progress", "blocked", "review", "done", "archived"] },
+                        "spec": ticket_spec_field.clone(),
+                        "attachments": { "type": "array", "items": ticket_attachment_field.clone() },
                         "slug": { "type": "string" },
-                        "extra": { "type": "object", "additionalProperties": { "type": "string" } },
+                        "extra": ticket_extra_field.clone(),
                         "sections": {
                             "type": "object",
                             "properties": {
@@ -174,13 +254,13 @@ pub(crate) fn tools_list() -> Value {
                             "additionalProperties": false
                         }
                     },
-                    "required": ["project", "lane", "title", "status"],
+                    "required": ["project", "lane", "title", "status", "spec", "attachments"],
                     "additionalProperties": false
                 }
             },
             {
                 "name": "update_ticket",
-                "description": "Update controlled ticket frontmatter fields by six-digit ID within a project.",
+                "description": "Update controlled ticket fields by six-digit ID within a project. For legacy Markdown tickets, setting frontmatter.spec migrates the ticket to JSON.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -192,7 +272,9 @@ pub(crate) fn tools_list() -> Value {
                                 "title": { "type": "string", "minLength": 1 },
                                 "status": { "type": "string", "enum": ["todo", "in_progress", "blocked", "review", "done", "archived"] },
                                 "lane": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
-                                "extra": { "type": "object", "additionalProperties": { "type": "string" } },
+                                "spec": ticket_spec_field.clone(),
+                                "attachments": { "type": "array", "items": ticket_attachment_field.clone() },
+                                "extra": ticket_extra_field.clone(),
                                 "remove": { "type": "array", "items": { "type": "string" } }
                             },
                             "additionalProperties": false
@@ -343,7 +425,7 @@ pub(crate) fn tools_list() -> Value {
             },
             {
                 "name": "search_tickets",
-                "description": "Search direct Markdown tickets under a project's tickets/. Read-only.",
+                "description": "Search direct ticket files under a project's tickets/. Read-only.",
                 "inputSchema": {
                     "type": "object",
                     "properties": { "project": project_field, "query": { "type": "string", "minLength": 1 } },
@@ -398,12 +480,13 @@ pub(crate) fn tools_list() -> Value {
             }
         ]
     });
-    if !is_bbpm_daemon() {
-        if let Some(tools) = result.get_mut("tools").and_then(Value::as_array_mut) {
-            tools.retain(|tool| {
-                tool.get("name").and_then(Value::as_str) != Some("delete_inbox_note")
-            });
-        }
+    let profile = current_tool_profile();
+    if let Some(tools) = result.get_mut("tools").and_then(Value::as_array_mut) {
+        tools.retain(|tool| {
+            tool.get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| profile.allows(name))
+        });
     }
     result
 }

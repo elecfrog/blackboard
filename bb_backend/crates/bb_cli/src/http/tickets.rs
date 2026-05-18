@@ -5,14 +5,12 @@ use axum::extract::{Path, State};
 use axum::Json;
 use bb_core::{
     DeprecateTicketInput, DeprecateTicketResult, InboxError, ProjectBoard, ProjectMeta,
-    TicketFrontmatterPatch, TicketWriteResult, UpdateTicketInput,
+    TicketAttachment, TicketFrontmatterPatch, TicketWriteResult, UpdateTicketInput,
 };
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::{ApiError, AppState};
-
-const ATTACHMENTS_EXTRA_KEY: &str = "attachments";
 
 #[derive(Debug, Serialize)]
 pub(super) struct TicketsResponse {
@@ -24,7 +22,7 @@ pub(super) struct TicketsResponse {
 }
 
 #[derive(Debug, Serialize)]
-struct HttpTicket {
+pub(super) struct HttpTicket {
     id: String,
     lane: String,
     title: String,
@@ -34,18 +32,9 @@ struct HttpTicket {
     file_name: String,
     file_path: String,
     dependencies: Vec<String>,
-    attachments: Vec<HttpTicketAttachment>,
+    attachments: Vec<TicketAttachment>,
+    spec: Option<bb_core::TicketSpec>,
     extra: bb_core::FrontmatterExtra,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct HttpTicketAttachment {
-    kind: String,
-    target: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    label: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
 }
 
 /// Runtime ticket payload for the web Dashboard. The web app now treats
@@ -58,23 +47,42 @@ pub(super) async fn list_tickets(
     Ok(Json(build_tickets_response(&board)?))
 }
 
-/// Single-ticket content endpoint. Returns the Markdown body (without
-/// frontmatter) for a ticket identified by its six-digit ID. This is the
-/// "content" half of the index/content split: the list endpoint returns
-/// structural index fields only; the front-end fetches body on demand.
-#[derive(Debug, Serialize)]
-pub(super) struct TicketContentResponse {
-    content: String,
-}
-
-pub(super) async fn ticket_content(
+/// Single-ticket structured endpoint. Unlike the index endpoint, this reads the
+/// ticket source file so JSON tickets expose their BDD spec without bloating the
+/// persistent `__tickets__.json` index.
+pub(super) async fn ticket_detail(
     State(state): State<AppState>,
     Path((project, id)): Path<(String, String)>,
-) -> Result<Json<TicketContentResponse>, ApiError> {
+) -> Result<Json<HttpTicket>, ApiError> {
     let board = state.workspace()?.open_project(&project)?;
     let ticket = board.read_ticket_by_id(&id)?;
-    let content = strip_ticket_frontmatter(&ticket.content);
-    Ok(Json(TicketContentResponse { content }))
+    let id = ticket.id.unwrap_or_default();
+    let dependencies = extract_dependencies(&ticket.extra, &id);
+    let attachments = ticket.attachments;
+    let title = ticket.title.unwrap_or_else(|| {
+        ticket
+            .name
+            .trim_end_matches(".md")
+            .trim_end_matches(".json")
+            .to_string()
+    });
+
+    Ok(Json(HttpTicket {
+        id,
+        lane: ticket.lane.unwrap_or_else(|| "unknown".to_string()),
+        title,
+        status: ticket
+            .status
+            .unwrap_or_else(|| bb_core::ticket::default_ticket_status().to_string()),
+        created_at: ticket.created_at.unwrap_or_default(),
+        updated_at: ticket.updated_at.unwrap_or_default(),
+        file_name: ticket.name,
+        file_path: ticket.path,
+        dependencies,
+        attachments,
+        spec: ticket.spec,
+        extra: ticket.extra,
+    }))
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -89,7 +97,7 @@ pub(super) struct PatchTicketInput {
     #[serde(default)]
     depends_on: Option<Vec<String>>,
     #[serde(default)]
-    attachments: Option<Vec<HttpTicketAttachment>>,
+    attachments: Option<Vec<TicketAttachment>>,
 }
 
 /// Narrow ticket mutation endpoint used by the kanban UI.
@@ -163,18 +171,7 @@ pub(super) async fn patch_ticket(
             }
         }
         if let Some(attachments) = attachment_patch {
-            if attachments.is_empty() {
-                patch.remove.push(ATTACHMENTS_EXTRA_KEY.to_string());
-            } else {
-                let serialized = serde_json::to_string(&attachments).map_err(|err| {
-                    ApiError(InboxError::InvalidInput(format!(
-                        "attachments could not be serialized: {err}"
-                    )))
-                })?;
-                patch
-                    .extra
-                    .insert(ATTACHMENTS_EXTRA_KEY.to_string(), serialized);
-            }
+            patch.attachments = Some(attachments);
         }
         Some(patch)
     } else {
@@ -251,8 +248,8 @@ fn validate_dependency_patch(
 }
 
 fn validate_attachment_patch(
-    attachments: Vec<HttpTicketAttachment>,
-) -> Result<Vec<HttpTicketAttachment>, InboxError> {
+    attachments: Vec<TicketAttachment>,
+) -> Result<Vec<TicketAttachment>, InboxError> {
     let mut normalized = Vec::new();
     let mut seen = BTreeSet::new();
 
@@ -269,7 +266,7 @@ fn validate_attachment_patch(
         if !seen.insert(key) {
             continue;
         }
-        normalized.push(HttpTicketAttachment {
+        normalized.push(TicketAttachment {
             kind,
             target,
             label,
@@ -391,14 +388,18 @@ fn build_tickets_response(board: &ProjectBoard) -> Result<TicketsResponse, Inbox
     for entry in index.tickets {
         let id = entry.id.unwrap_or_default();
         let dependencies = extract_dependencies(&entry.extra, &id);
-        let attachments = extract_attachments(&entry.extra);
+        let attachments = entry.attachments;
 
         tickets.push(HttpTicket {
             id,
             lane: entry.lane.unwrap_or_else(|| "unknown".to_string()),
-            title: entry
-                .title
-                .unwrap_or_else(|| entry.name.trim_end_matches(".md").to_string()),
+            title: entry.title.unwrap_or_else(|| {
+                entry
+                    .name
+                    .trim_end_matches(".md")
+                    .trim_end_matches(".json")
+                    .to_string()
+            }),
             status: entry
                 .status
                 .unwrap_or_else(|| bb_core::ticket::default_ticket_status().to_string()),
@@ -408,6 +409,7 @@ fn build_tickets_response(board: &ProjectBoard) -> Result<TicketsResponse, Inbox
             file_path: entry.path,
             dependencies,
             attachments,
+            spec: entry.spec,
             extra: entry.extra,
         });
     }
@@ -423,19 +425,6 @@ fn build_tickets_response(board: &ProjectBoard) -> Result<TicketsResponse, Inbox
     })
 }
 
-fn strip_ticket_frontmatter(content: &str) -> String {
-    if !content.starts_with("+++") {
-        return content.to_string();
-    }
-    let Some(relative_end) = content[3..].find("\n+++") else {
-        return content.to_string();
-    };
-    let end = 3 + relative_end;
-    content[end + 4..]
-        .trim_start_matches(['\n', '\r'])
-        .to_string()
-}
-
 fn extract_dependencies(extra: &bb_core::FrontmatterExtra, self_id: &str) -> Vec<String> {
     let mut ids = BTreeSet::new();
     for key in ["depends_on", "dependencies"] {
@@ -449,11 +438,4 @@ fn extract_dependencies(extra: &bb_core::FrontmatterExtra, self_id: &str) -> Vec
         }
     }
     ids.into_iter().collect()
-}
-
-fn extract_attachments(extra: &bb_core::FrontmatterExtra) -> Vec<HttpTicketAttachment> {
-    let Some(value) = extra.get(ATTACHMENTS_EXTRA_KEY) else {
-        return Vec::new();
-    };
-    serde_json::from_str::<Vec<HttpTicketAttachment>>(value).unwrap_or_default()
 }

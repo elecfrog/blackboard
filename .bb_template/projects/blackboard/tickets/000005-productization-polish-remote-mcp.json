@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "id": "000005",
+  "lane": "bbp",
+  "title": "Blackboard 产品优化：UI/i18n/assignee/remote MCP/Agent 规范",
+  "summary": "前端支持 i18n 和明暗模式切换，支持 assignee 前端编辑，bb-server 支持 remote streaming MCP 接入，优化 Agent prompt 规范。",
+  "stories": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440006",
+      "given": "用户打开 Blackboard Web",
+      "when": "用户在 Settings 中切换语言或明暗模式",
+      "then": "界面立即反映变化且偏好被持久化"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440007",
+      "given": "用户在 Ticket detail/preview 页面查看某个 ticket",
+      "when": "用户编辑 assignee 并保存",
+      "then": "刷新页面后 assignee 仍保留为新值"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440008",
+      "given": "bb-server 以 remote streaming 模式运行",
+      "when": "Agent 通过 remote MCP 接入 bb-server",
+      "then": "Agent 可以用结构化接口创建/更新 ticket，无需手搓 Markdown"
+    }
+  ],
+  "risks": [
+    {
+      "id": "agent-prompt-drift",
+      "description": "Agent 可能继续沿用旧口径创建 ticket",
+      "mitigation": "已修正 AGENTS.md 措辞，强调胖 ticket、瘦 handoff"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-06",
+      "summary": "完成 i18n、暗黑模式、assignee、remote MCP 首轮实现"
+    },
+    {
+      "at": "2026-05-06",
+      "summary": "Detail meta grid 的处理人格子已改为直接编辑 assignee，移除下方重复编辑区"
+    },
+    {
+      "at": "2026-05-06",
+      "summary": "左侧导航改为工作区/系统两组，Dashboard 改为左侧产品 Sidebar + 右侧 Topbar + Workspace Content 结构"
+    },
+    {
+      "at": "2026-05-06",
+      "summary": "Agent registry schema 从 employee 迁到 agents/project_agents"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "夜间拆出的 6 张子票 000006-000011 已实现并推进到 review"
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "完成 graph、Agent 工作台、ticket detail dark mode 三处 UI 返工"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-07",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000002 000003 000004",
+    "parent": "000001"
+  }
+}

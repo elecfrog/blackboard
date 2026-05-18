@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "000055",
+  "lane": "bbt",
+  "title": "TaskGraph Task Execution：运行态、Runtime Session 与验收闭环",
+  "summary": "TaskRun 启动、节点执行、Runtime Session 绑定、事件时间线、Artifact 归档与验收闭环",
+  "stories": [
+    {
+      "id": "acd86027-2c71-4236-819b-8bac8079e9ea",
+      "given": "CompiledTaskGraph / RunPlan 已生成等待执行",
+      "when": "TaskRun 启动并创建 Runtime Session",
+      "then": "节点按序执行，事件时间线、Artifact 归档、失败修复循环记录在案"
+    },
+    {
+      "id": "d1d1b3b0-1d3c-4c1c-9975-2bb90b4a7d26",
+      "given": "TaskRun 执行过程中出现失败或权限中断",
+      "when": "系统检测到 blocked/failed/needs_approval 状态",
+      "then": "可恢复、可审计地中断或修复，保留完整执行上下文"
+    },
+    {
+      "id": "bcd0a0a1-66c0-4832-afca-3fb06e5df02d",
+      "given": "TaskRun 所有节点完成执行",
+      "when": "系统进入 ready_for_review 状态",
+      "then": "生成验收摘要通知，用户提供确认后结束 TaskRun"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-14",
+      "summary": "从 TaskGraph Vision 拆出 Task Execution 主干 ticket"
+    },
+    {
+      "at": "2026-05-14",
+      "summary": "已拆出 6 个执行增强子单"
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "新增 node_registry 模块，定义节点分类和业务角色"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-14",
+  "updated_at": "2026-05-17",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000053",
+    "kind": "platform-track",
+    "parent": "000053",
+    "requested_by": "user",
+    "scope": "task-execution"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "id": "000011",
+  "lane": "bbd",
+  "title": "Ticket 依赖 Graph 渲染",
+  "summary": "在前端绘制 project scoped 依赖 graph，按 RDG 有向无环图展示 explicit frontmatter dependencies，支持从 ticket detail 跳转。",
+  "stories": [
+    {
+      "id": "b003b73f-ff97-42f9-900c-30ea84e6f010",
+      "given": "用户在 graph 页面 /projects/blackboard/graph",
+      "when": "页面加载完成",
+      "then": "能渲染当前 project 的 ticket 节点与依赖边，空依赖/循环/跨状态 ticket 都有稳定显示",
+      "sample": "打开 graph 页面可见 11 个节点和 5 条边，列头和状态胶囊可见。"
+    },
+    {
+      "id": "603c25a5-9b41-4469-8cf2-7da3fcce4d0c",
+      "given": "用户在 graph 页面上拖拽某个节点",
+      "when": "拖拽结束后",
+      "then": "节点移动后 zoom 100% 保持不变，不因自适应画布大小造成缩放变化",
+      "sample": "拖拽节点后 zoom 仍为 100%。"
+    },
+    {
+      "id": "4fbae48f-c232-4cab-81a4-bb39a488e69f",
+      "given": "用户在 graph 页面滚动鼠标滚轮",
+      "when": "滚轮结束后",
+      "then": "画布围绕鼠标连续缩放，缩放比例由用户操作决定",
+      "sample": "滚轮后 zoom 从 100% 变为 112%。"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-07",
+      "summary": "从用户夜间任务拆出，准备实现 ticket dependency graph 可视化。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "完成 Ticket 依赖 Graph 渲染，按 RDG 有向无环图展示 explicit frontmatter dependencies。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "根据用户验收反馈，重做 RDG graph 视觉表达。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "将 RDG 从静态 SVG 升级为类 canvas 交互依赖编辑器。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-07",
+      "summary": "修复 graph 严重交互问题：节点拖拽和 pin 拖拽不再触发 ticket detail，ticket detail 只保留双击节点打开。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-06",
+      "summary": "codex 完成 6 张 ticket 联合验收（000006-000011），computer-use Chrome 验证 graph/agents/ticket detail 三页面通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-06",
+      "summary": "codex 修复 graph pin drag 和 zoom 问题，browser-use 全流程验证通过。",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-06",
+  "updated_at": "2026-05-07",
+  "extra": {
+    "assignee": "codex",
+    "depends_on": "000016",
+    "parent": "000005"
+  }
+}

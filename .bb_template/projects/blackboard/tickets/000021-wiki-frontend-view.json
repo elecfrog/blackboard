@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "000021",
+  "lane": "bbd",
+  "title": "Wiki 前端视图：一级导航 + 三栏浏览（文件树 / 正文 / TOC）",
+  "summary": "父单 #000019 已把 projects/<project>/wiki/ 定为第三类一等资源，后端子单 #000020 提供只读 tree/file/asset 三端点。本单在 bb_web 主站接入前端，让用户能在看板里像翻 inbox/ticket 一样翻 wiki。目标形态：三栏布局（左=wiki 文件树 / 中=Markdown 正文 / 右=该文档 TOC），作为与 Board / Tickets / Inbox / Agents / Graph / Settings 并列的一级 section。",
+  "stories": [
+    {
+      "id": "c1d07f29-6b88-4798-9faf-770c74fd1a2f",
+      "given": "bb_web 已存在 Board/Tickets/Inbox/Agents/Graph/Settings 等一级 section。",
+      "when": "用户在顶栏点击 Wiki 入口。",
+      "then": "切换到 Wiki section，显示三栏布局：左侧文件树、中间 Markdown 正文、右侧 TOC。"
+    },
+    {
+      "id": "d04e2367-0b87-4dfa-ab55-7855a3a5897e",
+      "given": "Wiki 文件树已显示。",
+      "when": "用户在文件树中点击某个 .md 文件。",
+      "then": "中间栏渲染该文件的 Markdown 内容，右栏显示对应 TOC；URL 反映当前文件路径。"
+    },
+    {
+      "id": "b437bd14-c546-4c84-93b2-9925c04c7638",
+      "given": "Wiki 文件树中目录节点可以展开/折叠。",
+      "when": "用户展开/折叠目录节点，或拖拽调整左栏宽度。",
+      "then": "文件树状态和宽度变化被持久化到 localStorage。"
+    },
+    {
+      "id": "e5933050-e968-40a6-9a28-2b77f83694fa",
+      "given": "Wiki 文件中包含相对链接或图片。",
+      "when": "用户点击相对链接或图片。",
+      "then": "相对链接跳转到应用内路由（而非浏览器原生导航）；图片通过 asset 端点加载。"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-08",
+      "summary": "WikiPanel.vue 实现三栏布局（文件树/正文/TOC），新增左侧边栏可拖拽调整宽度（120-600px）和折叠按钮，localStorage 持久化 treeWidth 和 treeCollapsed"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-08",
+  "updated_at": "2026-05-12",
+  "extra": {
+    "assignee": "opencode",
+    "depends_on": "000019"
+  }
+}

@@ -50,9 +50,25 @@ fn ticket_frontmatter(id: &str, lane: &str, title: &str, current: &str, status: 
     // exercise the legacy-pass-through path. The canonical frontmatter
     // shape produced by render_ticket only includes core fields; extra
     // KVs are optional.
+    let spec_json = serde_json::to_string(&ticket_spec(title)).unwrap();
     format!(
-            "+++\nid = \"{id}\"\nlane = \"{lane}\"\ntitle = \"{title}\"\ncreated_at = \"2026-05-04\"\nupdated_at = \"2026-05-05\"\nassignee = \"alice\"\ncurrent = \"{current}\"\nstatus = \"{status}\"\n+++\n\n# {title}\n\n{current}\n"
-        )
+            "+++\nid = \"{id}\"\nlane = \"{lane}\"\ntitle = \"{title}\"\ncreated_at = \"2026-05-04\"\nupdated_at = \"2026-05-05\"\nassignee = \"alice\"\ncurrent = \"{current}\"\nstatus = \"{status}\"\nticket_spec = {spec_json:?}\n+++\n\n# {title}\n\n{current}\n"
+    )
+}
+
+fn ticket_spec(summary: &str) -> TicketSpec {
+    TicketSpec {
+        summary: summary.to_string(),
+        stories: vec![TicketStory {
+            id: "11111111-1111-4111-8111-111111111111".to_string(),
+            given: "用户处于目标场景".to_string(),
+            when: "用户触发目标动作".to_string(),
+            then: "系统表现出预期行为".to_string(),
+            sample: None,
+        }],
+        risks: Vec::new(),
+        progress_record: Vec::new(),
+    }
 }
 
 fn create_ticket_input(title: &str) -> CreateTicketInput {
@@ -60,6 +76,8 @@ fn create_ticket_input(title: &str) -> CreateTicketInput {
         lane: "bbt".to_string(),
         title: title.to_string(),
         status: "todo".to_string(),
+        spec: ticket_spec(title),
+        attachments: Vec::new(),
         slug: None,
         extra: [("assignee".to_string(), "opencode".to_string())]
             .into_iter()
@@ -172,7 +190,7 @@ fn creates_ticket_with_backend_allocated_id_and_maintenance() {
     assert_eq!(result.ticket.id, "000001");
     assert_eq!(result.ticket.lane, "bbt");
     assert_eq!(result.ticket.status, "todo");
-    // Filename is now `<id>-<slug>.md`; the lane (previously `bbt-`) no
+    // Filename is now `<id>-<slug>.json`; the lane (previously `bbt-`) no
     // longer appears as a prefix.
     assert!(result
         .ticket
@@ -188,10 +206,15 @@ fn creates_ticket_with_backend_allocated_id_and_maintenance() {
     assert_eq!(index.current_counter, "000001");
 
     let content = fs::read_to_string(board.root().join(&result.ticket.path)).unwrap();
-    assert!(content.contains("id = \"000001\""));
-    assert!(content.contains("lane = \"bbt\""));
-    assert!(content.contains("assignee = \"opencode\""));
-    assert!(content.contains("- 已创建"));
+    let document: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(document["id"], "000001");
+    assert_eq!(document["lane"], "bbt");
+    assert_eq!(document["extra"]["assignee"], "opencode");
+    assert!(document["progress_record"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|record| record["summary"] == "已创建"));
 
     let read = board.read_ticket_by_id("000001").unwrap();
     assert_eq!(read.name, result.ticket.file_name);
@@ -253,7 +276,12 @@ fn updates_ticket_frontmatter_status_without_body_rewrite() {
     let (_temp, board) = fixture();
     let created = board.create_ticket(create_ticket_input("Move Me")).unwrap();
     let original_content = fs::read_to_string(board.root().join(&created.ticket.path)).unwrap();
-    assert!(original_content.contains("- 结构化输入"));
+    let original: serde_json::Value = serde_json::from_str(&original_content).unwrap();
+    assert!(original["progress_record"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|record| record["summary"] == "Record: 结构化输入"));
 
     let result = board
         .update_ticket(UpdateTicketInput {
@@ -262,6 +290,8 @@ fn updates_ticket_frontmatter_status_without_body_rewrite() {
                 title: Some("Moved".to_string()),
                 status: Some("done".to_string()),
                 lane: None,
+                spec: None,
+                attachments: None,
                 extra: [("assignee".to_string(), "codex".to_string())]
                     .into_iter()
                     .collect(),
@@ -279,10 +309,15 @@ fn updates_ticket_frontmatter_status_without_body_rewrite() {
     // File stays in place (flat directory), only frontmatter changes
     assert!(board.root().join(&result.ticket.path).exists());
     let updated_content = fs::read_to_string(board.root().join(&result.ticket.path)).unwrap();
-    assert!(updated_content.contains("title = \"Moved\""));
-    assert!(updated_content.contains("assignee = \"codex\""));
-    assert!(updated_content.contains("status = \"done\""));
-    assert!(updated_content.contains("- 结构化输入"));
+    let updated: serde_json::Value = serde_json::from_str(&updated_content).unwrap();
+    assert_eq!(updated["title"], "Moved");
+    assert_eq!(updated["extra"]["assignee"], "codex");
+    assert_eq!(updated["status"], "done");
+    assert!(updated["progress_record"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|record| record["summary"] == "Record: 结构化输入"));
     assert_eq!(result.maintenance.consistency.status, "passed");
 }
 
@@ -304,10 +339,18 @@ fn appends_ticket_sections_without_raw_markdown_patch() {
 
     assert_eq!(result.ticket.id, created.ticket.id);
     let updated = fs::read_to_string(board.root().join(&result.ticket.path)).unwrap();
-    assert!(updated.contains("- 完成 assignee 前端编辑"));
-    assert!(updated.contains("- 来源 inbox/2026-05-06-demo.md"));
-    assert!(updated.contains("- 人工验收 Dashboard"));
-    assert!(updated.contains("updated_at = "));
+    let document: serde_json::Value = serde_json::from_str(&updated).unwrap();
+    let records = document["progress_record"].as_array().unwrap();
+    assert!(records
+        .iter()
+        .any(|record| record["summary"] == "完成 assignee 前端编辑"));
+    assert!(records
+        .iter()
+        .any(|record| record["summary"] == "Record: 来源 inbox/2026-05-06-demo.md"));
+    assert!(records
+        .iter()
+        .any(|record| record["summary"] == "Next step: 人工验收 Dashboard"));
+    assert!(document["updated_at"].as_str().unwrap() >= created.ticket.updated_at.as_str());
 }
 
 #[test]
@@ -363,15 +406,20 @@ fn deprecate_ticket_moves_file_and_resolves_active_relationships() {
         .update_ticket(UpdateTicketInput {
             id: attached.ticket.id.clone(),
             frontmatter: Some(TicketFrontmatterPatch {
-                extra: [(
-                    "attachments".to_string(),
-                    format!(
-                        r#"[{{"kind":"ticket","target":"{}"}},{{"kind":"wiki","target":"keep.md"}}]"#,
-                        deprecated.ticket.id
-                    ),
-                )]
-                .into_iter()
-                .collect(),
+                attachments: Some(vec![
+                    TicketAttachment {
+                        kind: "ticket".to_string(),
+                        target: deprecated.ticket.id.clone(),
+                        label: None,
+                        description: None,
+                    },
+                    TicketAttachment {
+                        kind: "wiki".to_string(),
+                        target: "keep.md".to_string(),
+                        label: None,
+                        description: None,
+                    },
+                ]),
                 ..TicketFrontmatterPatch::default()
             }),
         })
@@ -526,6 +574,8 @@ fn lists_tickets_by_status_order_and_ignores_non_markdown() {
                 status: None,
                 created_at: None,
                 updated_at: None,
+                spec: None,
+                attachments: Vec::new(),
                 extra: FrontmatterExtra::new(),
                 metadata_error: Some("missing leading +++ frontmatter".to_string()),
                 metadata_warnings: REQUIRED_METADATA_FIELDS
@@ -542,6 +592,8 @@ fn lists_tickets_by_status_order_and_ignores_non_markdown() {
                 status: None,
                 created_at: None,
                 updated_at: None,
+                spec: None,
+                attachments: Vec::new(),
                 extra: FrontmatterExtra::new(),
                 metadata_error: Some("missing leading +++ frontmatter".to_string()),
                 metadata_warnings: REQUIRED_METADATA_FIELDS
@@ -558,6 +610,8 @@ fn lists_tickets_by_status_order_and_ignores_non_markdown() {
                 status: None,
                 created_at: None,
                 updated_at: None,
+                spec: None,
+                attachments: Vec::new(),
                 extra: FrontmatterExtra::new(),
                 metadata_error: Some("missing leading +++ frontmatter".to_string()),
                 metadata_warnings: REQUIRED_METADATA_FIELDS
@@ -966,10 +1020,11 @@ fn workspace_init_from_seed_copies_assets_without_runtime() {
     fs::create_dir_all(seed_data.join("projects/blackboard/tickets")).unwrap();
     fs::create_dir_all(seed_data.join("projects/blackboard/wiki")).unwrap();
     fs::create_dir_all(seed_data.join("task_graphs/system")).unwrap();
+    fs::create_dir_all(seed_data.join("schemas")).unwrap();
     fs::create_dir_all(seed_data.join("templates")).unwrap();
     fs::create_dir_all(seed_data.join("runtime/task_graph_runs")).unwrap();
     fs::create_dir_all(seed_repo.join("scripts")).unwrap();
-    fs::write(seed_data.join("templates/ticket.md"), "template").unwrap();
+    fs::write(seed_data.join("schemas/ticket.schema.json"), "{}").unwrap();
     fs::write(seed_data.join("runtime/seed-state.json"), "do not copy").unwrap();
     fs::write(seed_repo.join("scripts/check_ticket_ids.py"), "script").unwrap();
     fs::write(
@@ -990,7 +1045,7 @@ fn workspace_init_from_seed_copies_assets_without_runtime() {
         workspace.root(),
         crate::fs_util::canonicalize(&target.join(".bb")).unwrap()
     );
-    assert!(target.join(".bb/templates/ticket.md").is_file());
+    assert!(target.join(".bb/schemas/ticket.schema.json").is_file());
     assert!(target.join(".bb/scripts/check_ticket_ids.py").is_file());
     assert!(target.join(".bb/projects/__projects__.json").is_file());
     assert!(target.join(".bb/runtime").is_dir());
@@ -1534,6 +1589,113 @@ fn create_ticket_roundtrips_arbitrary_extra_fields() {
 }
 
 #[test]
+fn create_ticket_requires_and_roundtrips_bdd_spec() {
+    let (_temp, board) = fixture();
+    let mut input = create_ticket_input("BDD Shape");
+    input.spec = TicketSpec {
+        summary: "用户删除内容前需要明确确认，避免误删。".to_string(),
+        stories: vec![TicketStory {
+            id: "22222222-2222-4222-8222-222222222222".to_string(),
+            given: "用户看到一条可删除记录".to_string(),
+            when: "用户点击删除按钮".to_string(),
+            then: "系统先显示确认，而不是立即删除".to_string(),
+            sample: Some("写具体 UI 行为，不写笼统体验优化。".to_string()),
+        }],
+        risks: vec![TicketRisk {
+            id: "accidental_delete".to_string(),
+            description: "确认行为不清晰会导致误删。".to_string(),
+            mitigation: Some("确认与取消都必须有明确结果。".to_string()),
+            status: None,
+        }],
+        progress_record: vec![TicketProgressRecord {
+            at: Some("2026-05-18".to_string()),
+            summary: "产品定义进入结构化 BDD ticket。".to_string(),
+            evidence: vec!["用户明确要求 title/summary/stories/risks/progress_record".to_string()],
+        }],
+    };
+
+    let result = board.create_ticket(input).unwrap();
+    assert_eq!(
+        result
+            .ticket
+            .spec
+            .as_ref()
+            .map(|spec| spec.summary.as_str()),
+        Some("用户删除内容前需要明确确认，避免误删。")
+    );
+    assert!(!result.ticket.extra.contains_key("ticket_spec"));
+    assert!(result.ticket.file_name.ends_with(".json"));
+
+    let content = fs::read_to_string(board.root().join(&result.ticket.path)).unwrap();
+    let document: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(document["schema_version"], 1);
+    assert_eq!(
+        document["summary"],
+        "用户删除内容前需要明确确认，避免误删。"
+    );
+    assert_eq!(document["stories"][0]["given"], "用户看到一条可删除记录");
+
+    let read = board.read_ticket_by_id(&result.ticket.id).unwrap();
+    assert_eq!(
+        read.spec
+            .as_ref()
+            .and_then(|spec| spec.stories.first())
+            .map(|story| story.id.as_str()),
+        Some("22222222-2222-4222-8222-222222222222")
+    );
+}
+
+#[test]
+fn create_ticket_rejects_missing_story_in_bdd_spec() {
+    let (_temp, board) = fixture();
+    let mut input = create_ticket_input("Invalid BDD");
+    input.spec.stories.clear();
+
+    let err = board.create_ticket(input).unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("spec.stories requires at least one"),
+        "msg: {msg}"
+    );
+}
+
+#[test]
+fn update_ticket_spec_migrates_legacy_markdown_to_json_ticket() {
+    let (_temp, board) = fixture();
+    fs::write(
+        board.root().join("tickets/000042-legacy.md"),
+        "+++\nid = \"000042\"\nlane = \"bbt\"\ntitle = \"Legacy\"\ncreated_at = \"2026-05-04\"\nupdated_at = \"2026-05-05\"\nstatus = \"todo\"\n+++\n\n# 当前进展\n\nold body\n",
+    )
+    .unwrap();
+    write_ticket_index_counter(&board, "000042");
+
+    let updated = board
+        .update_ticket(UpdateTicketInput {
+            id: "000042".to_string(),
+            frontmatter: Some(TicketFrontmatterPatch {
+                spec: Some(ticket_spec("迁移后的结构化摘要。")),
+                ..TicketFrontmatterPatch::default()
+            }),
+        })
+        .unwrap();
+
+    assert_eq!(
+        updated
+            .ticket
+            .spec
+            .as_ref()
+            .map(|spec| spec.summary.as_str()),
+        Some("迁移后的结构化摘要。")
+    );
+    assert_eq!(updated.ticket.file_name, "000042-legacy.json");
+    assert!(!board.root().join("tickets/000042-legacy.md").exists());
+    let content = fs::read_to_string(board.root().join(&updated.ticket.path)).unwrap();
+    let document: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(document["summary"], "迁移后的结构化摘要。");
+    assert!(document["stories"][0]["id"].as_str().unwrap().contains('-'));
+}
+
+#[test]
 fn patch_remove_drops_extra_key_without_migration() {
     let (_temp, board) = fixture();
     let mut input = create_ticket_input("Needs Cleanup");
@@ -1617,7 +1779,9 @@ fn legacy_current_field_is_transparent_extra_without_warnings() {
         .expect("legacy ticket must be listed");
 
     assert!(entry.metadata_error.is_none());
-    assert!(entry.metadata_warnings.is_empty());
+    assert!(entry
+        .metadata_warnings
+        .contains(&"missing frontmatter field `ticket_spec`".to_string()));
     assert_eq!(
         entry.extra.get("current").map(String::as_str),
         Some("legacy-note")
@@ -1716,6 +1880,8 @@ fn archive_lane_reports_affected_ticket_count() {
             lane: "bbp".to_string(),
             title: "Affected One".to_string(),
             status: "todo".to_string(),
+            spec: ticket_spec("Affected One"),
+            attachments: Vec::new(),
             slug: None,
             extra: FrontmatterExtra::new(),
             sections: None,
@@ -1726,6 +1892,8 @@ fn archive_lane_reports_affected_ticket_count() {
             lane: "bbp".to_string(),
             title: "Affected Two".to_string(),
             status: "todo".to_string(),
+            spec: ticket_spec("Affected Two"),
+            attachments: Vec::new(),
             slug: None,
             extra: FrontmatterExtra::new(),
             sections: None,

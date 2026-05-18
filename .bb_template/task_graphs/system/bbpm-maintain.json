@@ -23,6 +23,20 @@
       "type": "number",
       "default": 5,
       "min": 1.0
+    },
+    {
+      "id": "ticket-bdd-batch-count",
+      "label": "Ticket BDD 单次迁移数量",
+      "type": "number",
+      "default": 3,
+      "min": 1.0
+    },
+    {
+      "id": "ticket-bdd-max-iterations",
+      "label": "Ticket BDD 最大循环次数",
+      "type": "number",
+      "default": 5,
+      "min": 1.0
     }
   ],
   "nodes": [
@@ -50,7 +64,7 @@
       "type": "end",
       "label": "Success",
       "position": {
-        "x": 704.0,
+        "x": 1016.0,
         "y": -106.66033336813648
       },
       "config": {
@@ -144,6 +158,47 @@
           "required": false
         }
       ]
+    },
+    {
+      "id": "ticket-bdd-cleanup",
+      "type": "sub_pipeline",
+      "label": "Ticket BDD 清理",
+      "position": {
+        "x": 704.0,
+        "y": -106.66033336813648
+      },
+      "config": {
+        "input_bindings": {
+          "batch-count": "{{inputs.ticket-bdd-batch-count}}",
+          "max-iterations": "{{inputs.ticket-bdd-max-iterations}}"
+        },
+        "pipeline_id": "ticket-bdd-cleanup",
+        "pipeline_scope": "system"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
     }
   ],
   "edges": [
@@ -166,6 +221,14 @@
     {
       "id": "bf2818fc-1e4e-4401-9bcb-32727e6dbc18",
       "from": "ba0905e1-7323-4697-8d8f-afb81f7b3ee1",
+      "to": "ticket-bdd-cleanup",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-ticket-bdd-cleanup-end",
+      "from": "ticket-bdd-cleanup",
       "to": "end-success",
       "kind": "exec",
       "from_pin": "exec_out",

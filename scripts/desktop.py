@@ -31,8 +31,8 @@ PORTABLE_LAUNCHER_TARGET_DIR = SRC_TAURI_DIR / "portable-target"
 PORTABLE_OUTPUT_DIR = SRC_TAURI_DIR / "target" / "release" / "portable"
 PORTABLE_PAYLOAD_MAGIC = b"BBPORTABLE1\n"
 
-SEED_ENTRIES = ["blackboard.json", "agents", "projects", "task_graphs", "templates"]
-HOME_TEMPLATE_ENTRIES = ["blackboard.json", "agents", "task_graphs", "templates"]
+SEED_ENTRIES = ["blackboard.json", "agents", "projects", "schemas", "task_graphs", "templates"]
+HOME_TEMPLATE_ENTRIES = ["blackboard.json", "agents", "schemas", "task_graphs", "templates"]
 
 
 def log(message: str) -> None:

@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "id": "000059",
+  "lane": "bbt",
+  "title": "TaskGraph Trigger：定时任务与 Schedule UI",
+  "summary": "TaskGraph Trigger：定时任务与 Schedule UI。支持 interval/daily/weekly/cron 形式的 Stateless Schedule 定时触发，最终统一创建 TaskIntent/RunRequest；UI 提供常用 presets、启用/暂停、run now、状态查看。",
+  "stories": [
+    {
+      "id": "e9f3702d-28d9-4fd5-929f-ddff748604c9",
+      "given": "用户配置了一个定时触发规则",
+      "when": "定时周期到达（interval/daily/weekly/cron）",
+      "then": "系统按配置的周期生成 TriggerEvent/TaskIntent/RunRequest，不复用长期 thread/context",
+      "sample": "每 15 分钟执行一次 \"清理 inbox\" 的 TaskGraph"
+    },
+    {
+      "id": "765578a5-35d2-4364-bd4f-1a2560d2307f",
+      "given": "用户打开 TaskGraph 页面",
+      "when": "用户查看 Schedule 区块",
+      "then": "页面展示所有定时任务的 presets、启用/暂停状态、下次运行时间、上次运行状态和最近 run 链接",
+      "sample": "支持创建 interval（每 15 分钟）、daily（每天 09:00）、weekly（每周一 09:00）、自定义 cron 规则"
+    },
+    {
+      "id": "0f50db8f-4bc5-44d8-8993-fbc747759fec",
+      "given": "调度器扫描到已到期的定时任务",
+      "when": "dispatcher 读取 due schedules 并用 schedule_id + planned_fire_at 去重后创建新 run",
+      "then": "系统幂等创建一次新 run，更新 last_run_at、last_run_id、last_status、next_run_at 状态",
+      "sample": "skip 并发策略确保同一 schedule 不会同时跑多个 run；misfire 策略处理错过触发"
+    },
+    {
+      "id": "61480fa8-95d2-4671-8ff5-e4806497883e",
+      "given": "Schedule 配置处于启用状态",
+      "when": "用户点击启用/暂停开关",
+      "then": "系统立即更新 schedule 的 enabled 状态，暂停后不再产生新的 TriggerEvent",
+      "sample": "暂停后下次到期时间显示为 \"已暂停\""
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-14",
+      "summary": "从 Trigger System 拆出定时触发与 Schedule UI 子单",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "收窄范围：059 只做 Stateless Schedule 定时触发实现，不承担 TaskGraph 引擎重构",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "新增 TaskSchedule/TaskScheduleState runtime 存储，支持 interval/daily/weekly/cron、Asia/Shanghai 时区、skip 并发、run_once misfire、幂等 claim",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "新增 TaskGraph schedule HTTP API（list/create/patch/delete/run-now），抽取 shared run creation helper",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "HTTP sidecar 启动后台 schedule dispatcher；bb daemon 增加 --schedules headless dispatcher 模式",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-15",
+      "summary": "TaskGraph 页面新增 Schedule 区，支持 presets 创建、启用/暂停、删除、run now、next/last/status/last run 跳转",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "done",
+  "created_at": "2026-05-14",
+  "updated_at": "2026-05-18",
+  "extra": {
+    "area": "TaskGraph",
+    "assignee": "codex",
+    "depends_on": "000056",
+    "kind": "trigger-subtrack",
+    "parent": "000056",
+    "requested_by": "user",
+    "schema_version": "1.0",
+    "scope": "scheduled-trigger"
+  }
+}

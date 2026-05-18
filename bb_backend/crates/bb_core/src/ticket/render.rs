@@ -1,8 +1,6 @@
-use std::collections::BTreeMap;
+use crate::{FrontmatterExtra, TicketAttachment, TicketBodySections};
 
-use crate::{FrontmatterExtra, TicketBodySections};
-
-use super::frontmatter::render_frontmatter;
+use super::spec::render_ticket_json_document;
 
 pub(super) struct TicketRenderInput<'a> {
     pub id: &'a str,
@@ -11,29 +9,59 @@ pub(super) struct TicketRenderInput<'a> {
     pub created_at: &'a str,
     pub updated_at: &'a str,
     pub status: &'a str,
+    pub spec_json: &'a str,
+    pub attachments: &'a [TicketAttachment],
     pub extra: &'a FrontmatterExtra,
     pub sections: &'a TicketBodySections,
 }
 
 pub(super) fn render_ticket(input: TicketRenderInput<'_>) -> String {
-    let mut fields = BTreeMap::new();
-    fields.insert("id".to_string(), input.id.to_string());
-    fields.insert("lane".to_string(), input.lane.to_string());
-    fields.insert("title".to_string(), input.title.to_string());
-    fields.insert("created_at".to_string(), input.created_at.to_string());
-    fields.insert("updated_at".to_string(), input.updated_at.to_string());
-    fields.insert("status".to_string(), input.status.to_string());
-    for (key, value) in input.extra {
-        fields.insert(key.clone(), value.clone());
+    let spec = serde_json::from_str(input.spec_json).expect("validated ticket spec serializes");
+    let content = render_ticket_json_document(
+        input.id,
+        input.lane,
+        input.title,
+        input.created_at,
+        input.updated_at,
+        input.status,
+        spec,
+        input.attachments.to_vec(),
+        input.extra.clone(),
+    )
+    .expect("validated JSON ticket serializes");
+
+    if input.sections.progress.is_empty()
+        && input.sections.record.is_empty()
+        && input.sections.next_step.is_empty()
+    {
+        return content;
     }
 
-    format!(
-        "{}\n# 当前进展\n\n{}\n\n# 记录\n\n{}\n\n# 下一步\n\n{}\n",
-        render_frontmatter(&fields),
-        render_ticket_section(&input.sections.progress),
-        render_ticket_section(&input.sections.record),
-        render_ticket_section(&input.sections.next_step),
-    )
+    let mut document =
+        super::spec::parse_ticket_json_document(&content).expect("new JSON ticket parses");
+    for line in &input.sections.progress {
+        document.progress_record.push(crate::TicketProgressRecord {
+            at: None,
+            summary: line.trim().to_string(),
+            evidence: Vec::new(),
+        });
+    }
+    for line in &input.sections.record {
+        document.progress_record.push(crate::TicketProgressRecord {
+            at: None,
+            summary: format!("Record: {}", line.trim()),
+            evidence: Vec::new(),
+        });
+    }
+    for line in &input.sections.next_step {
+        document.progress_record.push(crate::TicketProgressRecord {
+            at: None,
+            summary: format!("Next step: {}", line.trim()),
+            evidence: Vec::new(),
+        });
+    }
+    super::spec::serialize_ticket_json_document(&document)
+        .expect("new JSON ticket with sections serializes")
 }
 
 pub(super) fn render_ticket_section(lines: &[String]) -> String {
@@ -52,9 +80,9 @@ pub(super) fn append_ticket_body_sections(
     record: &[String],
     next_step: &[String],
 ) -> String {
-    let body = append_markdown_section(body, "当前进展", progress);
-    let body = append_markdown_section(&body, "记录", record);
-    append_markdown_section(&body, "下一步", next_step)
+    let body = append_markdown_section(body, "Progress Record", progress);
+    let body = append_markdown_section(&body, "Record", record);
+    append_markdown_section(&body, "Next Step", next_step)
 }
 
 fn append_markdown_section(body: &str, heading: &str, lines: &[String]) -> String {

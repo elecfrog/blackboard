@@ -1202,57 +1202,8 @@ async fn rest_lists_live_tickets_for_dashboard() {
         1
     );
     assert_eq!(body["tickets"][0]["extra"]["assignee"], "codex");
-    // After the index/content split, the list endpoint no longer returns
-    // ticket body content — only structural index fields.
+    // Ticket list returns structured fields only.
     assert!(body["tickets"][0]["content"].is_null());
-}
-
-#[tokio::test]
-async fn rest_ticket_content_returns_markdown_body() {
-    let (temp, workspace) = fixture();
-    let tickets_dir = temp.path().join("blackboard/projects/demo/tickets");
-    fs::remove_file(tickets_dir.join("sentinel.md")).unwrap();
-    fs::write(
-            tickets_dir.join("000001-sample.md"),
-            "+++\nid = \"000001\"\nlane = \"bbt\"\ntitle = \"Sample\"\ncreated_at = \"2026-05-04\"\nupdated_at = \"2026-05-05\"\nstatus = \"todo\"\n+++\n\n# 当前进展\n\n正文内容在这里。\n",
-        )
-        .unwrap();
-    fs::write(
-        temp.path().join("blackboard/projects/demo/.ticket-id"),
-        "000001\n",
-    )
-    .unwrap();
-
-    let response = app(workspace)
-        .oneshot(
-            Request::get("/api/projects/demo/tickets/000001/content")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = json_response(response).await;
-    let content = body["content"].as_str().unwrap();
-    assert!(!content.contains("+++"));
-    assert!(content.contains("当前进展"));
-    assert!(content.contains("正文内容在这里"));
-}
-
-#[tokio::test]
-async fn rest_ticket_content_returns_not_found_for_missing_id() {
-    let (_temp, workspace) = fixture();
-    let response = app(workspace)
-        .oneshot(
-            Request::get("/api/projects/demo/tickets/999999/content")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -1399,7 +1350,7 @@ async fn rest_patch_ticket_updates_assignee_extra() {
 }
 
 #[tokio::test]
-async fn rest_patch_ticket_updates_attachments_extra() {
+async fn rest_patch_ticket_updates_top_level_attachments() {
     let (temp, workspace) = fixture();
     let tickets_dir = temp.path().join("blackboard/projects/demo/tickets");
     fs::remove_file(tickets_dir.join("sentinel.md")).unwrap();
@@ -1443,8 +1394,13 @@ async fn rest_patch_ticket_updates_attachments_extra() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_response(response).await;
-    let extra = body["ticket"]["extra"]["attachments"].as_str().unwrap();
-    assert!(extra.contains("taskgraph-superstep-agent-orchestration.md"));
+    assert_eq!(body["ticket"]["attachments"][0]["kind"], "wiki");
+    assert_eq!(
+        body["ticket"]["attachments"][0]["target"],
+        "proposal/taskgraph-superstep-agent-orchestration.md"
+    );
+    assert_eq!(body["ticket"]["attachments"][1]["target"], "000060");
+    assert!(body["ticket"]["extra"]["attachments"].is_null());
     let updated = fs::read_to_string(tickets_dir.join("000001-sample.md")).unwrap();
     assert!(updated.contains("attachments = \""));
 
@@ -1479,6 +1435,7 @@ async fn rest_patch_ticket_updates_attachments_extra() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_response(response).await;
+    assert!(body["ticket"]["attachments"].as_array().unwrap().is_empty());
     assert!(body["ticket"]["extra"]["attachments"].is_null());
     let updated = fs::read_to_string(tickets_dir.join("000001-sample.md")).unwrap();
     assert!(!updated.contains("attachments = "));

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/bb_core", "crates/bb_cli"]
+members = ["crates/bb_core", "crates/bb_cli", "crates/bb_schema"]
 resolver = "2"
 
 [workspace.package]

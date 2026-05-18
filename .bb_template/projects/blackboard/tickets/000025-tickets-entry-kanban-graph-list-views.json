@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "id": "000025",
+  "lane": "bbd",
+  "title": "Tickets 入口整合：Kanban / Graph / List 三视图",
+  "summary": "统一 Tickets 入口，提供 Kanban、Graph、List 三种 view，用户在同一业务对象集合里切换视图。",
+  "stories": [
+    {
+      "id": "15724c55-b264-4e07-a509-71fa2702cf61",
+      "given": "用户在 BoardView、Graph 或 Tickets 分散入口",
+      "when": "用户访问 Tickets 统一入口",
+      "then": "看到 Kanban、Graph、List 三种 view 可切换，在同一业务对象集合里操作"
+    },
+    {
+      "id": "e469e53f-8749-4532-9db3-6282628a10b5",
+      "given": "用户在 Graph 或 List view",
+      "when": "用户在 ProjectSwitcher 切换项目",
+      "then": "保留当前子视图状态，不跳转回 Kanban"
+    },
+    {
+      "id": "3faa77e8-275a-4638-962d-5b4acfaf2b27",
+      "given": "用户在 Tickets 三视图之一",
+      "when": "用户切换 status 过滤",
+      "then": "Graph 视图自动重新布局，Kanban/List 正常刷新"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-08",
+      "summary": "实现 Tickets 统一入口：左侧导航移除独立 Board / Graph，Tickets 内提供 Kanban / Graph / List 三种 view",
+      "evidence": [
+        "npm run build --prefix bb_web 通过"
+      ]
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "新增 /projects/:project/tickets/graph 与 /projects/:project/tickets/list 路由，旧 /projects/:project/graph 重定向到新的 Graph 子视图",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "Tickets 三视图共用 lane/search 筛选、详情 preview、依赖图和列表能力",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-08",
+      "summary": "移除 Tickets 统一入口各处冗余 header；Graph 视图在 status 过滤变化时自动重新布局",
+      "evidence": [
+        "browser-use 冒烟通过"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-08",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "area": "Tickets",
+    "assignee": "codex",
+    "depends_on": "000016",
+    "kind": "product-ui",
+    "parent": "000016"
+  }
+}

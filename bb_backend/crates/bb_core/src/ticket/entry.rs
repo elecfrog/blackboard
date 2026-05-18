@@ -1,9 +1,18 @@
 use crate::TicketEntry;
 
-use super::frontmatter::{extract_extra_fields, parse_ticket_frontmatter};
+use super::frontmatter::{
+    extract_attachments_field, extract_extra_fields, parse_ticket_frontmatter,
+};
+use super::spec::{
+    parse_ticket_json_document, parse_ticket_spec_field, TICKET_SPEC_FRONTMATTER_KEY,
+};
 use super::{validate_ticket_status, REQUIRED_METADATA_FIELDS};
 
 pub(crate) fn ticket_entry_from_content(name: String, content: &str) -> TicketEntry {
+    if name.ends_with(".json") {
+        return json_ticket_entry_from_content(name, content);
+    }
+
     let path = format!("tickets/{name}");
     let filename_id = ticket_id_from_name(&name);
     let frontmatter = parse_ticket_frontmatter(content);
@@ -61,6 +70,18 @@ pub(crate) fn ticket_entry_from_content(name: String, content: &str) -> TicketEn
             }
         }
     }
+    let spec =
+        if !frontmatter_has_error && frontmatter.fields.contains_key(TICKET_SPEC_FRONTMATTER_KEY) {
+            match parse_ticket_spec_field(&frontmatter.fields) {
+                Ok(spec) => Some(spec),
+                Err(message) => {
+                    metadata_warnings.push(message);
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
     TicketEntry {
         name,
@@ -75,14 +96,68 @@ pub(crate) fn ticket_entry_from_content(name: String, content: &str) -> TicketEn
         status: status_str,
         created_at: frontmatter.fields.get("created_at").cloned(),
         updated_at: frontmatter.fields.get("updated_at").cloned(),
+        attachments: extract_attachments_field(&frontmatter.fields),
+        spec,
         extra: extract_extra_fields(&frontmatter.fields),
         metadata_error,
         metadata_warnings,
     }
 }
 
+fn json_ticket_entry_from_content(name: String, content: &str) -> TicketEntry {
+    let path = format!("tickets/{name}");
+    let filename_id = ticket_id_from_name(&name);
+    match parse_ticket_json_document(content) {
+        Ok(document) => {
+            let mut metadata_warnings = Vec::new();
+            if let Some(filename_id) = filename_id.as_deref() {
+                if filename_id != document.id {
+                    metadata_warnings.push(format!(
+                        "json id `{}` does not match filename id `{filename_id}`",
+                        document.id
+                    ));
+                }
+            }
+            if validate_ticket_status(&document.status).is_err() {
+                metadata_warnings.push(format!("invalid ticket status `{}`", document.status));
+            }
+            TicketEntry {
+                name,
+                path,
+                id: Some(document.id.clone()),
+                lane: Some(document.lane.clone()),
+                title: Some(document.title.clone()),
+                status: Some(document.status.clone()),
+                created_at: Some(document.created_at.clone()),
+                updated_at: Some(document.updated_at.clone()),
+                attachments: document.attachments.clone(),
+                spec: Some(document.spec()),
+                extra: document.extra,
+                metadata_error: None,
+                metadata_warnings,
+            }
+        }
+        Err(message) => TicketEntry {
+            name,
+            path,
+            id: filename_id,
+            lane: None,
+            title: None,
+            status: None,
+            created_at: None,
+            updated_at: None,
+            attachments: Vec::new(),
+            spec: None,
+            extra: Default::default(),
+            metadata_error: Some(message),
+            metadata_warnings: Vec::new(),
+        },
+    }
+}
+
 fn ticket_id_from_name(name: &str) -> Option<String> {
     name.trim_end_matches(".md")
+        .trim_end_matches(".json")
         .split('-')
         .find(|segment| is_six_digit_id(segment))
         .map(ToString::to_string)

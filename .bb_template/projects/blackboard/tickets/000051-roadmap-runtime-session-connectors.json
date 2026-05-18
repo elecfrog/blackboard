@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "000051",
+  "lane": "bbt",
+  "title": "Roadmap：Runtime 连接与 AgentSession 维护",
+  "summary": "Roadmap Runtime 连接与 AgentSession 维护",
+  "stories": [
+    {
+      "id": "d1778423-f112-4302-9cae-af4431766dd6",
+      "given": "BlackBoard 需要支持多种 Agent Runtime（OpenCode/Codex/CodeBuddy）的连接与会话管理",
+      "when": "用户配置了 Agent Runtime，系统需要维护对应的 AgentSession，处理实时事件、resume、usage、tool replay",
+      "then": "AgentSession 能正确管理多种 runtime 的连接，支持事件归一化和 provider event normalization"
+    }
+  ],
+  "risks": [],
+  "progress_record": [],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-13",
+  "updated_at": "2026-05-17",
+  "extra": {
+    "assignee": "codex"
+  }
+}

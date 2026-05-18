@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "000056",
+  "lane": "bbp",
+  "title": "TaskGraph Trigger System：统一任务触发层",
+  "summary": "TaskGraph Trigger System：统一任务触发层。把 Chat FAB、Ticket、Inbox、Hook、Schedule、Watch、External Webhook、Agent Follow-up 等入口统一成 TriggerEvent/TaskIntent。",
+  "stories": [
+    {
+      "id": "bbaa9e7f-2ace-45e4-bda8-5ae8b22bc409",
+      "given": "用户或系统需要触发一个任务执行",
+      "when": "Chat FAB、Ticket、Inbox、Hook、Schedule、Watch、External Webhook、Agent Follow-up 等入口发起触发请求",
+      "then": "Trigger 层只回答为什么现在启动、携带什么上下文、允许自动化到什么程度、完成后通知谁；不直接执行任务",
+      "sample": "Chat FAB 说\"帮我清理这个 inbox\"，Trigger 层接收后产生 TaskIntent，交给 Task Creation"
+    },
+    {
+      "id": "1fe5ccf7-d8b5-45c2-8d22-f4ee04a41179",
+      "given": "Trigger 层收到触发请求",
+      "when": "Trigger 层处理触发请求",
+      "then": "系统生成 TaskIntent，包含 source、project、worktree、actor、goal、payload、template_hint、permission_policy、notify_policy",
+      "sample": "手动 Chat Trigger 携带 source=chat, actor=user, goal=\"清理 inbox\", project=当前项目"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-14",
+      "summary": "从 TaskGraph Vision 拆出 Trigger System 主干 ticket",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "in_progress",
+  "created_at": "2026-05-14",
+  "updated_at": "2026-05-18",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000053",
+    "kind": "platform-track",
+    "parent": "000053",
+    "requested_by": "user",
+    "schema_version": "1.0",
+    "scope": "trigger-system"
+  }
+}

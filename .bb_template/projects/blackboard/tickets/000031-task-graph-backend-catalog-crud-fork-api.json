@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "id": "000031",
+  "lane": "bbt",
+  "title": "Task Graph 后端：Merged Catalog、CRUD 与 Fork API",
+  "summary": "提供 Task Graph HTTP API，合并 system graph 与 project graph 为统一 catalog，支持 project graph 的创建、编辑、删除和 system graph fork。",
+  "stories": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "given": "BB 系统存在 system graph 和 project graph 两类资源",
+      "when": "用户调用 GET /api/projects/{project}/task-graphs",
+      "then": "返回 system + project 两类条目，标注 scope、readonly、origin、title、description、updated_at",
+      "sample": "返回 TgCatalogResponse，包含 items: [{scope, readonly, origin, title, description, updated_at}]"
+    },
+    {
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "given": "用户需要读取某个 graph 的完整定义",
+      "when": "用户调用 GET /api/projects/{project}/task-graphs/{graph_id}",
+      "then": "返回完整 graph definition；project graph 可 PATCH 保存；system graph 只读，编辑前必须 fork",
+      "sample": "返回 TgGraphResponse，包含 definition 完整内容"
+    },
+    {
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "given": "用户需要创建新的 project graph",
+      "when": "用户调用 POST /api/projects/{project}/task-graphs",
+      "then": "创建 project graph 并返回 TgWriteResponse",
+      "sample": "POST body 包含 TgCreateBody: {title, definition}"
+    },
+    {
+      "id": "d4e5f6a7-b8c9-0123-def0-234567890123",
+      "given": "用户需要修改已有的 project graph",
+      "when": "用户调用 PATCH /api/projects/{project}/task-graphs/{graph_id}",
+      "then": "更新 project graph 并返回 TgWriteResponse；system graph 返回 readonly_graph 错误",
+      "sample": "PATCH body 包含 TgPatchBody: {title?, definition?, version?}"
+    },
+    {
+      "id": "e5f6a7b8-c9d0-1234-ef01-345678901234",
+      "given": "用户需要删除已有的 project graph",
+      "when": "用户调用 DELETE /api/projects/{project}/task-graphs/{graph_id}",
+      "then": "删除 project graph；system graph 返回 readonly_graph 错误",
+      "sample": "DELETE 无 body"
+    },
+    {
+      "id": "f6a7b8c9-d0e1-2345-f012-456789012345",
+      "given": "用户需要基于 system graph 创建可编辑的 project graph",
+      "when": "用户调用 POST /api/projects/{project}/task-graphs/customize/fork",
+      "then": "复制 snapshot 到 projects/<project>/task_graphs/，写入 origin.scope/id/version，返回 TgWriteResponse",
+      "sample": "POST body 包含 TgForkBody: {system_graph_id}"
+    }
+  ],
+  "risks": [
+    {
+      "id": "graph-not-found",
+      "description": "请求的 graph 不存在",
+      "mitigation": "API 返回 graph_not_found 错误码",
+      "status": "mitigated"
+    },
+    {
+      "id": "readonly-graph",
+      "description": "尝试修改 system graph",
+      "mitigation": "API 返回 readonly_graph 错误码",
+      "status": "mitigated"
+    },
+    {
+      "id": "validation-failed",
+      "description": "graph payload 校验失败",
+      "mitigation": "API 返回 validation_failed 错误码",
+      "status": "mitigated"
+    },
+    {
+      "id": "stale-version",
+      "description": "版本冲突",
+      "mitigation": "API 返回 stale_version 错误码",
+      "status": "mitigated"
+    },
+    {
+      "id": "duplicate-graph-id",
+      "description": "graph id 重复",
+      "mitigation": "API 返回 duplicate_graph_id 错误码",
+      "status": "mitigated"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "Task Graph HTTP API 完整实现于 bb_cli/src/http.rs，新增 6 个端点：list catalog、read system/project graph、create、patch、delete、fork",
+      "evidence": [
+        "bb_cli/src/http.rs"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "TaskGraphApiError 独立错误适配，映射契约错误码",
+      "evidence": [
+        "bb_cli/src/http.rs"
+      ]
+    },
+    {
+      "at": "2026-05-09",
+      "summary": "6 个 DTO structs：TgCatalogResponse, TgGraphResponse, TgWriteResponse, TgCreateBody, TgPatchBody, TgForkBody",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-09",
+  "updated_at": "2026-05-09",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000030",
+    "kind": "backend",
+    "parent": "000028"
+  }
+}

@@ -1,0 +1,388 @@
+{
+  "schema_version": 1,
+  "id": "ticket-bdd-cleanup",
+  "scope": "system",
+  "title": "Ticket BDD 清理",
+  "description": "运行 bb-pm 将旧 Markdown ticket 文件分批迁移为结构化 JSON BDD ticket 文件，并用 schema_validate 校验每轮输出。",
+  "version": 2,
+  "readonly": true,
+  "metadata": {
+    "tags": [
+      "bb-pm",
+      "ticket",
+      "bdd"
+    ],
+    "related_tickets": [
+      "000073"
+    ],
+    "owner": "blackboard",
+    "run_policy": {
+      "allow_concurrent_runs": false,
+      "max_concurrent_runs": 1,
+      "queue_enabled": true,
+      "max_queue_wait_ms": 1800000
+    }
+  },
+  "inputs": [
+    {
+      "id": "batch-count",
+      "label": "一次处理几张",
+      "type": "number",
+      "default": 3,
+      "description": "每轮 cleanup task 最多迁移的 legacy ticket 数量。",
+      "min": 1.0,
+      "max": 10.0
+    },
+    {
+      "id": "max-iterations",
+      "label": "循环次数",
+      "type": "number",
+      "default": 5,
+      "description": "Loop 最多执行多少轮。",
+      "min": 1.0,
+      "max": 50.0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -64.0,
+        "y": 160.0
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "cleanup-loop",
+      "type": "loop",
+      "label": "Ticket BDD Cleanup Loop",
+      "description": "循环次数来自全局输入 max-iterations；每轮按 batch-count 迁移一批 legacy Markdown 文件。",
+      "position": {
+        "x": 224.0,
+        "y": 160.0
+      },
+      "config": {
+        "body_entry": "bdd-cleanup",
+        "body_exit": "bdd-output-validate",
+        "condition": {
+          "input_ref": "$.nodes.bdd-output-validate.output",
+          "op": "equals",
+          "path": "$.data.continue",
+          "value": true
+        },
+        "max_iterations": 3,
+        "max_iterations_ref": "{{inputs.max-iterations}}",
+        "on_max_iterations": "succeed"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "exit",
+          "label": "Exit",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "index",
+          "label": "Index",
+          "direction": "out",
+          "category": "data",
+          "value_type": "int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "bdd-cleanup",
+      "type": "llm",
+      "label": "Ticket BDD Cleanup",
+      "position": {
+        "x": 544.0,
+        "y": 72.0
+      },
+      "config": {
+        "agent": "bb-pm",
+        "inputs": {
+          "batch-count": "{{inputs.batch-count}}"
+        },
+        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "file",
+          "template": "agents/prompts/ticket-bdd-cleanup.md"
+        },
+        "runtime": "opencode"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "bdd-output-validate",
+      "type": "schema_validate",
+      "label": "Cleanup Output Validate",
+      "description": "校验每轮 BBPM 输出，避免自动化场景中坏 JSON 或缺少 continue 信号时静默继续。",
+      "position": {
+        "x": 832.0,
+        "y": 72.0
+      },
+      "config": {
+        "fail_on_invalid": true,
+        "inputs": {
+          "value": "{{nodes.bdd-cleanup.output}}"
+        },
+        "schema": {
+          "type": "object",
+          "required": [
+            "processed",
+            "converted",
+            "skipped",
+            "json_files_created",
+            "markdown_files_removed",
+            "remaining_legacy_count",
+            "continue",
+            "verification_status",
+            "verification"
+          ],
+          "properties": {
+            "processed": {
+              "type": "boolean"
+            },
+            "converted": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9]{6}$"
+              }
+            },
+            "skipped": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "reason"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[0-9]{6}$"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "json_files_created": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "markdown_files_removed": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "remaining_legacy_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "continue": {
+              "type": "boolean"
+            },
+            "verification_status": {
+              "type": "object",
+              "required": [
+                "json_syntax",
+                "ticket_shape",
+                "file_conversion",
+                "index_rebuilt"
+              ],
+              "properties": {
+                "json_syntax": {
+                  "type": "string",
+                  "enum": [
+                    "passed",
+                    "not_run_no_mutation"
+                  ]
+                },
+                "ticket_shape": {
+                  "type": "string",
+                  "enum": [
+                    "passed",
+                    "not_run_no_mutation"
+                  ]
+                },
+                "file_conversion": {
+                  "type": "string",
+                  "enum": [
+                    "passed",
+                    "not_run_no_mutation"
+                  ]
+                },
+                "index_rebuilt": {
+                  "type": "string",
+                  "enum": [
+                    "passed",
+                    "not_required"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "verification": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "schema_name": "ticket_bdd_cleanup_output"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 544.0,
+        "y": 280.0
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-start-loop",
+      "from": "start",
+      "to": "cleanup-loop",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-loop-body",
+      "from": "cleanup-loop",
+      "to": "bdd-cleanup",
+      "kind": "exec",
+      "from_pin": "body",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-cleanup-validate",
+      "from": "bdd-cleanup",
+      "to": "bdd-output-validate",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-loop-end",
+      "from": "cleanup-loop",
+      "to": "end-success",
+      "kind": "exec",
+      "label": "Completed",
+      "from_pin": "exit",
+      "to_pin": "exec_in"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0.0,
+      "y": 0.0,
+      "scale": 1.0
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "000040",
+  "lane": "bbq",
+  "title": "Task Graph：引入类型化 In/Out Pin，替代四向自由连接",
+  "summary": "当前 Task Graph 的连接模型是\"四向自由 Pin\"：\n- `TaskGraphEdge` 只有 `from`/`to` + 可选 `source_handle`/`target_handle` 字符串\n- 节点没有显式声明自己拥有哪些 Pin\n- Pin 的方向（In/Out）、类别（执行流/数据流）、数据类型全部隐式\n- 前端渲染时连线无法区分控制流和数据流，复杂图一眼看不懂\n\n参考",
+  "stories": [
+    {
+      "id": "709cff52-af53-4df6-b12d-f73f7f638d05",
+      "given": "Task Graph 当前使用四向自由连接模型，节点没有显式声明 Pin，连线无法区分控制流和数据流",
+      "when": "用户需要创建节点间连接或理解复杂图的执行流程",
+      "then": "节点显式声明 InPin 和 OutPin，Pin 分 Exec（执行流）和 Data（数据流）两类，连线有方向约束且类型兼容"
+    },
+    {
+      "id": "b655b2bb-5ebc-46bb-b68f-841b2bf7323b",
+      "given": "系统中存在使用旧格式 JSON 的 Task Graph（没有 pins 字段）",
+      "when": "系统加载这些旧格式 graph 文件",
+      "then": "自动根据 node_type 生成默认 pins，保持向后兼容"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-09",
+      "summary": "默认 Loop pins 从四向自由连接改为只暴露 exec_in、body、exit、index"
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-09",
+  "updated_at": "2026-05-10",
+  "extra": {
+    "area": "TaskGraph",
+    "assignee": "codex",
+    "depends_on": "000039",
+    "kind": "feature",
+    "parent": "000028"
+  }
+}

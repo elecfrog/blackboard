@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "id": "000068",
+  "lane": "bbd",
+  "title": "实现 Agents 页面真实 Agent 指标数据",
+  "summary": "实现 Agents 页面真实指标数据展示，隐藏占位组件并定义真实数据口径",
+  "stories": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "given": "Agents 页面存在占位 AgentMetricsCards 组件，显示伪指标数据",
+      "when": "用户访问 Agents 页面查看 Agent 指标",
+      "then": "页面显示真实指标数据（运行次数、成功率、平均耗时、Token总数），无数据时显示明确空态而非伪指标"
+    },
+    {
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "given": "Skill 列表在空闲时显示为禁用状态",
+      "when": "Agent 处于空闲状态时用户查看 Skill 列表",
+      "then": "Skill 列表显示空闲提示而非禁用按钮"
+    },
+    {
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "given": "Skill 删除操作使用文字按钮",
+      "when": "用户需要删除某个 Skill",
+      "then": "删除按钮显示为 lucide Trash2/X 图标"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-16",
+      "summary": "隐藏占位 AgentMetricsCards 并留 TODO 等待真实指标数据接入",
+      "evidence": [
+        "变更 Skill 列表新增行为为空闲时显示提示而非禁用按钮",
+        "将 Skill 删除文本按钮替换为 lucide Trash2/X 图标"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "archived",
+  "created_at": "2026-05-16",
+  "updated_at": "2026-05-16",
+  "extra": {
+    "area": "bb_web_agents",
+    "source": "codex",
+    "type": "feature"
+  }
+}
