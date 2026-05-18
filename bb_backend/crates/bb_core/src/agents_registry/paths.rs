@@ -2,10 +2,12 @@ use std::path::{Path, PathBuf};
 
 use crate::InboxError;
 
+#[must_use]
 pub fn registry_path(bb_root: &Path) -> PathBuf {
     bb_root.join("agents").join("agents.toml")
 }
 
+#[allow(clippy::option_if_let_else)]
 pub(super) fn path_for_display(path: &Path) -> String {
     let value = path.to_string_lossy();
     if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { Trash2, X } from 'lucide-vue-next'
 import type { SkillInfo } from '@/data/agents'
+import { BbButton, BbInlineAlert, BbSectionHeader } from '@/components/common'
 import { t } from '@/i18n'
 
 const props = defineProps<{
@@ -60,19 +61,18 @@ watch(() => props.skills, cancelAdd)
 
 <template>
   <div class="aw-section">
-    <div class="aw-section-header">
-      <h4>{{ t('skillsSectionTitle') }}</h4>
-      <div class="aw-section-actions">
-        <button
-          type="button"
-          class="aw-add-btn"
+    <BbSectionHeader class="aw-section-header" :title="t('skillsSectionTitle')" title-tag="h4" :divider="false">
+      <template #actions>
+        <BbButton
+          size="sm"
+          variant="secondary"
           :disabled="saving || adding"
           @click="addSkill"
         >
           + {{ saving ? t('saving') : t('skillsAdd') }}
-        </button>
-      </div>
-    </div>
+        </BbButton>
+      </template>
+    </BbSectionHeader>
     <template v-if="skills.length > 0 || adding">
       <table class="aw-table">
         <thead>
@@ -87,15 +87,16 @@ watch(() => props.skills, cancelAdd)
               {{ item.skill }}
             </td>
             <td class="aw-table-action-cell">
-              <button
-                type="button"
-                class="aw-remove-btn"
+              <BbButton
+                size="mini"
+                variant="danger"
+                icon-only
                 :disabled="saving"
                 :aria-label="t('skillsRemove')"
                 @click="removeSkill(item.index)"
               >
                 <Trash2 aria-hidden="true" />
-              </button>
+              </BbButton>
             </td>
           </tr>
           <tr v-if="adding" class="aw-skill-draft-row">
@@ -116,29 +117,30 @@ watch(() => props.skills, cancelAdd)
               </select>
             </td>
             <td class="aw-table-action-cell">
-              <button
-                type="button"
-                class="aw-remove-btn"
+              <BbButton
+                size="mini"
+                variant="secondary"
+                icon-only
                 :disabled="saving"
                 :aria-label="t('cancel')"
                 @click="cancelAdd"
               >
                 <X aria-hidden="true" />
-              </button>
+              </BbButton>
             </td>
           </tr>
         </tbody>
       </table>
     </template>
     <p v-else class="aw-empty-line">{{ t('skillsNoConfigured') }}</p>
-    <p v-if="saveError" class="aw-inline-error">{{ saveError }}</p>
-    <button
+    <BbInlineAlert v-if="saveError" tone="error">{{ saveError }}</BbInlineAlert>
+    <BbButton
       v-if="!showAll && skills.length > maxVisible"
-      type="button"
-      class="aw-view-all"
+      size="sm"
+      variant="ghost"
       @click="showAll = true"
     >
       {{ t('skillsViewAll') }} ({{ skills.length }})
-    </button>
+    </BbButton>
   </div>
 </template>

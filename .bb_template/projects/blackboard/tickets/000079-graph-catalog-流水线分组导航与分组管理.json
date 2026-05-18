@@ -1,0 +1,234 @@
+{
+  "schema_version": 1,
+  "id": "000079",
+  "lane": "bbp",
+  "title": "Graph Catalog：Graph 分组导航与统一索引",
+  "summary": "TaskGraph 数量增长后，Graph Catalog 首页需要把左侧导航升级为 Graph Collection Tree。产品语言统一使用 Graph，不再使用 Pipeline；用户口语里的 pipeline 只作为习惯表达，UI、ticket、数据模型都称 Graph。左侧包含“全部 Graph”“System Graph 分组”“项目 Graph 分组”和“我收藏的 Graph”。点击 collection 可下拉展开其中的 Graph item/card；项目 collection 支持创建、重命名、删除、排序，并支持把 Graph 迁移到不同分组。存储上在 graph 父目录维护 `__graphs__.json` 作为 Graph Catalog 索引，与 `__inbox__.json`、`__tickets__.json` 类似，统一同步 system graph 与用户/project graph，让前端按一个 catalog 渲染，而不是分裂读取两套列表。MVP 聚焦 Graph Catalog 的信息架构、归组、收藏和索引行为，不改变 graph 执行、编辑器节点语义或运行时能力。",
+  "stories": [
+    {
+      "id": "42d21fce-8f78-4fa1-a13b-9ffd30fd2e92",
+      "given": "项目中存在 system graph 和用户/project graph",
+      "when": "用户打开 Graph Catalog 首页",
+      "then": "左侧显示“全部 Graph”“System Graph 分组”“项目 Graph 分组”和“我收藏的 Graph”；Graph Catalog 主列表合并展示 system 与用户/project graph，并通过 scope/type 标识区分来源。"
+    },
+    {
+      "id": "8914a422-3d36-464f-b59d-07684c4a31f9",
+      "given": "graph 父目录存在 catalog 索引",
+      "when": "后端加载 Graph Catalog",
+      "then": "系统读取并维护父目录 `__graphs__.json`，该索引记录 graph id、scope/type、title、group membership、favorite 状态、排序和基础统计；system graph 与用户/project graph 都进入同一索引。"
+    },
+    {
+      "id": "601406dc-8b91-4cbe-b943-0d5610ab7068",
+      "given": "左侧存在 System Graph 分组",
+      "when": "用户展开 System Graph 分组",
+      "then": "左侧原地展示 system graph collections 及其 Graph item/card；system graph 可以被 catalog 归组和收藏，但 readonly 仍只限制 graph 内容编辑，不限制 catalog 归类。"
+    },
+    {
+      "id": "2f847fbf-1f84-494f-91fa-e152be523d56",
+      "given": "左侧存在项目 Graph 分组，例如 Inbox、Research、Maintenance",
+      "when": "用户点击 collection 行或展开箭头",
+      "then": "该 collection 在左侧原地展开，展示属于该 collection 的 Graph item/card；再次点击可折叠；选中的 collection 高亮，右侧主区域同步过滤为该 collection 的 Graph。"
+    },
+    {
+      "id": "a853eea3-05ad-46f4-9c7d-460ff1947d69",
+      "given": "一个 collection 已展开",
+      "when": "用户点击其中某条 Graph item/card",
+      "then": "右侧进入该 Graph 的详情/运行入口；用户仍能从左侧看到当前 collection 上下文，并可快速切换到同组其他 Graph。"
+    },
+    {
+      "id": "14c0e7d0-0b34-4eda-b32f-2cc5076d8378",
+      "given": "用户在项目 Graph 分组区域点击新增按钮",
+      "when": "输入分组名称并确认",
+      "then": "系统创建新的项目 Graph 分组，出现在项目 Graph 分组下方，数量初始为 0；空分组也可显示和管理。"
+    },
+    {
+      "id": "d9c58767-b61b-448a-bddc-46dd102a0b35",
+      "given": "用户打开某个项目分组的更多菜单",
+      "when": "选择重命名、删除、排序或管理操作",
+      "then": "系统提供对应分组管理能力；删除非空分组时必须要求用户选择迁移到其他分组或移到未分组，不能静默丢失 Graph 归属。"
+    },
+    {
+      "id": "4df5781f-d030-458f-840a-1b4aa29e0a50",
+      "given": "某个 Graph 已属于一个项目分组",
+      "when": "用户通过拖拽、Graph item 更多菜单或批量操作选择“移动到分组”",
+      "then": "该 Graph 从原项目分组迁移到目标项目分组；未分组数量、原分组数量、目标分组数量立即更新，并同步写入 `__graphs__.json`。"
+    },
+    {
+      "id": "c0119a51-a0dc-47f5-8f8b-c95cd62fe2aa",
+      "given": "用户点击“我收藏的 Graph”入口",
+      "when": "Graph Catalog 加载收藏视图",
+      "then": "系统只展示被当前用户收藏的 Graph；收藏是 smart view，不是真实分组，也不作为迁移目标。最近使用、我创建的入口不进入本 MVP。"
+    },
+    {
+      "id": "ab4c162a-1b61-4873-98eb-959dafb91467",
+      "given": "用户收藏或取消收藏某个 Graph",
+      "when": "用户点击 Graph item/card 的收藏操作",
+      "then": "系统更新 `__graphs__.json` 中对应 Graph 的 favorite 状态；左侧“我收藏的 Graph”数量立即更新。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "graph-language-drift",
+      "description": "用户口语可能继续说 pipeline，但产品和数据模型如果混用 Pipeline/Graph 会造成长期认知分裂。",
+      "mitigation": "UI、ticket、schema、API 字段统一称 Graph；仅在对话中理解用户说 pipeline 等价 Graph。",
+      "status": "open"
+    },
+    {
+      "id": "catalog-index-authority",
+      "description": "`__graphs__.json` 如果与实际 graph 文件不同步，Catalog 会出现幽灵 Graph 或丢失 Graph。",
+      "mitigation": "后端提供重建/同步逻辑，保存、删除、迁移、收藏时都以 graph 文件事实和索引同步校验为准。",
+      "status": "open"
+    },
+    {
+      "id": "system-project-merge",
+      "description": "合并 system graph 和用户/project graph 后，readonly、归组、删除、编辑权限容易混淆。",
+      "mitigation": "Catalog metadata 可编辑不等于 Graph definition 可编辑；scope/type、readonly 和动作权限必须在 UI 上明确区分。",
+      "status": "open"
+    },
+    {
+      "id": "sidebar-overload",
+      "description": "左侧直接展开大量 Graph 可能变得很长，影响定位效率。",
+      "mitigation": "MVP 支持折叠、搜索和数量徽标；后续可加虚拟滚动或只展示前 N 条。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-21",
+      "summary": "后端新增 Graph Catalog 统一索引：GET /api/projects/{project}/task-graphs 返回 graphs + groups，PATCH /api/projects/{project}/task-graphs/catalog 保存 groups/entries，并在 project 父目录维护 __graphs__.json。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "TaskGraphSummary 增加 updated_at/group_id/favorite/sort_order，catalog 归一化会同步真实 graph 文件、剔除幽灵 entry，并阻止 system graph 被移入 project group。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "前端 Graph Catalog 左侧替换为 Collection Tree：全部 Graph、我收藏的 Graph、System Graph 分组、项目 Graph 分组；支持分组展开、创建/重命名/删除项目分组、收藏、以及通过下拉把 Graph 移动到同类分组。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "按用户要求去掉 Pipeline 词，UI 使用 Graph；MVP 仅保留收藏入口，未做最近使用/我创建的。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证通过：cargo test --manifest-path bb_backend\\Cargo.toml -p bb_core task_graph -- --nocapture，221 passed。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证通过：cargo build --manifest-path bb_backend\\Cargo.toml -p bb_cli。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证通过：npm run build --prefix bb_web。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证通过：GET/PATCH task graph catalog API smoke，blackboard project 返回 12 个 graph、2 个 group，并生成 .bb_template/projects/blackboard/__graphs__.json。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 服务已重启：backend 127.0.0.1:3001 healthz OK，frontend Vite 8060 OK。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 浏览器自动化 UI 验证被 Codex in-app browser trust 限制阻塞：browser-client is not trusted；未伪造点击验证。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Next step: 用户刷新 Graph Catalog 页面后做一次人工 UI 走查：展开分组、收藏、移动 Graph、创建/重命名/删除项目分组。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Next step: 后续如果要更顺，可以把分组管理从 prompt/confirm 升级成正式弹窗和右键菜单。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "按用户反馈移除 Graph Catalog 分组管理中的 browser/system 原生 dialog；新增项目内封装的 TaskGraphCatalogGroupDialog，统一承载创建、重命名、删除分组。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "删除分组现在走项目弹窗确认，并明确说明只删除 Catalog 分组，组内 Graph 会迁移到 fallback 分组，不删除 Graph。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证通过：rg 检查 TaskGraphCatalogPanel / TaskGraphCatalogSidebar / TaskGraphCatalogGroupDialog 中无 window.prompt、window.confirm、prompt、confirm 使用。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证通过：npm run build --prefix bb_web。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 前端 dev server 8060 当前可访问，Vite 热更新可加载新 dialog。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "按用户反馈调整 blackboard 项目的 Graph Catalog system 分组：不再展示单一 System 分组名，保留兼容默认 group id=system 但标题改为 BB-日常维护，并新增 BB-代码质量、BB-知识库、BB-调研。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "本次只修改 .bb_template/projects/blackboard/__graphs__.json 的 catalog metadata，未重启服务、未修改 graph 定义、未触碰 run 状态。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: JSON 语法校验通过：Get-Content __graphs__.json | ConvertFrom-Json。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: REST catalog 只读校验通过：groups 返回 BB-日常维护、BB-代码质量、BB-知识库、BB-调研；分布为 3/2/4/3。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-graph-catalog-dialog-封装修正.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-graph-catalog-dialog-封装修正.md",
+        "# Codex handoff: Graph Catalog native dialogs removed\n时间: 2026-05-21T11:59:32Z\n来源: Codex\n项目: blackboard\n## 做了什么\n- 按反馈移除 Graph Catalog 分组管理中的原生 prompt/confirm。\n- 新增 bb_web/src/components/task-graph/TaskGraphCatalogGroupDialog.vue，项目内 modal 统一处理创建、重命名、删除分组。\n- TaskGraphCatalogPanel 改为状态驱动 group dialog；删除分组确认也走项目 modal，并展示 fallback 迁移说明。\n## 验证了什么\n- npm run build --prefix bb_web：通过。\n- rg 检查 TaskGraphCatalogPanel.vue、TaskGraphCatalogSidebar.vue、TaskGraphCatalogGroupDialog.vue：无 window.prompt/window.confirm/prompt/confirm 使用。\n- http://127.0.0.1:8060/：200 OK，前端 dev server 正常。\n## 下一步\n- 刷新 Graph Catalog 页面后点击分组新增、更多重命名、删除按钮，做一次人工 UI 走查。\n## 相关位置\n- bb_web/src/components/TaskGraphCatalogPanel.vue\n- bb_web/src/components/task-graph/TaskGraphCatalogGroupDialog.vue\n- tickets/000079-graph-catalog-流水线分组导航与分组管理.json",
+        "cleanup reason: note 正文明确提到 Graph Catalog 原生 dialog 移除与分组管理修正，related_locations 显式引用 000079 ticket 文件，两条信号完全对齐。"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-graph-catalog-system-分组重命名为-bb-分组.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-graph-catalog-system-分组重命名为-bb-分组.md",
+        "# Codex handoff: System graph catalog regrouped as BB groups\n时间: 2026-05-21T12:03:25Z\n来源: Codex\n项目: blackboard\n## 做了什么\n- 按用户要求只修改 .bb_template/projects/blackboard/__graphs__.json，没有重启 backend/frontend，没有触碰正在运行的 Graph run。\n- 将默认 system 分组标题从 System 改为 BB-日常维护，以兼容后端默认 group_id=system 的归一化逻辑。\n- 新增 system kind 分组：BB-代码质量、BB-知识库、BB-调研，并把 12 个 system graph 智能分到 4 组。\n## 验证了什么\n- JSON 语法校验通过：Get-Content __graphs__.json | ConvertFrom-Json。\n- REST catalog 只读校验通过：groups 返回 BB-日常维护、BB-代码质量、BB-知识库、BB-调研。\n- 分布校验：BB-日常维护 3，BB-代码质量 2，BB-知识库 4，BB-调研 3。\n## 下一步\n- 刷新 Graph Catalog 页面查看左侧分组。当前前端 section header 仍是固定文案“System Graph 分组”；如果也要去掉这个 System，需要再改前端文案。\n## 相关位置\n- .bb_template/projects/blackboard/__graphs__.json\n- tickets/000079-graph-catalog-流水线分组导航与分组管理.json",
+        "cleanup reason: note 正文是 system graph 分组重命名为 BB-分组，related_locations 显式引用 000079，文件名含 graph-catalog 关键词，与 000079 Graph Catalog 分组导航主题完全一致。"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-graph-catalog-分组导航与统一索引实现交接.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-graph-catalog-分组导航与统一索引实现交接.md",
+        "# Codex handoff: Graph Catalog group tree implemented\n时间: 2026-05-21T11:55:14Z\n来源: Codex\n项目: blackboard\n## 做了什么\n- 实现 ticket 000079：后端 Graph Catalog 统一索引与 PATCH 保存，前端左侧 Collection Tree，支持全部/收藏/System/项目分组、展开、收藏、移动、项目分组管理。\n- 新增父目录索引文件 .bb_template/projects/blackboard/__graphs__.json；catalog 会同步真实 graph 文件并归一化 system/project 分组范围。\n- 补充后端测试 test_graph_catalog_persists_groups_and_normalizes_scope。\n- 前后端已重启：backend 127.0.0.1:3001，frontend 127.0.0.1:8060。\n## 验证了什么\n- cargo test --manifest-path bb_backend\\Cargo.toml -p bb_core task_graph -- --nocapture：221 passed。\n- cargo build --manifest-path bb_backend\\Cargo.toml -p bb_cli：通过。\n- npm run build --prefix bb_web：通过。\n- API smoke：GET /api/projects/blackboard/task-graphs 返回 12 graphs / 2 groups；PATCH /catalog 原样保存成功；healthz OK。\n- Codex in-app Browser 自动化被 trust 限制阻塞：browser-client is not trusted；未完成点击式 UI 验证。\n## 下一步\n- 刷新当前 Graph Catalog 页面做人工 UI 走查：展开分组、收藏、移动 Graph、创建/重命名/删除项目分组。\n- 如要产品化交互，再把 prompt/confirm 升级为正式弹窗、右键菜单和拖拽迁移。\n## 相关位置\n- bb_backend/crates/bb_core/src/task_graph/definition/types.rs\n- bb_backend/crates/bb_core/src/task_graph/definition/store.rs\n- bb_backend/crates/bb_core/src/task_graph/tests/mod.rs\n- bb_backend/crates/bb_cli/src...",
+        "cleanup reason: 文件名含 graph-catalog 关键词，正文内容明确关联 ticket 000079（Graph Catalog 分组导航与统一索引），相关位置明确列出 000079，handoff 对象是该 ticket 的实现交接"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "review",
+  "created_at": "2026-05-21",
+  "updated_at": "2026-05-22",
+  "extra": {}
+}

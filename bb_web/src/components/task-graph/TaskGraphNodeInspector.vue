@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { PanelRightClose, Trash2 } from 'lucide-vue-next'
+import { BbButton, BbCheckboxField, BbField, BbRefChip } from '@/components/common'
 import { t } from '@/i18n'
 import TaskGraphLlmNodeForm from './TaskGraphLlmNodeForm.vue'
 import TaskGraphBranchNodeForm from './TaskGraphBranchNodeForm.vue'
@@ -7,6 +9,7 @@ import TaskGraphBindingList from './TaskGraphBindingList.vue'
 import {
   type TaskGraphNode,
   type TaskGraphInputParam,
+  type PinValueType,
 } from '@/data/taskGraphs'
 import { type ProjectAgentProfile, type McpServerConfig } from '@/data/agents'
 
@@ -24,6 +27,22 @@ const props = defineProps<{
   selectedNodeErrors: Array<{ message: string }>
   promptFileContent: string
 }>()
+
+const dataValueTypes: PinValueType[] = [
+  'string',
+  'markdown',
+  'text',
+  'json',
+  'array',
+  'int',
+  'float',
+  'bool',
+  'any',
+  'file_ref',
+  'wiki_ref',
+  'ticket_ref',
+  'artifact_ref',
+]
 
 const emit = defineEmits<{
   'update-config': [patch: Record<string, unknown>]
@@ -48,10 +67,6 @@ function numberValue(event: Event) {
   return Number(inputValue(event))
 }
 
-function checkedValue(event: Event) {
-  return event.target instanceof HTMLInputElement ? event.target.checked : false
-}
-
 function configString(node: TaskGraphNode, key: string) {
   const value = node.config[key]
   return typeof value === 'string' ? value : ''
@@ -67,6 +82,72 @@ function configRecord(node: TaskGraphNode, key: string): Record<string, unknown>
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
+}
+
+const nodeJsonErrors = ref<Record<string, string>>({})
+
+function configRecordString(node: TaskGraphNode, key: string, field: string) {
+  const value = configRecord(node, key)[field]
+  return typeof value === 'string' ? value : ''
+}
+
+function updateConfigRecord(key: string, patch: Record<string, unknown>) {
+  emit('update-config', { [key]: { ...configRecord(props.node, key), ...patch } })
+}
+
+function configJsonText(node: TaskGraphNode, key: string) {
+  const value = node.config[key]
+  if (value === undefined || value === null) return ''
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function configPreview(node: TaskGraphNode) {
+  if (!node.config || Object.keys(node.config).length === 0) return ''
+  try {
+    return JSON.stringify(node.config, null, 2)
+  } catch {
+    return String(node.config)
+  }
+}
+
+function nodeJsonErrorKey(node: TaskGraphNode, key: string) {
+  return `${node.id}:${key}`
+}
+
+function nodeJsonError(node: TaskGraphNode, key: string) {
+  return nodeJsonErrors.value[nodeJsonErrorKey(node, key)] ?? ''
+}
+
+function updateJsonConfigField(key: string, value: string) {
+  const errorKey = nodeJsonErrorKey(props.node, key)
+  if (!value.trim()) {
+    emit('update-config', { [key]: null })
+    const errors = { ...nodeJsonErrors.value }
+    delete errors[errorKey]
+    nodeJsonErrors.value = errors
+    return
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown
+    emit('update-config', { [key]: parsed })
+    const errors = { ...nodeJsonErrors.value }
+    delete errors[errorKey]
+    nodeJsonErrors.value = errors
+  } catch {
+    nodeJsonErrors.value = { ...nodeJsonErrors.value, [errorKey]: t('taskGraphInvalidJson') }
+  }
+}
+
+function llmOutputArtifactType(node: TaskGraphNode) {
+  return String(
+    configRecord(node, 'output_contract').artifact_type
+      ?? configRecord(node, 'output').artifact_type
+      ?? 'markdown',
+  )
 }
 
 function shellArgsText(node: TaskGraphNode) {
@@ -201,6 +282,64 @@ function addLlmInput() {
   inputs[`input_${idx}`] = ''
   emit('update-config', { inputs })
 }
+
+function dataValueText(node: TaskGraphNode) {
+  const value = node.config.value
+  if (typeof value === 'string') return value
+  if (value === undefined || value === null) return ''
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function setDataValueFromInput(inputId: string) {
+  emit('update-config', { value: inputReference(inputId) })
+}
+
+function coordinatorPolicy(node: TaskGraphNode): Record<string, unknown> {
+  return configRecord(node, 'coordinator')
+}
+
+function updateCoordinatorPolicy(patch: Record<string, unknown>) {
+  emit('update-config', { coordinator: { ...coordinatorPolicy(props.node), ...patch } })
+}
+
+function coordinatorAllowedTypesText(node: TaskGraphNode) {
+  const raw = coordinatorPolicy(node).allowed_node_types
+  return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string').join(', ') : ''
+}
+
+function updateCoordinatorAllowedTypes(value: string) {
+  const allowed_node_types = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+  updateCoordinatorPolicy({ allowed_node_types })
+}
+
+function inputBindingString(node: TaskGraphNode, key: string) {
+  const value = llmInputs(node)[key]
+  return typeof value === 'string' ? value : ''
+}
+
+function updateIntentInput(key: string, value: string) {
+  emit('update-config', { inputs: { ...llmInputs(props.node), [key]: value } })
+}
+
+function mutationGenerated(node: TaskGraphNode): Record<string, unknown> {
+  return configRecord(node, 'generated')
+}
+
+function mutationGeneratedString(node: TaskGraphNode, key: string) {
+  const value = mutationGenerated(node)[key]
+  return typeof value === 'string' ? value : ''
+}
+
+function updateMutationGenerated(patch: Record<string, unknown>) {
+  emit('update-config', { generated: { ...mutationGenerated(props.node), ...patch } })
+}
 </script>
 
 <template>
@@ -208,41 +347,74 @@ function addLlmInput() {
     <header>
       <h4>{{ t('taskGraphInspectorNode') }}</h4>
       <div class="task-graph-node-card-actions">
-        <button
-          type="button"
+        <BbButton
           class="task-graph-node-icon-button"
+          size="mini"
+          variant="secondary"
+          icon-only
           :title="t('taskGraphEditorCloseConfig')"
           :aria-label="t('taskGraphEditorCloseConfig')"
           @click="emit('close')"
         >
           <PanelRightClose aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          class="task-graph-node-delete-button"
+        </BbButton>
+        <BbButton
+          size="mini"
+          variant="danger"
           :title="t('taskGraphDeleteSelectedNode')"
           :disabled="readonly"
           @click="emit('remove')"
         >
-          <Trash2 aria-hidden="true" />
-          <span>{{ t('taskGraphDeleteNode') }}</span>
-        </button>
+          <template #leading>
+            <Trash2 aria-hidden="true" />
+          </template>
+          {{ t('taskGraphDeleteNode') }}
+        </BbButton>
       </div>
     </header>
-    <label>
-      <span>ID</span>
+    <BbField :label="t('ticketTableId')">
       <input :value="node.id" disabled />
-    </label>
-    <label>
-      <span>{{ t('label') }}</span>
+    </BbField>
+    <BbField :label="t('label')">
       <input :value="node.label" @input="emit('update-label', inputValue($event))" />
-    </label>
-    <label>
-      <span>{{ t('agentKind') }}</span>
+    </BbField>
+    <BbField :label="t('agentKind')">
       <input :value="node.type" disabled />
-    </label>
+    </BbField>
 
-    <template v-if="node.type === 'llm'">
+    <template v-if="node.type === 'start'">
+      <section class="task-graph-node-section">
+        <div class="task-graph-node-section-head">
+          <strong>{{ t('taskGraphNodeConfigSection') }}</strong>
+          <span>{{ t('taskGraphNodeTypeStart') }}</span>
+        </div>
+        <p class="task-graph-node-section-note">{{ t('taskGraphNodeStartEmpty') }}</p>
+      </section>
+    </template>
+
+    <template v-else-if="node.type === 'input_var'">
+      <BbField :label="t('taskGraphNodeInputId')">
+        <select :value="configString(node, 'input_id')" @change="emit('update-config', { input_id: inputValue($event) })">
+          <option value="">{{ t('taskGraphEditorNoInputs') }}</option>
+          <option v-for="input in graphInputs" :key="input.id" :value="input.id">
+            {{ input.label || input.id }} · {{ inputReference(input.id) }}
+          </option>
+        </select>
+      </BbField>
+      <div v-if="graphInputIds.length > 0" class="task-graph-variable-list">
+        <BbRefChip
+          v-for="inputId in graphInputIds"
+          :key="inputId"
+          interactive
+          :disabled="readonly"
+          @click="emit('update-config', { input_id: inputId })"
+        >
+          {{ inputReference(inputId) }}
+        </BbRefChip>
+      </div>
+    </template>
+
+    <template v-else-if="node.type === 'llm'">
       <TaskGraphLlmNodeForm
         :node="node"
         :readonly="readonly"
@@ -259,12 +431,11 @@ function addLlmInput() {
         @update-prompt-mode="emit('update-prompt-mode', $event)"
         @save-prompt-file="emit('save-prompt-file')"
       />
-      <label>
-        <span>output type</span>
-        <input :value="String((node.config.output as Record<string, unknown> | undefined)?.artifact_type ?? 'markdown')" disabled />
-      </label>
+      <BbField :label="t('taskGraphNodeOutputType')">
+        <input :value="llmOutputArtifactType(node)" disabled />
+      </BbField>
       <TaskGraphBindingList
-        title="inputs"
+        :title="t('taskGraphInputs')"
         :bindings="llmInputs(node)"
         :readonly="readonly"
         :input-ids="graphInputIds"
@@ -278,75 +449,380 @@ function addLlmInput() {
       />
     </template>
 
+    <template v-else-if="node.type === 'data_value'">
+      <BbField :label="t('taskGraphNodeValueType')">
+        <select :value="configString(node, 'value_type') || 'string'" @change="emit('update-config', { value_type: inputValue($event) })">
+          <option v-for="type in dataValueTypes" :key="type" :value="type">{{ type }}</option>
+        </select>
+      </BbField>
+      <BbField :label="t('taskGraphNodeValue')">
+        <textarea
+          :value="dataValueText(node)"
+          :placeholder="inputReference('intent')"
+          @input="emit('update-config', { value: inputValue($event) })"
+        />
+      </BbField>
+      <div v-if="graphInputIds.length > 0" class="task-graph-variable-list">
+        <BbRefChip
+          v-for="inputId in graphInputIds"
+          :key="inputId"
+          interactive
+          :disabled="readonly"
+          @click="setDataValueFromInput(inputId)"
+        >
+          {{ inputReference(inputId) }}
+        </BbRefChip>
+      </div>
+    </template>
+
+    <template v-else-if="node.type === 'llm_coordinator'">
+      <TaskGraphLlmNodeForm
+        :node="node"
+        :readonly="readonly"
+        :project-agents="projectAgents"
+        :project-agents-error="projectAgentsError"
+        :prompt-file-content="promptFileContent"
+        :graph-scope="graphScope"
+        :graph-id="graphId"
+        :project="project"
+        @update-config="emit('update-config', $event)"
+        @switch-mode="emit('switch-mode', $event)"
+        @load-prompt-file="emit('load-prompt-file')"
+        @update-prompt-template="emit('update-prompt-template', $event)"
+        @update-prompt-mode="emit('update-prompt-mode', $event)"
+        @save-prompt-file="emit('save-prompt-file')"
+      />
+      <BbField :label="t('taskGraphNodeMaxNodes')">
+        <input
+          type="number"
+          min="1"
+          :value="Number(coordinatorPolicy(node).max_nodes ?? 32)"
+          @input="updateCoordinatorPolicy({ max_nodes: numberValue($event) })"
+        />
+      </BbField>
+      <BbField :label="t('taskGraphNodeMaxEdges')">
+        <input
+          type="number"
+          min="1"
+          :value="Number(coordinatorPolicy(node).max_edges ?? 64)"
+          @input="updateCoordinatorPolicy({ max_edges: numberValue($event) })"
+        />
+      </BbField>
+      <BbField :label="t('taskGraphNodeAllowedNodeTypes')">
+        <input
+          :value="coordinatorAllowedTypesText(node)"
+          :placeholder="t('taskGraphNodeAllowedNodeTypes')"
+          @input="updateCoordinatorAllowedTypes(inputValue($event))"
+        />
+      </BbField>
+      <TaskGraphBindingList
+        :title="t('taskGraphInputs')"
+        :bindings="llmInputs(node)"
+        :readonly="readonly"
+        :input-ids="graphInputIds"
+        :value-placeholder="t('taskGraphInputBindingPlaceholder')"
+        :add-label="t('taskGraphAddInput')"
+        @rename="renameLlmInput"
+        @update="updateLlmInput"
+        @remove="removeLlmInput"
+        @add="addLlmInput"
+        @use-input="(key, inputId) => updateLlmInput(key, inputReference(inputId))"
+      />
+      <TaskGraphBindingList
+        :title="t('taskGraphSubgraphInputBindings')"
+        :bindings="subGraphBindings(node)"
+        :readonly="readonly"
+        :input-ids="graphInputIds"
+        :value-placeholder="t('taskGraphInputBindingPlaceholder')"
+        :add-label="t('taskGraphAddInput')"
+        @update="updateSubGraphBinding"
+        @add="() => updateSubGraphBinding(`input_${Object.keys(subGraphBindings(node)).length + 1}`, '')"
+        @use-input="(key, inputId) => updateSubGraphBinding(key, inputReference(inputId))"
+      />
+    </template>
+
+    <template v-else-if="node.type === 'llm_mutation'">
+      <TaskGraphLlmNodeForm
+        :node="node"
+        :readonly="readonly"
+        :project-agents="projectAgents"
+        :project-agents-error="projectAgentsError"
+        :prompt-file-content="promptFileContent"
+        :graph-scope="graphScope"
+        :graph-id="graphId"
+        :project="project"
+        @update-config="emit('update-config', $event)"
+        @switch-mode="emit('switch-mode', $event)"
+        @load-prompt-file="emit('load-prompt-file')"
+        @update-prompt-template="emit('update-prompt-template', $event)"
+        @update-prompt-mode="emit('update-prompt-mode', $event)"
+        @save-prompt-file="emit('save-prompt-file')"
+      />
+      <BbField :label="t('taskGraphNodeMutationMode')">
+        <input :value="configString(node, 'mode') || 'fanout'" disabled />
+      </BbField>
+      <BbField :label="t('taskGraphNodeTargetNodeId')">
+        <input :value="configString(node, 'target_node_id')" :placeholder="t('taskGraphConnectMutation')" @input="emit('update-config', { target_node_id: inputValue($event) })" />
+      </BbField>
+      <BbField :label="t('taskGraphNodeGeneratedOutput')">
+        <select :value="mutationGeneratedString(node, 'output_artifact_type') || 'markdown'" @change="updateMutationGenerated({ output_artifact_type: inputValue($event) })">
+          <option value="markdown">markdown</option>
+          <option value="json">json</option>
+          <option value="text">text</option>
+        </select>
+      </BbField>
+      <BbField :label="t('taskGraphNodeGeneratedScoutPrompt')">
+        <textarea
+          :value="mutationGeneratedString(node, 'prompt_template')"
+          :placeholder="t('taskGraphScoutPromptTemplate')"
+          @input="updateMutationGenerated({ prompt_template: inputValue($event) })"
+        />
+      </BbField>
+    </template>
+
+    <template v-else-if="node.type === 'intent_extract'">
+      <BbField :label="t('taskGraphMode')">
+        <select :value="configString(node, 'mode') || 'intent_gate'" @change="emit('update-config', { mode: inputValue($event) })">
+          <option value="intent_gate">intent_gate</option>
+          <option value="kb_wiki">kb_wiki</option>
+        </select>
+      </BbField>
+      <BbField :label="t('taskGraphRequest')">
+        <input
+          :value="inputBindingString(node, 'request')"
+          :placeholder="inputReference('intent')"
+          @input="updateIntentInput('request', inputValue($event))"
+        />
+      </BbField>
+      <div v-if="graphInputIds.length > 0" class="task-graph-variable-list">
+        <BbRefChip
+          v-for="inputId in graphInputIds"
+          :key="inputId"
+          interactive
+          :disabled="readonly"
+          @click="updateIntentInput('request', inputReference(inputId))"
+        >
+          {{ inputReference(inputId) }}
+        </BbRefChip>
+      </div>
+      <BbField :label="t('taskGraphLanguage')">
+        <input :value="configString(node, 'language') || 'zh-CN'" @input="emit('update-config', { language: inputValue($event) || 'zh-CN' })" />
+      </BbField>
+    </template>
+
+    <template v-else-if="node.type === 'plan'">
+      <TaskGraphBindingList
+        :title="t('taskGraphInputs')"
+        :bindings="llmInputs(node)"
+        :readonly="readonly"
+        :input-ids="graphInputIds"
+        :value-placeholder="t('taskGraphInputBindingPlaceholder')"
+        :add-label="t('taskGraphAddInput')"
+        @rename="renameLlmInput"
+        @update="updateLlmInput"
+        @remove="removeLlmInput"
+        @add="addLlmInput"
+        @use-input="(key, inputId) => updateLlmInput(key, inputReference(inputId))"
+      />
+      <BbField :label="t('taskGraphNodePlanOutputArtifactPath')">
+        <input
+          :value="configRecordString(node, 'output', 'artifact_path')"
+          @input="updateConfigRecord('output', { artifact_path: inputValue($event) })"
+        />
+      </BbField>
+      <BbField :label="t('taskGraphNodePlanOutputSchemaName')">
+        <input
+          :value="configRecordString(node, 'output', 'schema_name')"
+          @input="updateConfigRecord('output', { schema_name: inputValue($event) })"
+        />
+      </BbField>
+      <section class="task-graph-node-section">
+        <div class="task-graph-node-section-head">
+          <strong>{{ t('taskGraphNodeConfigPreview') }}</strong>
+          <span>{{ t('taskGraphNodeTypePlan') }}</span>
+        </div>
+        <pre v-if="configPreview(node)" class="task-graph-node-config-preview">{{ configPreview(node) }}</pre>
+        <p v-else class="task-graph-node-section-note">{{ t('taskGraphNodeConfigEmpty') }}</p>
+      </section>
+    </template>
+
+    <template v-else-if="node.type === 'kb_plan'">
+      <BbField :label="t('taskGraphMode')">
+        <select :value="configString(node, 'mode') || 'wiki_plan'" @change="emit('update-config', { mode: inputValue($event) })">
+          <option value="wiki_plan">wiki_plan</option>
+          <option value="writer_plan">writer_plan</option>
+        </select>
+      </BbField>
+      <TaskGraphBindingList
+        :title="t('taskGraphInputs')"
+        :bindings="llmInputs(node)"
+        :readonly="readonly"
+        :input-ids="graphInputIds"
+        :value-placeholder="t('taskGraphInputBindingPlaceholder')"
+        :add-label="t('taskGraphAddInput')"
+        @rename="renameLlmInput"
+        @update="updateLlmInput"
+        @remove="removeLlmInput"
+        @add="addLlmInput"
+        @use-input="(key, inputId) => updateLlmInput(key, inputReference(inputId))"
+      />
+    </template>
+
+    <template v-else-if="node.type === 'manifest_merge'">
+      <TaskGraphBindingList
+        :title="t('taskGraphInputs')"
+        :bindings="llmInputs(node)"
+        :readonly="readonly"
+        :input-ids="graphInputIds"
+        :value-placeholder="t('taskGraphInputBindingPlaceholder')"
+        :add-label="t('taskGraphAddInput')"
+        @rename="renameLlmInput"
+        @update="updateLlmInput"
+        @remove="removeLlmInput"
+        @add="addLlmInput"
+        @use-input="(key, inputId) => updateLlmInput(key, inputReference(inputId))"
+      />
+      <section class="task-graph-node-section">
+        <div class="task-graph-node-section-head">
+          <strong>{{ t('taskGraphNodeConfigSection') }}</strong>
+          <span>{{ t('taskGraphNodeTypeManifestMerge') }}</span>
+        </div>
+        <p class="task-graph-node-section-note">{{ t('taskGraphNodeGenericConfigHint') }}</p>
+        <pre v-if="configPreview(node)" class="task-graph-node-config-preview">{{ configPreview(node) }}</pre>
+      </section>
+    </template>
+
+    <template v-else-if="node.type === 'schema_validate'">
+      <TaskGraphBindingList
+        :title="t('taskGraphInputs')"
+        :bindings="llmInputs(node)"
+        :readonly="readonly"
+        :input-ids="graphInputIds"
+        :value-placeholder="t('taskGraphInputBindingPlaceholder')"
+        :add-label="t('taskGraphAddInput')"
+        @rename="renameLlmInput"
+        @update="updateLlmInput"
+        @remove="removeLlmInput"
+        @add="addLlmInput"
+        @use-input="(key, inputId) => updateLlmInput(key, inputReference(inputId))"
+      />
+      <BbField :label="t('taskGraphSchemaValidateValueKey')">
+        <input :value="configString(node, 'value_key') || 'value'" @input="emit('update-config', { value_key: inputValue($event) || 'value' })" />
+      </BbField>
+      <BbCheckboxField
+        :label="t('taskGraphSchemaValidateFailOnInvalid')"
+        :checked="node.config.fail_on_invalid === true"
+        @change="(checked) => emit('update-config', { fail_on_invalid: checked })"
+      />
+      <BbField :label="t('taskGraphSchemaValidateSchema')">
+        <textarea :value="configJsonText(node, 'schema')" @change="updateJsonConfigField('schema', inputValue($event))" />
+      </BbField>
+      <p v-if="nodeJsonError(node, 'schema')" class="task-graph-node-section-note">{{ nodeJsonError(node, 'schema') }}</p>
+      <BbField :label="t('taskGraphSchemaValidateSourceJson')">
+        <textarea :value="configJsonText(node, 'source')" @change="updateJsonConfigField('source', inputValue($event))" />
+      </BbField>
+      <p v-if="nodeJsonError(node, 'source')" class="task-graph-node-section-note">{{ nodeJsonError(node, 'source') }}</p>
+      <BbField :label="t('taskGraphSchemaValidateRepairJson')">
+        <textarea :value="configJsonText(node, 'repair')" @change="updateJsonConfigField('repair', inputValue($event))" />
+      </BbField>
+      <p v-if="nodeJsonError(node, 'repair')" class="task-graph-node-section-note">{{ nodeJsonError(node, 'repair') }}</p>
+    </template>
+
+    <template v-else-if="node.type === 'system_write_output'">
+      <TaskGraphBindingList
+        :title="t('taskGraphInputs')"
+        :bindings="llmInputs(node)"
+        :readonly="readonly"
+        :input-ids="graphInputIds"
+        :value-placeholder="t('taskGraphInputBindingPlaceholder')"
+        :add-label="t('taskGraphAddInput')"
+        @rename="renameLlmInput"
+        @update="updateLlmInput"
+        @remove="removeLlmInput"
+        @add="addLlmInput"
+        @use-input="(key, inputId) => updateLlmInput(key, inputReference(inputId))"
+      />
+      <BbField :label="t('taskGraphSystemWriteOutputPath')">
+        <input :value="configString(node, 'output_path')" @input="emit('update-config', { output_path: inputValue($event) })" />
+      </BbField>
+      <BbField :label="t('taskGraphSystemWriteArtifactType')">
+        <select :value="configString(node, 'artifact_type') || 'markdown'" @change="emit('update-config', { artifact_type: inputValue($event) })">
+          <option value="markdown">markdown</option>
+          <option value="json">json</option>
+          <option value="text">text</option>
+        </select>
+      </BbField>
+      <BbField :label="t('taskGraphSystemWriteContent')">
+        <textarea :value="configString(node, 'content') || '{{inputs.content}}'" @input="emit('update-config', { content: inputValue($event) })" />
+      </BbField>
+      <BbCheckboxField
+        :label="t('taskGraphSystemWriteCreateParentDirs')"
+        :checked="node.config.create_parent_dirs !== false"
+        @change="(checked) => emit('update-config', { create_parent_dirs: checked })"
+      />
+      <BbCheckboxField
+        :label="t('taskGraphSystemWriteOverwrite')"
+        :checked="node.config.overwrite !== false"
+        @change="(checked) => emit('update-config', { overwrite: checked })"
+      />
+    </template>
+
     <template v-else-if="node.type === 'shell'">
-      <label>
-        <span>command</span>
+      <BbField :label="t('taskGraphLlmNodeCommand')">
         <input :value="configString(node, 'command')" @input="emit('update-config', { command: inputValue($event) })" />
-      </label>
-      <label>
-        <span>args</span>
+      </BbField>
+      <BbField :label="t('taskGraphLlmNodeArgs')">
         <textarea :value="shellArgsText(node)" @input="updateShellArgs(inputValue($event))" />
-      </label>
-      <label>
-        <span>cwd</span>
+      </BbField>
+      <BbField :label="t('taskGraphNodeCwd')">
         <input :value="configString(node, 'cwd') || '.'" @input="emit('update-config', { cwd: inputValue($event) || '.' })" />
-      </label>
-      <label>
-        <span>permission</span>
+      </BbField>
+      <BbField :label="t('taskGraphNodePermission')">
         <select :value="configString(node, 'permission') || 'read_only'" @change="emit('update-config', { permission: inputValue($event) })">
           <option value="read_only">read_only</option>
           <option value="project_write">project_write</option>
           <option value="git_write">git_write</option>
           <option value="network">network</option>
         </select>
-      </label>
-      <label>
-        <span>timeout_ms</span>
+      </BbField>
+      <BbField :label="t('taskGraphNodeTimeoutMs')">
         <input type="number" min="1" :value="configNumber(node, 'timeout_ms') || 600000" @input="emit('update-config', { timeout_ms: numberValue($event) })" />
-      </label>
-      <label>
-        <span>expected_exit_codes</span>
+      </BbField>
+      <BbField :label="t('taskGraphNodeExpectedExitCodes')">
         <input :value="shellExpectedExitCodesText(node)" @input="updateShellExpectedExitCodes(inputValue($event))" />
-      </label>
-      <label>
-        <span>env JSON</span>
+      </BbField>
+      <BbField :label="t('taskGraphLlmNodeEnvJson')">
         <textarea :value="shellEnvText(node)" @change="updateShellEnv(inputValue($event))" />
-      </label>
-      <label>
-        <span>capture.max_bytes</span>
+      </BbField>
+      <BbField :label="t('taskGraphNodeCaptureMaxBytes')">
         <input
           type="number"
           min="1"
           :value="Number(shellCapture(node).max_bytes ?? 1048576)"
           @input="updateShellCapture({ max_bytes: numberValue($event) })"
         />
-      </label>
-      <label class="task-graph-checkbox-row">
-        <input
-          type="checkbox"
-          :checked="shellCapture(node).strip_ansi !== false"
-          @change="updateShellCapture({ strip_ansi: checkedValue($event) })"
-        />
-        <span>strip_ansi</span>
-      </label>
+      </BbField>
+      <BbCheckboxField
+        :label="t('taskGraphNodeStripAnsi')"
+        :checked="shellCapture(node).strip_ansi !== false"
+        @change="(checked) => updateShellCapture({ strip_ansi: checked })"
+      />
     </template>
 
     <template v-else-if="node.type === 'sub_graph'">
-      <label>
-        <span>{{ t('pipeline') || 'graph_id' }}</span>
+      <BbField :label="t('pipeline') || 'graph_id'">
         <select :value="configString(node, 'graph_id')" @change="onSubGraphSelect($event)">
           <option value="">{{ t('taskGraphSelectSubPipeline') }}</option>
           <option v-for="g in availableGraphs" :key="g.id" :value="g.id">
             [{{ g.scope }}] {{ g.title }} ({{ g.id }})
           </option>
         </select>
-      </label>
-      <label>
-        <span>graph_scope</span>
+      </BbField>
+      <BbField :label="t('taskGraphNodeGraphScope')">
         <input type="text" :value="configString(node, 'graph_scope') || 'project'" disabled />
-      </label>
+      </BbField>
       <TaskGraphBindingList
-        title="input_bindings"
+        :title="t('taskGraphInputBindings')"
         :bindings="subGraphBindings(node)"
         :readonly="readonly"
         readonly-keys
@@ -358,20 +834,18 @@ function addLlmInput() {
         @add="loadSubGraphInputs"
         @use-input="(key, inputId) => updateSubGraphBinding(key, inputReference(inputId))"
       />
-      <button v-if="configString(node, 'graph_id')" type="button" class="task-graph-inline-add" @click="openSubGraph()">
+      <BbButton v-if="configString(node, 'graph_id')" class="task-graph-inline-action" size="sm" variant="secondary" @click="openSubGraph()">
         {{ t('taskGraphOpenSubPipeline') }}
-      </button>
+      </BbButton>
     </template>
 
     <template v-else-if="node.type === 'human_gate'">
-      <label>
-        <span>title</span>
+      <BbField :label="t('taskGraphNodeTitle')">
         <input :value="configString(node, 'title')" @input="emit('update-config', { title: inputValue($event) })" />
-      </label>
-      <label>
-        <span>instructions</span>
+      </BbField>
+      <BbField :label="t('taskGraphNodeInstructions')">
         <textarea :value="configString(node, 'instructions')" @input="emit('update-config', { instructions: inputValue($event) })" />
-      </label>
+      </BbField>
     </template>
 
     <template v-else-if="node.type === 'branch'">
@@ -384,56 +858,63 @@ function addLlmInput() {
     </template>
 
     <template v-else-if="node.type === 'loop'">
-      <label>
-        <span>max_iterations</span>
+      <BbField :label="t('taskGraphNodeMaxIterations')">
         <input type="number" min="1" max="10" :value="configNumber(node, 'max_iterations')" @input="emit('update-config', { max_iterations: numberValue($event) })" />
-      </label>
-      <label>
-        <span>max_iterations_ref</span>
+      </BbField>
+      <BbField :label="t('taskGraphNodeMaxIterationsRef')">
         <select :value="configString(node, 'max_iterations_ref')" @change="emit('update-config', { max_iterations_ref: inputValue($event) })">
           <option value="">{{ t('taskGraphFallbackNumber') }}</option>
           <option v-for="input in graphInputs.filter((item) => item.type === 'number')" :key="input.id" :value="inputReference(input.id)">
             {{ input.label || input.id }} · {{ inputReference(input.id) }}
           </option>
         </select>
-      </label>
+      </BbField>
       <div v-if="graphInputs.some((item) => item.type === 'number')" class="task-graph-variable-list">
-        <button
+        <BbRefChip
           v-for="input in graphInputs.filter((item) => item.type === 'number')"
           :key="input.id"
-          type="button"
+          interactive
+          :disabled="readonly"
           @click="bindSelectedLoopIterations(input.id)"
         >
           {{ inputReference(input.id) }}
-        </button>
+        </BbRefChip>
       </div>
-      <label>
-        <span>body_entry</span>
+      <BbField :label="t('taskGraphNodeBodyEntry')">
         <input :value="configString(node, 'body_entry')" @input="emit('update-config', { body_entry: inputValue($event) })" />
-      </label>
-      <label>
-        <span>body_exit</span>
+      </BbField>
+      <BbField :label="t('taskGraphNodeBodyExit')">
         <input :value="configString(node, 'body_exit')" @input="emit('update-config', { body_exit: inputValue($event) })" />
-      </label>
-      <label>
-        <span>on_max_iterations</span>
+      </BbField>
+      <BbField :label="t('taskGraphNodeOnMaxIterations')">
         <select :value="configString(node, 'on_max_iterations')" @change="emit('update-config', { on_max_iterations: inputValue($event) })">
           <option value="fail">{{ t('taskGraphOnMaxIterationsFail') }}</option>
           <option value="cancel">{{ t('taskGraphOnMaxIterationsCancel') }}</option>
           <option value="succeed">{{ t('taskGraphOnMaxIterationsSucceed') }}</option>
         </select>
-      </label>
+      </BbField>
     </template>
 
     <template v-else-if="node.type === 'end'">
-      <label>
-        <span>result</span>
+      <BbField :label="t('taskGraphNodeResult')">
         <select :value="configString(node, 'result')" @change="emit('update-config', { result: inputValue($event) })">
           <option value="succeeded">{{ t('taskGraphResultSucceeded') }}</option>
           <option value="failed">{{ t('taskGraphResultFailed') }}</option>
           <option value="cancelled">{{ t('taskGraphResultCancelled') }}</option>
         </select>
-      </label>
+      </BbField>
+    </template>
+
+    <template v-else>
+      <section class="task-graph-node-section">
+        <div class="task-graph-node-section-head">
+          <strong>{{ t('taskGraphNodeConfigSection') }}</strong>
+          <span>{{ node.type }}</span>
+        </div>
+        <p class="task-graph-node-section-note">{{ t('taskGraphNodeGenericConfigHint') }}</p>
+        <pre v-if="configPreview(node)" class="task-graph-node-config-preview">{{ configPreview(node) }}</pre>
+        <p v-else class="task-graph-node-section-note">{{ t('taskGraphNodeConfigEmpty') }}</p>
+      </section>
     </template>
 
     <ul v-if="selectedNodeErrors.length > 0" class="task-graph-error-list">
@@ -475,7 +956,7 @@ function addLlmInput() {
   gap: 6px;
 }
 
-.task-graph-node-card header button {
+.task-graph-node-card header button:not(.bb-button) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -494,7 +975,7 @@ function addLlmInput() {
   padding: 0;
 }
 
-.task-graph-node-card header button svg {
+.task-graph-node-card header button:not(.bb-button) svg {
   width: 14px;
   height: 14px;
 }
@@ -508,49 +989,50 @@ function addLlmInput() {
   font-weight: 760;
 }
 
-.task-graph-node-card label {
+.task-graph-node-section {
   display: grid;
-  gap: 5px;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--bb-border-warm-medium);
+  border-radius: 10px;
+  background: var(--bb-surface);
+}
+
+.task-graph-node-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   min-width: 0;
 }
 
-.task-graph-node-card label span {
-  color: var(--bb-text-muted);
-  font-size: 11px;
+.task-graph-node-section-head strong {
+  color: var(--bb-text-strong);
+  font-size: 12px;
   font-weight: 760;
 }
 
-.task-graph-node-card input,
-.task-graph-node-card select,
-.task-graph-node-card textarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  min-height: 32px;
-  padding: 7px 8px;
-  border: 1px solid var(--bb-border-warm-medium-strong);
+.task-graph-node-section-head span,
+.task-graph-node-section-note {
+  margin: 0;
+  color: var(--bb-text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.task-graph-node-config-preview {
+  max-height: 220px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--bb-border-warm-medium);
   border-radius: 8px;
-  background: var(--bb-surface);
+  background: var(--bb-surface-soft);
   color: var(--bb-text-strong);
-  font: inherit;
-  font-size: 12px;
-}
-
-.task-graph-node-card textarea {
-  min-height: 80px;
-  resize: vertical;
-}
-
-.task-graph-node-card .task-graph-checkbox-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.task-graph-node-card .task-graph-checkbox-row input {
-  width: 16px;
-  min-height: 16px;
-  padding: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .task-graph-node-readonly input,
@@ -567,14 +1049,8 @@ function addLlmInput() {
   gap: 6px;
 }
 
-.task-graph-variable-list button {
-  width: auto;
-  cursor: pointer;
-}
-
-.task-graph-inline-add {
+.task-graph-inline-action {
   justify-self: start;
-  padding: 0 9px;
 }
 
 .task-graph-error-list {

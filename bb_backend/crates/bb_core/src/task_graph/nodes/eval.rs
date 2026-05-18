@@ -1,10 +1,11 @@
 //! Branch/loop condition evaluation and template rendering.
 //!
 //! Pure logic used by the runner — no I/O, no process spawning.
-//! Contains: JSONPath resolution, condition evaluation, prompt template rendering.
+//! Contains: `JSONPath` resolution, condition evaluation, prompt template rendering.
 
 use std::path::Path;
 
+use crate::fs_util::resolve_slash;
 use crate::task_graph::definition::types::{BranchConfig, LoopConfig};
 use crate::task_graph::run_state::RunContext;
 
@@ -12,13 +13,17 @@ pub(in crate::task_graph::nodes) type NodeInputs = serde_json::Map<String, serde
 
 // ─── Branch condition evaluation ─────────────────────────────────────────────
 
-/// Evaluate a branch node's rules against the run context. Returns the selected rule_id.
+/// Evaluate a branch node's rules against the run context. Returns the selected `rule_id`.
+#[must_use]
 pub fn evaluate_branch(config: &BranchConfig, context: &RunContext) -> String {
-    let input_value = if let Some(ref input_ref) = config.input_ref {
-        resolve_json_path(input_ref, context)
-    } else {
-        serde_json::Value::Null
-    };
+    let input_value = resolve_branch_data_input(context).unwrap_or_else(|| {
+        config
+            .input_ref
+            .as_ref()
+            .map_or(serde_json::Value::Null, |input_ref| {
+                resolve_json_path(input_ref, context)
+            })
+    });
 
     for rule in &config.rules {
         if evaluate_condition(&rule.when, &input_value) {
@@ -29,7 +34,23 @@ pub fn evaluate_branch(config: &BranchConfig, context: &RunContext) -> String {
     config.default_rule_id.clone()
 }
 
-/// Resolve a simplified JSONPath reference against run context.
+fn resolve_branch_data_input(context: &RunContext) -> Option<serde_json::Value> {
+    let data = context.input.get("__data")?;
+    let map = data.as_object()?;
+    if map.is_empty() {
+        return None;
+    }
+    if map.len() == 1 {
+        let value = map.values().next()?.clone();
+        if let Some(output) = value.get("output") {
+            return Some(output.clone());
+        }
+        return Some(value);
+    }
+    Some(serde_json::Value::Object(map.clone()))
+}
+
+/// Resolve a simplified `JSONPath` reference against run context.
 /// Supported: $.nodes.<node-id>.output, $.input.<key>, $.nodes.<node-id>.output.<path>
 pub(super) fn resolve_json_path(path: &str, context: &RunContext) -> serde_json::Value {
     let path = path.trim();
@@ -82,10 +103,10 @@ pub(super) fn resolve_template_value(
             .trim_end_matches("}}")
             .trim();
         if let Some(path) = inner.strip_prefix("inputs.") {
-            return resolve_json_path(&format!("$.input.{}", path), context);
+            return resolve_json_path(&format!("$.input.{path}"), context);
         }
         if let Some(path) = inner.strip_prefix("input.") {
-            return resolve_json_path(&format!("$.input.{}", path), context);
+            return resolve_json_path(&format!("$.input.{path}"), context);
         }
         if inner.starts_with("$.") {
             return resolve_json_path(inner, context);
@@ -144,10 +165,11 @@ pub(in crate::task_graph) fn render_prompt_template(
 /// 支持的表达式：
 /// - `env.project` — 系统环境变量 project
 /// - `env.root` — 系统环境变量 workspace root
+/// - `env.workspace` — workspace root alias for pipeline/runtime prompts
 /// - `env.scripts_dir` — Blackboard scripts directory
 /// - `inputs.xxx` — graph input 变量
 /// - `data.<node-id>.output` — 当前 Pull task 注入的 data edge 输入
-/// - `data.<node-id>.artifact_path` — 上游 data output 中的 artifact_path
+/// - `data.<node-id>.artifact_path` — 上游 data output 中的 `artifact_path`
 /// - `nodes.xxx.output` — 上游节点输出（JSONPath 风格）
 fn resolve_template_expr(
     expr: &str,
@@ -162,6 +184,16 @@ fn resolve_template_expr(
         .unwrap_or_default()
 }
 
+pub(in crate::task_graph) fn resolve_template_expr_as_value(
+    expr: &str,
+    project: &str,
+    root: &Path,
+    scripts_dir: &Path,
+    context: &RunContext,
+) -> Option<serde_json::Value> {
+    resolve_template_expr_value(expr, project, root, scripts_dir, context, None)
+}
+
 fn resolve_template_expr_value(
     expr: &str,
     project: &str,
@@ -173,8 +205,8 @@ fn resolve_template_expr_value(
     if let Some(env_key) = expr.strip_prefix("env.") {
         return match env_key {
             "project" => Some(serde_json::Value::String(project.to_string())),
-            "root" => Some(serde_json::Value::String(path_template_string(root))),
-            "scripts_dir" => Some(serde_json::Value::String(path_template_string(scripts_dir))),
+            "root" | "workspace" => Some(serde_json::Value::String(resolve_slash(root))),
+            "scripts_dir" => Some(serde_json::Value::String(resolve_slash(scripts_dir))),
             _ => None,
         };
     }
@@ -183,24 +215,18 @@ fn resolve_template_expr_value(
         if let Some(value) = resolve_node_input_path(input_key, node_inputs) {
             return Some(value);
         }
-        return Some(resolve_json_path(
-            &format!("$.input.{}", input_key),
-            context,
-        ));
+        return Some(resolve_json_path(&format!("$.input.{input_key}"), context));
     }
 
     if let Some(data_path) = expr.strip_prefix("data.") {
         return Some(resolve_json_path(
-            &format!("$.input.__data.{}", data_path),
+            &format!("$.input.__data.{data_path}"),
             context,
         ));
     }
 
     if let Some(node_path) = expr.strip_prefix("nodes.") {
-        return Some(resolve_json_path(
-            &format!("$.nodes.{}", node_path),
-            context,
-        ));
+        return Some(resolve_json_path(&format!("$.nodes.{node_path}"), context));
     }
 
     None
@@ -300,18 +326,14 @@ fn full_mustache_expr(raw: &str) -> Option<&str> {
     }
 }
 
-fn path_template_string(path: &Path) -> String {
-    path.display().to_string().replace('\\', "/")
-}
-
 pub(super) fn resolve_loop_max_iterations(config: &LoopConfig, context: &RunContext) -> u32 {
     let Some(reference) = config.max_iterations_ref.as_deref() else {
         return config.max_iterations;
     };
     let value = resolve_template_value(&serde_json::Value::String(reference.to_string()), context);
-    value_to_f64(&value)
-        .map(|num| num.round().clamp(1.0, 50.0) as u32)
-        .unwrap_or(config.max_iterations)
+    value_to_f64(&value).map_or(config.max_iterations, |num| {
+        num.round().clamp(1.0, 50.0) as u32
+    })
 }
 
 /// Navigate a JSON value through a dot path (supports .length for arrays/strings).
@@ -333,13 +355,11 @@ pub(super) fn navigate_value(val: &serde_json::Value, segments: &[&str]) -> serd
             serde_json::Value::Object(map) => {
                 map.get(seg).cloned().unwrap_or(serde_json::Value::Null)
             }
-            serde_json::Value::Array(arr) => {
-                if let Ok(idx) = seg.parse::<usize>() {
-                    arr.get(idx).cloned().unwrap_or(serde_json::Value::Null)
-                } else {
-                    serde_json::Value::Null
-                }
-            }
+            serde_json::Value::Array(arr) => seg
+                .parse::<usize>()
+                .ok()
+                .and_then(|idx| arr.get(idx).cloned())
+                .unwrap_or(serde_json::Value::Null),
             _ => serde_json::Value::Null,
         };
     }
@@ -358,16 +378,16 @@ pub(super) fn evaluate_condition(when: &serde_json::Value, input: &serde_json::V
         return true;
     }
 
-    let compare_value = if let Some(path_val) = obj.get("path").and_then(|v| v.as_str()) {
-        let segs: Vec<&str> = if let Some(stripped) = path_val.strip_prefix("$.") {
-            stripped.split('.').collect()
-        } else {
-            path_val.split('.').collect()
-        };
-        navigate_value(input, &segs)
-    } else {
-        input.clone()
-    };
+    let compare_value = obj.get("path").and_then(|v| v.as_str()).map_or_else(
+        || input.clone(),
+        |path_val| {
+            let segs: Vec<&str> = path_val.strip_prefix("$.").map_or_else(
+                || path_val.split('.').collect(),
+                |stripped| stripped.split('.').collect(),
+            );
+            navigate_value(input, &segs)
+        },
+    );
 
     let expected = obj.get("value").cloned().unwrap_or(serde_json::Value::Null);
 
@@ -428,7 +448,7 @@ fn is_truthy(v: &serde_json::Value) -> bool {
     match v {
         serde_json::Value::Null => false,
         serde_json::Value::Bool(b) => *b,
-        serde_json::Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(false),
+        serde_json::Value::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
         serde_json::Value::String(s) => !s.is_empty(),
         serde_json::Value::Array(a) => !a.is_empty(),
         serde_json::Value::Object(_) => true,
@@ -438,6 +458,7 @@ fn is_truthy(v: &serde_json::Value) -> bool {
 // ─── Loop condition evaluation ───────────────────────────────────────────────
 
 /// Check if the loop condition is still true (should continue iterating).
+#[must_use]
 pub fn evaluate_loop_condition(config: &LoopConfig, context: &RunContext) -> bool {
     let Some(ref condition) = config.condition else {
         return true;
@@ -453,8 +474,9 @@ pub fn evaluate_loop_condition(config: &LoopConfig, context: &RunContext) -> boo
     let input_value = condition_obj
         .get("input_ref")
         .and_then(|v| v.as_str())
-        .map(|path| resolve_json_path(path, context))
-        .unwrap_or(serde_json::Value::Null);
+        .map_or(serde_json::Value::Null, |path| {
+            resolve_json_path(path, context)
+        });
 
     let mut when = serde_json::Map::new();
     if let Some(path) = condition_obj.get("path") {

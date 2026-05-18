@@ -1,0 +1,573 @@
+{
+  "schema_version": 1,
+  "id": "frontend-ui-convergence-codex",
+  "scope": "system",
+  "title": "Frontend UI Convergence (Codex)",
+  "description": "前端 UI 规范收敛管线：系统扫描样式债，Codex(gpt-5.5 medium) 按 DESIGN.md 和 shared primitives 做保守 patch，系统静态验证后由 Codex 做 OS-aware 交互冒烟：Windows 用 Browser Use，macOS 用 Computer Use。",
+  "version": 5,
+  "readonly": false,
+  "metadata": {
+    "tags": [
+      "system",
+      "frontend",
+      "ui-convergence",
+      "codex",
+      "design-system",
+      "browser-use",
+      "computer-use",
+      "os-aware-smoke"
+    ],
+    "owner": "blackboard",
+    "created_by": "codex",
+    "updated_by": "codex",
+    "run_policy": {
+      "allow_concurrent_runs": false,
+      "max_concurrent_runs": 1,
+      "queue_enabled": true,
+      "max_queue_wait_ms": 7200000,
+      "queue_timeout_retry_enabled": true,
+      "max_queue_timeout_retries": 5
+    }
+  },
+  "inputs": [
+    {
+      "id": "input",
+      "label": "Convergence Goal",
+      "type": "string",
+      "default": "继续收敛 bb_web 前端 UI 样式：优先把重复出现的局部按钮、动作区、字段、信息块、item/card/row 语法迁到 src/components/common shared primitives；只做一小片高确定性的 UI 规范收敛，不改业务语义。",
+      "description": "本次 Codex UI 收敛目标。"
+    },
+    {
+      "id": "frontend-workspace",
+      "label": "Frontend Workspace",
+      "type": "string",
+      "default": "bb_web",
+      "description": "前端项目路径。"
+    },
+    {
+      "id": "max-iterations",
+      "label": "Max Repair Iterations",
+      "type": "number",
+      "default": 3,
+      "description": "验证失败时最多让 Codex 继续修复的轮数。",
+      "min": 1.0,
+      "max": 5.0
+    },
+    {
+      "id": "validation-timeout-seconds",
+      "label": "Validation Timeout Seconds",
+      "type": "number",
+      "default": 900,
+      "min": 60.0,
+      "max": 3600.0
+    },
+    {
+      "id": "output-slug",
+      "label": "Output Slug",
+      "type": "string",
+      "default": "frontend-ui-convergence-codex-latest",
+      "description": "内部运行报告文件名，写入 runtime/frontend-ui-convergence/{output-slug}.md。"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": 40.0,
+        "y": 240.0
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "convergence-loop",
+      "type": "loop",
+      "label": "Codex Patch/Validate Loop",
+      "description": "验证失败时把确定性错误重新交给 Codex 修；系统只做静态扫描和构建验证。",
+      "position": {
+        "x": 300.0,
+        "y": 240.0
+      },
+      "config": {
+        "body_entry": "scan-targets",
+        "body_exit": "static-validate",
+        "condition": {
+          "input_ref": "$.nodes.static-validate.output",
+          "op": "equals",
+          "path": "$.stdout_json.has_issues",
+          "value": true
+        },
+        "max_iterations": 3,
+        "max_iterations_ref": "{{inputs.max-iterations}}",
+        "on_max_iterations": "fail"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "exit",
+          "label": "Exit",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "index",
+          "label": "Index",
+          "direction": "out",
+          "category": "data",
+          "value_type": "int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scan-targets",
+      "type": "shell",
+      "label": "Scan UI Convergence Targets",
+      "description": "确定性扫描前端残留样式债和 shared primitive 现状；只读。",
+      "position": {
+        "x": 620.0,
+        "y": 80.0
+      },
+      "config": {
+        "args": [
+          "{{env.scripts_dir}}/task_graph_frontend_ui_convergence.py",
+          "scan",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--frontend-workspace",
+          "{{inputs.frontend-workspace}}"
+        ],
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
+        },
+        "command": "python",
+        "cwd": ".",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "read_only",
+        "timeout_ms": 60000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "codex-patch",
+      "type": "llm",
+      "label": "Codex UI Convergence Patch",
+      "description": "Codex 负责真实代码 patch；禁止碰后端、tickets、inbox、runtime 和 .bb_template 数据。",
+      "position": {
+        "x": 980.0,
+        "y": 80.0
+      },
+      "config": {
+        "agent": "codex",
+        "inputs": {
+          "frontend_workspace": "{{inputs.frontend-workspace}}",
+          "goal": "{{inputs.input}}",
+          "previous_validation": "{{nodes.static-validate.output.stdout_json}}",
+          "scan": "{{nodes.scan-targets.output.stdout_json}}"
+        },
+        "model": "gpt-5.5",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 Blackboard 前端 UI 收敛专用 Codex patcher。\n\n目标：\n{{inputs.goal}}\n\n工作区事实：\n- Agent 当前 cwd 是 Blackboard workspace，不一定是 repo root。\n- repo root 是 {{env.root}}/..。\n- 前端 workspace 是 {{inputs.frontend_workspace}}。\n- 设计规范是 {{env.root}}/../bb_web/DESIGN.md。\n\n硬性边界：\n1. 只允许修改 bb_web/src/**、bb_web/DESIGN.md，以及必要的新 shared primitive 文件。\n2. 不要修改 bb_backend/**、bb_desktop/**、.bb_template/**、tickets、inbox、wiki、runtime、node_modules、dist。\n3. 不要运行 git reset、git checkout、git restore、git clean、rm -rf 或任何清理/回退命令。\n4. 不要追求大而全；每轮只做一小片可验证、高确定性的 UI 收敛。\n5. 优先复用 src/components/common：BbButton、BbIconCommand、BbActionGroup、BbToolbar、BbSectionHeader、BbInfoGrid/BbInfoItem、BbDenseRow、BbField、BbObjectItem。\n6. 页面局部 CSS 只负责布局位置，不重定义按钮皮肤、hover、focus、disabled、icon size、item/card 基础语法。\n7. 如果发现并发改动或非本轮范围内 dirty change，保持原样，不要清理。\n8. 修改 shared primitive 时同步更新 bb_web/DESIGN.md 的组件规范。\n\n确定性扫描结果：\n{{inputs.scan}}\n\n上一轮验证结果（第一轮可能为空）：\n{{inputs.previous_validation}}\n\n请直接实施 patch。完成后只输出中文 Markdown：说明改了哪些文件、收敛了哪个 UI 语法、是否需要后续验证。不要写报告文件，系统会负责验证和落盘。"
+        },
+        "retry": {
+          "backoff_ms": 2000,
+          "enabled": true,
+          "max_attempts": 2
+        },
+        "runtime": "codex",
+        "tool_policy": {
+          "allowed_tools": [
+            "read",
+            "grep",
+            "find",
+            "ls",
+            "edit",
+            "bash"
+          ],
+          "bash": {
+            "blacklist": [
+              "*git checkout*",
+              "*git switch*",
+              "*git reset*",
+              "*git clean*",
+              "*git restore*",
+              "*git revert*",
+              "*rm -rf*",
+              "*Remove-Item* -Recurse*",
+              "*rd /s*",
+              "*rmdir /s*",
+              "*del /s*"
+            ],
+            "whitelist": [
+              "pwd",
+              "ls",
+              "ls *",
+              "rg *",
+              "git diff *",
+              "git status *",
+              "python scripts/task_graph_frontend_ui_convergence.py *",
+              "npm run build --prefix bb_web"
+            ]
+          },
+          "write_deny_roots": [
+            "{{env.root}}/../.bb_template",
+            "{{env.root}}/../bb_backend",
+            "{{env.root}}/../bb_desktop",
+            "{{env.root}}/../node_modules",
+            "{{env.root}}/../bb_web/dist"
+          ],
+          "write_roots": [
+            "{{env.root}}/../bb_web/src",
+            "{{env.root}}/../bb_web/DESIGN.md"
+          ]
+        },
+        "variant": "medium"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "static-validate",
+      "type": "shell",
+      "label": "Static Validate",
+      "description": "确定性验证：遗留 selector 扫描、git diff --check、npm build。失败不直接中断，而是把 stdout_json.has_issues 交回 loop。",
+      "position": {
+        "x": 1340.0,
+        "y": 80.0
+      },
+      "config": {
+        "args": [
+          "{{env.scripts_dir}}/task_graph_frontend_ui_convergence.py",
+          "validate",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--frontend-workspace",
+          "{{inputs.frontend-workspace}}",
+          "--timeout-seconds",
+          "{{inputs.validation-timeout-seconds}}"
+        ],
+        "capture": {
+          "max_bytes": 2097152,
+          "strip_ansi": true
+        },
+        "command": "python",
+        "cwd": ".",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "project_write",
+        "timeout_ms": 1200000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "interactive-smoke",
+      "type": "llm",
+      "label": "Codex OS-Aware UI Smoke",
+      "description": "Codex 只做交互冒烟：Windows 必须拉起 Browser Use；macOS 必须拉起 Computer Use；不修改文件。",
+      "position": {
+        "x": 1660.0,
+        "y": 80.0
+      },
+      "config": {
+        "agent": "codex",
+        "inputs": {
+          "frontend_workspace": "{{inputs.frontend-workspace}}",
+          "goal": "{{inputs.input}}",
+          "patch_report": "{{nodes.codex-patch.output}}",
+          "platform": "{{nodes.scan-targets.output.stdout_json.platform}}",
+          "validation": "{{nodes.static-validate.output.stdout_json}}"
+        },
+        "model": "gpt-5.5",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 Blackboard 前端 UI 收敛 graph 的交互冒烟节点。\n\n模型/速度标准：本节点固定使用 gpt-5.5 + medium；以这个速度档作为标准，不主动升级到更慢模型。\n\n任务：只做真实 UI 冒烟，不修改任何文件，不修代码，不写报告文件。\n\nOS 分流是硬要求：\n1. 如果 platform.system 是 Windows，必须拉起 Browser Use / Codex in-app browser 验证 UI。不要使用 Computer Use，不要用 curl/shell/源码阅读代替。\n2. 如果 platform.system 是 Darwin/macOS，必须拉起 Computer Use 做视觉验收。不要使用 Browser Use、Playwright、curl 或 shell 代替。\n3. 如果平台不是 Windows 或 Darwin，明确报告 unsupported platform，不要伪造通过。\n4. 如果对应工具不可用，明确报告 blocked 和阻塞点，不要用另一个工具绕过。\n\n必须验证：\n- http://127.0.0.1:8060/#/projects/blackboard/idea-canvas\n- http://127.0.0.1:8060/#/projects/blackboard/settings\n- 如果 Patch Report 明确提到其他页面，也顺手打开该页面。\n\n验收重点：\n- 页面是否真实加载。\n- 是否有明显渲染错误、空白页、按钮错位、文字溢出。\n- IdeaCanvas 是否能看到 shared action group/button/icon command 形态。\n- Settings / RuntimeConnectorPanel 是否渲染；如果后端接口 404，只把它记录为环境/后端路由状态，不要当成本轮 UI 样式失败。\n- 浏览器 console 是否有 error。\n\n输入：\nPlatform:\n{{inputs.platform}}\n\nValidation:\n{{inputs.validation}}\n\nPatch report:\n{{inputs.patch_report}}\n\n输出中文 Markdown，结构固定：\n## UI 冒烟结果\n## 使用的交互工具\n写明 Windows=Browser Use 或 macOS=Computer Use。\n## 通过\n## 失败/阻塞\n## 备注\n只写事实，不要编造截图或工具调用结果。"
+        },
+        "retry": {
+          "backoff_ms": 1000,
+          "enabled": true,
+          "max_attempts": 1
+        },
+        "runtime": "codex",
+        "toolkits": [
+          "blackboard_mcp",
+          "browser_use"
+        ],
+        "variant": "medium"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "system-write-report",
+      "type": "system_write_output",
+      "label": "System Write Internal Report",
+      "description": "写入 runtime 内部报告；用户可见结论仍由最终 run output/人工验收决定。",
+      "position": {
+        "x": 2020.0,
+        "y": 240.0
+      },
+      "config": {
+        "artifact_type": "markdown",
+        "content": "# Frontend UI Convergence Codex Report\n\n## Goal\n{{inputs.input}}\n\n## Codex Patch Report\n{{inputs.codex_report}}\n\n## Interactive UI Smoke\n{{inputs.smoke}}\n\n## Final Scan JSON\n```json\n{{inputs.scan}}\n```\n\n## Final Validation JSON\n```json\n{{inputs.validation}}\n```\n",
+        "create_parent_dirs": true,
+        "inputs": {
+          "codex_report": "{{nodes.codex-patch.output}}",
+          "scan": "{{nodes.scan-targets.output.stdout_json}}",
+          "smoke": "{{nodes.interactive-smoke.output}}",
+          "validation": "{{nodes.static-validate.output.stdout_json}}"
+        },
+        "output_path": "{{env.workspace}}/runtime/frontend-ui-convergence/{{inputs.output-slug}}.md",
+        "overwrite": true
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "content",
+          "label": "Content",
+          "direction": "in",
+          "category": "data",
+          "value_type": "any",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 2380.0,
+        "y": 240.0
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-start-loop",
+      "from": "start",
+      "to": "convergence-loop",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-loop-body-scan",
+      "from": "convergence-loop",
+      "to": "scan-targets",
+      "kind": "exec",
+      "label": "Body",
+      "from_pin": "body",
+      "to_pin": "exec_in",
+      "source_handle": "body"
+    },
+    {
+      "id": "e-scan-codex",
+      "from": "scan-targets",
+      "to": "codex-patch",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-codex-validate",
+      "from": "codex-patch",
+      "to": "static-validate",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-loop-exit-smoke",
+      "from": "convergence-loop",
+      "to": "interactive-smoke",
+      "kind": "exec",
+      "label": "Exit",
+      "from_pin": "exit",
+      "to_pin": "exec_in",
+      "source_handle": "exit"
+    },
+    {
+      "id": "e-smoke-report",
+      "from": "interactive-smoke",
+      "to": "system-write-report",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-report-end",
+      "from": "system-write-report",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0.0,
+      "y": 0.0,
+      "scale": 1.0
+    }
+  }
+}

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import type { AgentProfile } from '@/data/agents'
 import { upsertAgent } from '@/data/agents'
+import { BbButton, BbInlineAlert, BbSectionHeader } from '@/components/common'
 import { t } from '@/i18n'
 
 const props = defineProps<{
@@ -22,9 +23,9 @@ const editForm = ref({
   variant: '',
 })
 
-const runtimeDisplay = computed(() => props.agent.runtime || props.agent.kind || '—')
-const modelDisplay = computed(() => props.agent.model || '—')
-const variantDisplay = computed(() => props.agent.variant || '—')
+const runtimeDisplay = computed(() => props.agent.runtime || props.agent.kind || t('runtimeUnset'))
+const modelDisplay = computed(() => props.agent.model || t('modelUnset'))
+const variantDisplay = computed(() => props.agent.variant || t('variantUnset'))
 
 function resetForm() {
   editForm.value = {
@@ -91,22 +92,21 @@ watch(
 
 <template>
   <div class="aw-section aw-runtime-section">
-    <div class="aw-section-header">
-      <h4>{{ t('runtimeConfigTitle') }}</h4>
-      <div class="aw-section-actions">
+    <BbSectionHeader class="aw-section-header" :title="t('runtimeConfigTitle')" title-tag="h4" :divider="false">
+      <template #actions>
         <template v-if="!editMode">
-          <button type="button" class="aw-add-btn" @click="openEdit">{{ t('agentProfileEditInline') }}</button>
+          <BbButton size="sm" variant="secondary" @click="openEdit">{{ t('agentProfileEditInline') }}</BbButton>
         </template>
         <template v-else>
           <span v-if="saveStatus === 'saved'" class="aw-save-ok">{{ t('agentProfileSaveOk') }}</span>
           <span v-if="saveStatus === 'error'" class="aw-save-err">{{ t('agentProfileSaveErr') }}</span>
-          <button type="button" class="aw-btn secondary" @click="cancelEdit">{{ t('agentEditCancel') }}</button>
-          <button type="button" class="aw-btn primary" :disabled="saving" @click="saveEdit">
+          <BbButton variant="secondary" @click="cancelEdit">{{ t('agentEditCancel') }}</BbButton>
+          <BbButton variant="primary" :disabled="saving" @click="saveEdit">
             {{ saving ? t('agentEditSaving') : t('agentEditSave') }}
-          </button>
+          </BbButton>
         </template>
-      </div>
-    </div>
+      </template>
+    </BbSectionHeader>
 
     <div class="aw-runtime-grid">
       <label class="aw-runtime-field">
@@ -164,6 +164,6 @@ watch(
       </label>
     </div>
 
-    <p v-if="saveError" class="aw-inline-error">{{ saveError }}</p>
+    <BbInlineAlert v-if="saveError" tone="error">{{ saveError }}</BbInlineAlert>
   </div>
 </template>

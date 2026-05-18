@@ -1,13 +1,13 @@
 use crate::InboxError;
 
-pub(crate) fn validate_search_query(query: &str) -> Result<&str, InboxError> {
+pub fn validate_search_query(query: &str) -> Result<&str, InboxError> {
     if query.trim().is_empty() {
         return Err(InboxError::InvalidInput("query is required".to_string()));
     }
     Ok(query)
 }
 
-pub(crate) fn matching_lines(content: &str, needle: &str) -> Vec<(usize, String)> {
+pub fn matching_lines(content: &str, needle: &str) -> Vec<(usize, String)> {
     content
         .lines()
         .enumerate()

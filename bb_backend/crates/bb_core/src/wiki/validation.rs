@@ -81,7 +81,7 @@ impl Blackboard {
         let ext = requested_path
             .extension()
             .and_then(|e| e.to_str())
-            .map(|e| e.to_ascii_lowercase())
+            .map(str::to_ascii_lowercase)
             .unwrap_or_default();
         let allowed: &[&str] = match kind {
             ValidateKind::Document => WIKI_DOC_EXTENSIONS,
@@ -150,7 +150,7 @@ impl Blackboard {
 /// text-y extensions), reading a binary asset (images/pdf/svg-as-image),
 /// or accepting an upload (the union minus anything explicitly excluded).
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum ValidateKind {
+pub enum ValidateKind {
     Document,
     Asset,
     Upload,

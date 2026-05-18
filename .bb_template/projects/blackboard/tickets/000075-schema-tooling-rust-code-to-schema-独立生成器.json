@@ -43,6 +43,21 @@
         "qmd embed: passed",
         "git diff --check: passed"
       ]
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "2026-05-18：修复 000001/000018/000040 既有 JSON ticket 校验脏数据，并重建 __tickets__.json。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "2026-05-18：完成 schema tooling，handoff 写入 2026-05-18-codex-ticket-075-schema-tooling完成.md。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "Record: 来源：2026-05-18-codex-ticket-075-schema-tooling完成.md",
+      "evidence": []
     }
   ],
   "attachments": [],

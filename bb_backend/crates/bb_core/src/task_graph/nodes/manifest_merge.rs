@@ -14,7 +14,7 @@ struct ManifestMergeConfig {
     inputs: Option<Value>,
 }
 
-pub(crate) fn execute_manifest_merge_node(
+pub fn execute_manifest_merge_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
     run: &TaskGraphRun,
@@ -215,7 +215,7 @@ fn manifest_ref(
         .cloned()
         .unwrap_or_default();
     json!({
-        "manifest_version": manifest.get("manifest_version").cloned().unwrap_or(json!(1)),
+        "manifest_version": manifest.get("manifest_version").cloned().unwrap_or_else(|| json!(1)),
         "staging": {
             "kb_output_dir": kb_staging::path_string(kb_output_dir),
             "dir": kb_staging::path_string(staging_dir),
@@ -329,7 +329,7 @@ fn gaps(inputs: &eval::NodeInputs, scout_outputs: &serde_json::Map<String, Value
         "scout_tests",
         "scout_existing_wiki",
     ] {
-        if inputs.get(key).map(Value::is_null).unwrap_or(true) {
+        if inputs.get(key).is_none_or(Value::is_null) {
             gaps.push(format!("missing {key} output"));
         }
     }

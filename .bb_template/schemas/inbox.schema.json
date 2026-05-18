@@ -1,0 +1,132 @@
+{
+  "$defs": {
+    "TicketAttachment": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "label": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "target"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://blackboard.local/schemas/inbox.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attachments": {
+      "items": {
+        "$ref": "#/$defs/TicketAttachment"
+      },
+      "type": "array"
+    },
+    "done": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "extra": {
+      "additionalProperties": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "next_step": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "project": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "related_locations": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "related_tickets": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "source": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "time": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "title": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "topic": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "validation": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "title",
+    "time",
+    "source",
+    "project",
+    "topic",
+    "done",
+    "validation",
+    "next_step",
+    "related_locations",
+    "related_tickets",
+    "attachments",
+    "extra"
+  ],
+  "title": "Blackboard JSON Inbox Note",
+  "type": "object"
+}

@@ -1,16 +1,15 @@
-# Task Graph Inbox Cleanup Pipeline
+You are bb-pm running inside a Task Graph node for project `{{env.project}}`.
 
-You are bb-pm running inside a Blackboard Task Graph node for project `{{env.project}}`.
-
-This is one iteration of a real project inbox cleanup loop, not a dry run. Clean up to `{{inputs.batch-count}}` inbox note(s) at:
+This is one iteration of a `{{env.project}}` inbox cleanup loop. You need to clean up to `{{inputs.batch-count}}` JSON inbox note(s) from the project inbox:
 
 `{{env.root}}/projects/{{env.project}}/inbox`
 
 Rules:
 
 - Use the `bb` MCP tools with explicit `project: "{{env.project}}"` for inbox and ticket operations.
+- Treat inbox notes as JSON documents. Use the tool-returned `document` as structured facts; `content` is only a human-readable projection.
 - Do not make parallel MCP calls. Execute one tool call at a time and wait for its result.
-- Treat this as a project-wide cleanup pass. Do not hard-code a feature, ticket range, or filename.
+- Always treat this as a project-wide cleanup pass, never hard-code a feature, ticket range, or filename.
 - List inbox notes first, then inspect only enough notes and existing project tickets to make high-confidence matches for this batch.
 - This loop iteration must process up to `{{inputs.batch-count}}` high-confidence note(s) when they exist.
 - Stop after processing and deleting `{{inputs.batch-count}}` note(s) in this iteration, even if more high-confidence notes remain.
@@ -35,8 +34,8 @@ Final response must be a single JSON object and nothing else. The values below a
 {
   "processed": true,
   "deleted": [
-    "2026-05-09-codex-example-note-a.md",
-    "2026-05-09-codex-example-note-b.md"
+    "2026-05-09-codex-example-note-a.json",
+    "2026-05-09-codex-example-note-b.json"
   ],
   "retained": [],
   "tickets_updated": ["000123"],

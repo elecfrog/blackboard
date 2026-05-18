@@ -23,6 +23,14 @@ export const PIN_VALUE_TYPE_COLORS: Record<PinValueType, string> = {
 
 export const PIN_EXEC_COLOR = '#9ca3af'
 
+function resourceBundleInputPin(config: Record<string, unknown>) {
+  const resourceBundle = config.resource_bundle
+  if (!resourceBundle || typeof resourceBundle !== 'object' || Array.isArray(resourceBundle)) return null
+  const input = (resourceBundle as Record<string, unknown>).input
+  const id = typeof input === 'string' && input.trim() ? input.trim() : 'resource_bundle'
+  return { id, label: 'Resource Bundle', direction: 'in' as const, category: 'data' as const, value_type: 'json' as const }
+}
+
 export function getDefaultPins(nodeType: TaskGraphNode['type'], config: Record<string, unknown> = {}): NodePin[] {
   switch (nodeType) {
     case 'start':
@@ -34,10 +42,32 @@ export function getDefaultPins(nodeType: TaskGraphNode['type'], config: Record<s
         { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },
       ]
     case 'llm':
+    case 'llm_coordinator':
+      return [
+        { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },
+        ...(nodeType === 'llm' && resourceBundleInputPin(config) ? [resourceBundleInputPin(config)!] : []),
+        ...(nodeType === 'llm_coordinator'
+          ? [{ id: 'input', label: 'Input', direction: 'in' as const, category: 'data' as const, value_type: 'any' as const }]
+          : []),
+        { id: 'exec_out', label: 'Out', direction: 'out', category: 'exec' },
+        { id: 'output', label: 'Output', direction: 'out', category: 'data', value_type: 'json' },
+        ...(nodeType === 'llm_coordinator'
+          ? [{ id: 'subgraph_result', label: 'Subgraph Result', direction: 'out' as const, category: 'data' as const, value_type: 'json' as const }]
+          : []),
+      ]
+    case 'data_value': {
+      const valueType = typeof config.value_type === 'string' && config.value_type in PIN_VALUE_TYPE_COLORS
+        ? config.value_type as PinValueType
+        : 'string'
+      return [
+        { id: 'value', label: 'Value', direction: 'out', category: 'data', value_type: valueType },
+      ]
+    }
+    case 'input_var':
       return [
         { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },
         { id: 'exec_out', label: 'Out', direction: 'out', category: 'exec' },
-        { id: 'output', label: 'Output', direction: 'out', category: 'data', value_type: 'json' },
+        { id: 'value', label: 'Value', direction: 'out', category: 'data', value_type: 'any' },
       ]
     case 'plan':
       return [
@@ -52,6 +82,22 @@ export function getDefaultPins(nodeType: TaskGraphNode['type'], config: Record<s
         { id: 'plan_input', label: 'Plan Input', direction: 'in', category: 'data', value_type: 'json' },
         { id: 'exec_out', label: 'Out', direction: 'out', category: 'exec' },
         { id: 'mutation_artifact', label: 'Mutation Artifact', direction: 'out', category: 'data', value_type: 'json' },
+      ]
+    case 'intent_extract':
+    case 'kb_plan':
+    case 'manifest_merge':
+    case 'schema_validate':
+      return [
+        { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },
+        { id: 'exec_out', label: 'Out', direction: 'out', category: 'exec' },
+        { id: 'output', label: 'Output', direction: 'out', category: 'data', value_type: 'json' },
+      ]
+    case 'system_write_output':
+      return [
+        { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },
+        { id: 'content', label: 'Content', direction: 'in', category: 'data', value_type: 'any' },
+        { id: 'exec_out', label: 'Out', direction: 'out', category: 'exec' },
+        { id: 'output', label: 'Output', direction: 'out', category: 'data', value_type: 'json' },
       ]
     case 'shell':
       return [
@@ -68,6 +114,7 @@ export function getDefaultPins(nodeType: TaskGraphNode['type'], config: Record<s
     case 'branch': {
       const pins: NodePin[] = [
         { id: 'exec_in', label: 'In', direction: 'in', category: 'exec', required: true },
+        { id: 'input', label: 'Input', direction: 'in', category: 'data', value_type: 'any' },
       ]
       const rules = (config.rules ?? []) as Array<{ id: string; label: string }>
       for (const rule of rules) {

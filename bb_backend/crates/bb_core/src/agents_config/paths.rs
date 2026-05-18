@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::InboxError;
 
 /// Compute `<bb-root>/agents/AGENTS.md` from a workspace root.
+#[must_use]
 pub fn source_path(bb_root: &Path) -> PathBuf {
     bb_root.join("agents").join("AGENTS.md")
 }
@@ -69,6 +70,7 @@ fn join_template_suffix(mut base: PathBuf, rest: &str) -> PathBuf {
     base
 }
 
+#[allow(clippy::option_if_let_else)]
 pub(super) fn path_for_display(path: &Path) -> String {
     let value = path.to_string_lossy();
     if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {

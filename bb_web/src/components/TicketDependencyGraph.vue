@@ -7,6 +7,7 @@ import GraphCanvas, {
   type GraphCanvasNodeMove,
   type GraphCanvasViewport,
 } from '@/components/GraphCanvas.vue'
+import { BbButton } from '@/components/common'
 import { patchTicket, type BlackboardTicket } from '@/data/tickets'
 import { t, ticketStatusLabel } from '@/i18n'
 
@@ -646,7 +647,7 @@ watch(
       <div class="graph-toolbar-actions">
         <span>{{ graph.nodes.length }} {{ t('tickets') }} · {{ graph.edges.length }} {{ t('dependencies') }}</span>
         <span>{{ Math.round(graphViewport.scale * 100) }}%</span>
-        <button type="button" class="bb-top-action-button" @click="resetLayout">{{ t('resetLayout') }}</button>
+        <BbButton type="button" variant="secondary" @click="resetLayout">{{ t('resetLayout') }}</BbButton>
       </div>
     </div>
 

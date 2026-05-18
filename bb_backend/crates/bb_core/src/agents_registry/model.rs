@@ -75,7 +75,7 @@ pub struct AgentProfile {
     /// Inline system instructions for this agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
-    /// Path (relative to bb_root) to a Markdown file containing system instructions.
+    /// Path (relative to `bb_root`) to a Markdown file containing system instructions.
     /// Mutually exclusive with `instructions`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instructions_path: Option<String>,
@@ -155,6 +155,6 @@ pub(super) fn default_status() -> String {
     "active".to_string()
 }
 
-fn default_assignable() -> bool {
+const fn default_assignable() -> bool {
     true
 }

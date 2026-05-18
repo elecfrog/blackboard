@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { GripHorizontal, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
+import BbObjectItem from '@/components/common/BbObjectItem.vue'
+import { BbActionGroup, BbButton, BbIconCommand, BbToolbar } from '@/components/common'
 import {
   createIdeaCanvas,
   createStickyNote,
@@ -347,56 +349,63 @@ function upsertCanvasEntry(value: IdeaCanvasDetail) {
         <h2>{{ t('ideaCanvas') }}</h2>
         <p>{{ t('ideaCanvasSubtitle') }}</p>
       </div>
-      <div class="bb-workspace-head-actions">
-        <button class="bb-icon-command" type="button" :title="t('refresh')" @click="reload()">
-          <RefreshCw aria-hidden="true" />
-        </button>
-        <button class="bb-primary-command" type="button" :disabled="creatingCanvas" @click="addCanvas">
-          <Plus aria-hidden="true" />
-          <span>{{ t('ideaCanvasNew') }}</span>
-        </button>
-      </div>
+      <BbToolbar class="bb-workspace-head-actions" variant="inline">
+        <template #actions>
+          <BbActionGroup>
+            <BbIconCommand :title="t('refresh')" @click="reload()">
+              <RefreshCw aria-hidden="true" />
+            </BbIconCommand>
+            <BbButton variant="primary" :disabled="creatingCanvas" @click="addCanvas">
+              <template #leading>
+                <Plus aria-hidden="true" />
+              </template>
+              {{ t('ideaCanvasNew') }}
+            </BbButton>
+          </BbActionGroup>
+        </template>
+      </BbToolbar>
     </header>
 
     <div v-if="loading" class="bb-empty">{{ t('ideaCanvasLoading') }}</div>
     <div v-else-if="error" class="bb-error">{{ error }}</div>
 
     <div v-else class="bb-idea-canvas-split">
-      <aside class="bb-idea-canvas-list">
-        <div
-          v-for="item in canvases"
-          :key="item.id"
-          :class="['bb-canvas-list-item', { active: selectedCanvasId === item.id }]"
-        >
-          <button
-            class="bb-canvas-list-select"
-            type="button"
-            @click="selectCanvas(item.id)"
+      <aside class="bb-object-list-pane bb-idea-canvas-list">
+        <ul class="bb-object-list">
+          <li
+            v-for="item in canvases"
+            :key="item.id"
+            class="bb-object-list-row"
           >
-            <span>{{ item.title }}</span>
-            <small>{{ t('ideaCanvasNoteCount', { count: item.note_count }) }}</small>
-          </button>
-          <button
-            class="bb-canvas-list-delete"
-            type="button"
-            :title="t('ideaCanvasDeleteCanvas')"
-            :aria-label="t('ideaCanvasDeleteCanvas')"
-            :disabled="deletingCanvasId === item.id"
-            @click.stop="openCanvasDeleteConfirm(item)"
-          >
-            <Trash2 aria-hidden="true" />
-          </button>
-        </div>
+            <BbObjectItem
+              :title="item.title"
+              :active="selectedCanvasId === item.id"
+              @select="selectCanvas(item.id)"
+            />
+            <button
+              class="bb-object-row-action bb-object-row-action--danger"
+              type="button"
+              :title="t('ideaCanvasDeleteCanvas')"
+              :aria-label="t('ideaCanvasDeleteCanvas')"
+              :disabled="deletingCanvasId === item.id"
+              @click.stop="openCanvasDeleteConfirm(item)"
+            >
+              <Trash2 aria-hidden="true" />
+            </button>
+          </li>
+        </ul>
         <div v-if="canvases.length === 0" class="bb-empty">{{ t('ideaCanvasEmpty') }}</div>
       </aside>
 
       <main class="bb-idea-canvas-main">
         <div v-if="canvasLoading" class="bb-empty">{{ t('ideaCanvasLoading') }}</div>
         <div v-else-if="!canvas" class="bb-idea-canvas-blank">
-          <button class="bb-primary-command" type="button" :disabled="creatingCanvas" @click="addCanvas">
-            <Plus aria-hidden="true" />
-            <span>{{ t('ideaCanvasNew') }}</span>
-          </button>
+          <BbButton variant="primary" :disabled="creatingCanvas" @click="addCanvas">
+            <template #leading>
+              <Plus aria-hidden="true" />
+            </template>
+            {{ t('ideaCanvasNew') }}
+          </BbButton>
         </div>
         <template v-else>
           <div class="bb-idea-canvas-titlebar">
@@ -463,23 +472,26 @@ function upsertCanvasEntry(value: IdeaCanvasDetail) {
           <p>{{ t('ideaCanvasDeleteConfirm', { title: pendingDeleteCanvas.title }) }}</p>
           <p class="bb-idea-canvas-confirm-hint">{{ t('ideaCanvasDeleteHint') }}</p>
           <footer>
-            <button
-              class="bb-top-action-button"
-              type="button"
-              :disabled="Boolean(deletingCanvasId)"
-              @click="cancelCanvasDelete"
-            >
-              {{ t('cancel') }}
-            </button>
-            <button
-              class="bb-top-action-button bb-idea-canvas-confirm-submit"
-              type="button"
-              :disabled="Boolean(deletingCanvasId)"
-              @click="confirmCanvasDelete"
-            >
-              <Trash2 class="bb-top-action-svg" aria-hidden="true" />
-              {{ deletingCanvasId ? t('ideaCanvasDeletingCanvas') : t('ideaCanvasDeleteCanvas') }}
-            </button>
+            <BbActionGroup>
+              <BbButton
+                variant="secondary"
+                :disabled="Boolean(deletingCanvasId)"
+                @click="cancelCanvasDelete"
+              >
+                {{ t('cancel') }}
+              </BbButton>
+              <BbButton
+                class="bb-idea-canvas-confirm-submit"
+                variant="danger"
+                :disabled="Boolean(deletingCanvasId)"
+                @click="confirmCanvasDelete"
+              >
+                <template #leading>
+                  <Trash2 aria-hidden="true" />
+                </template>
+                {{ deletingCanvasId ? t('ideaCanvasDeletingCanvas') : t('ideaCanvasDeleteCanvas') }}
+              </BbButton>
+            </BbActionGroup>
           </footer>
         </section>
       </div>

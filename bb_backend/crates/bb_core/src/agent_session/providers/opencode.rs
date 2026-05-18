@@ -12,7 +12,7 @@ use super::super::AgentSessionError;
 const TOOL_OUTPUT_LIMIT: usize = 8192;
 
 #[derive(Debug, Clone)]
-pub(crate) struct OpenCodeObserver {
+pub struct OpenCodeObserver {
     pub workspace_root: PathBuf,
     pub project: String,
     pub session_id: String,
@@ -20,7 +20,7 @@ pub(crate) struct OpenCodeObserver {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct OpenCodeCapture {
+pub struct OpenCodeCapture {
     pub stdout: Vec<u8>,
     pub text_output: String,
     pub log: String,
@@ -122,7 +122,7 @@ struct OpenCodeErrorData {
     message: Option<String>,
 }
 
-pub(crate) fn read_opencode_json_pipe_to_end(
+pub fn read_opencode_json_pipe_to_end(
     pipe: impl Read,
     observer: OpenCodeObserver,
 ) -> OpenCodeCapture {
@@ -147,33 +147,30 @@ pub(crate) fn read_opencode_json_pipe_to_end(
             continue;
         }
 
-        match serde_json::from_str::<OpenCodeEvent>(line) {
-            Ok(event) => {
-                log_lines.extend(opencode_event_log_lines(&event));
-                if let Err(err) =
-                    handle_opencode_event(&observer, &event, &mut capture, &mut call_id_to_tool)
-                {
-                    log_lines.push(format!("AgentSession persist error: {err}"));
-                }
+        if let Ok(event) = serde_json::from_str::<OpenCodeEvent>(line) {
+            log_lines.extend(opencode_event_log_lines(&event));
+            if let Err(err) =
+                handle_opencode_event(&observer, &event, &mut capture, &mut call_id_to_tool)
+            {
+                log_lines.push(format!("AgentSession persist error: {err}"));
             }
-            Err(_) => {
-                let stripped = strip_ansi_codes(line);
-                log_lines.push(stripped.clone());
-                let _ = append_event(
-                    &observer,
-                    &mut capture,
-                    AgentEventType::Log,
-                    Some(stripped),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some("info".to_string()),
-                    None,
-                    BTreeMap::new(),
-                );
-            }
+        } else {
+            let stripped = strip_ansi_codes(line);
+            log_lines.push(stripped.clone());
+            let _ = append_event(
+                &observer,
+                &mut capture,
+                AgentEventType::Log,
+                Some(stripped),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some("info".to_string()),
+                None,
+                BTreeMap::new(),
+            );
         }
     }
 
@@ -310,8 +307,8 @@ fn handle_opencode_event(
                 let usage = TokenUsage {
                     input_tokens: tokens.input,
                     output_tokens: tokens.output,
-                    cache_read_tokens: tokens.cache.as_ref().map(|cache| cache.read).unwrap_or(0),
-                    cache_write_tokens: tokens.cache.as_ref().map(|cache| cache.write).unwrap_or(0),
+                    cache_read_tokens: tokens.cache.as_ref().map_or(0, |cache| cache.read),
+                    cache_write_tokens: tokens.cache.as_ref().map_or(0, |cache| cache.write),
                 };
                 if !usage.is_empty() {
                     capture
@@ -363,7 +360,7 @@ fn handle_opencode_event(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn append_event(
+pub fn append_event(
     observer: &OpenCodeObserver,
     capture: &mut OpenCodeCapture,
     event_type: AgentEventType,
@@ -464,8 +461,9 @@ fn opencode_event_log_lines(event: &OpenCodeEvent) -> Vec<String> {
                 .unwrap_or_else(|| "unknown opencode error".to_string());
             vec![format!("OpenCode error: {message}")]
         }
-        "step_finish" => {
-            if let Some(tokens) = event.part.tokens.as_ref() {
+        "step_finish" => event.part.tokens.as_ref().map_or_else(
+            || vec!["Step finished".to_string()],
+            |tokens| {
                 let cache = tokens
                     .cache
                     .as_ref()
@@ -475,10 +473,8 @@ fn opencode_event_log_lines(event: &OpenCodeEvent) -> Vec<String> {
                     "Step finished tokens input={} output={}{}",
                     tokens.input, tokens.output, cache
                 )]
-            } else {
-                vec!["Step finished".to_string()]
-            }
-        }
+            },
+        ),
         other => {
             if other.is_empty() {
                 Vec::new()

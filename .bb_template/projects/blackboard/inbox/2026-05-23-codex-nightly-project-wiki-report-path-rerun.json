@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "title": "Codex handoff: nightly report path moved to project wiki and rerun succeeded",
+  "time": "2026-05-23T16:10:52Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "nightly-project-wiki-report-path-rerun",
+  "done": [
+    "按用户要求将 system/nightly-auto-code-optimization 的最终报告路径改到 project wiki：{{env.workspace}}/projects/{{env.project}}/wiki/nightly/nightly-report-{{inputs.report-date}}.md。",
+    "最小手动改动范围：.bb_template/task_graphs/system/nightly-auto-code-optimization.json 中 description、version 8->9、report-date description、nightly-overall-report.inputs.report_path、system-write-summary.output_path。",
+    "用 Git Bash 启动并盯完一轮 graph：parent run=run-20260523-154931-76187b09，graph version=9，最终 status=succeeded。",
+    "最终写入节点 system-write-summary succeeded，log_tail=wrote C:/Dev/blackboard/.bb_template/projects/blackboard/wiki/nightly/nightly-report-2026-05-22.md。旧 workspace wiki 报告 .bb_template/wiki/nightly/nightly-report-2026-05-22.md 未被本轮覆盖。",
+    "质量子图 run-20260523-155555-4a320cd1 succeeded：rust-format-fix cwd=C:\\Dev\\blackboard\\bb_backend exit_code=0；rust clippy verify exit_code=0；frontend build succeeded；frontend write-scope audit violation_count=0。",
+    "本轮 graph 自身按既有逻辑执行了 scout-fix 和 code-quality-fix：review-scout-fix 子图修复了 tool lifecycle input_summary 缓存问题；quality 子图有 frontend-i18n 允许范围内 3 次 edit，audit 0 violation。"
+  ],
+  "validation": [
+    "python -m json.tool .bb_template/task_graphs/system/nightly-auto-code-optimization.json：通过。",
+    "命令：CARGO_TARGET_DIR=.bb_template/runtime/cargo-target/codex-daemon cargo run --manifest-path bb_backend/Cargo.toml -p bb_daemon -- --root .bb_template run --graph system/nightly-auto-code-optimization --agent bb-pm --interval-seconds 15 --max-dispatch-per-scan 1 --node-timeout-seconds 900 --run-timeout-seconds 3600 --project blackboard --once：通过。",
+    "run.json: run-20260523-154931-76187b09 status=succeeded graph.version=9 completed_at=2026-05-23T16:09:03.058084200+00:00。",
+    "路径验证：.bb_template/projects/blackboard/wiki/nightly/nightly-report-2026-05-22.md mtime=2026-05-24 00:09:02 +0800；.bb_template/wiki/nightly/nightly-report-2026-05-22.md 仍为 2026-05-23 23:38:39 +0800。",
+    "mcp__bb__.create_inbox_note: 通过。"
+  ],
+  "next_step": [
+    "后续单独修 collect_nightly_final_facts.py 的 daily_brief 采集：本轮 daily-brief-output.md 生成成功，但 final facts 仍显示 daily_brief exists=false。",
+    "后续收紧 clippy-scan/quality agent 策略，避免扫描或质量节点产生过宽的自动修复。",
+    "提交前人工确认本轮 graph 自动产生的大量 Rust/Vue 改动范围，尤其 review 报告中跳过的 attempt 字段 medium 问题。"
+  ],
+  "related_locations": [
+    "C:\\Dev\\blackboard\\.bb_template\\task_graphs\\system\\nightly-auto-code-optimization.json",
+    "C:\\Dev\\blackboard\\.bb_template\\runtime\\task_graph_runs\\blackboard\\run-20260523-154931-76187b09",
+    "C:\\Dev\\blackboard\\.bb_template\\runtime\\task_graph_runs\\blackboard\\run-20260523-155555-4a320cd1",
+    "C:\\Dev\\blackboard\\.bb_template\\projects\\blackboard\\wiki\\nightly\\nightly-report-2026-05-22.md",
+    "C:\\Dev\\blackboard\\.codex\\nightly-project-wiki-rerun-20260524-001050.log"
+  ],
+  "related_tickets": [
+    "000081"
+  ],
+  "attachments": [
+    {
+      "kind": "run",
+      "target": "run-20260523-154931-76187b09",
+      "label": "nightly parent run version 9"
+    },
+    {
+      "kind": "run",
+      "target": "run-20260523-155555-4a320cd1",
+      "label": "code quality child run"
+    },
+    {
+      "kind": "file",
+      "target": ".bb_template/task_graphs/system/nightly-auto-code-optimization.json",
+      "label": "graph path fix"
+    },
+    {
+      "kind": "file",
+      "target": ".bb_template/projects/blackboard/wiki/nightly/nightly-report-2026-05-22.md",
+      "label": "project wiki final report"
+    }
+  ],
+  "extra": {
+    "daily_brief_fact_bug_remaining": "true",
+    "graph_version": "9",
+    "manual_graph_change": "report path only",
+    "parent_run": "run-20260523-154931-76187b09",
+    "path_fix_verified": "true"
+  }
+}

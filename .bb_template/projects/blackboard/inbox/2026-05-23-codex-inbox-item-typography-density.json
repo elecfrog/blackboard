@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "title": "收敛 Inbox item 与字体规范",
+  "time": "2026-05-23T00:00:00+08:00",
+  "source": "Codex",
+  "project": "blackboard",
+  "topic": "inbox-item-typography-density",
+  "done": [
+    "将 Inbox full 模式左侧 item 从内容卡片收敛为扫描列表项：标题、meta/time、摘要三层信息。",
+    "左侧 item 标题统一为 12px / 600，meta 改用 UI 字体而不是 mono，meta 和时间合并到一行。",
+    "左侧 item 摘要压缩为单行，padding、gap、caret 尺寸整体缩小，实测 item 高度约 67px。",
+    "右侧 reader 标题从 mono 改为 UI 字体，避免中文标题呈现不自然。"
+  ],
+  "validation": [
+    "npm run build --prefix bb_web：通过。",
+    "浏览器 reload http://127.0.0.1:8060/#/projects/blackboard/inbox：通过，console error count = 0。",
+    "浏览器实测：前 5 个 `.bb-inbox-item--selectable` 高度约 67px；meta font-family 为 Noto Sans SC/system UI；标题 12px/600。",
+    "git diff --check：通过，仅 CRLF warning。"
+  ],
+  "next_step": [
+    "建议后续把 List Item 规范抽为通用 CSS class/token，TaskGraph catalog、ticket list、inbox list 统一使用同一套密度和字体层级。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/InboxPanel.vue",
+    "bb_web/src/styles.css"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

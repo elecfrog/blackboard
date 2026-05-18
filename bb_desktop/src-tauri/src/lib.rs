@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use tauri::path::BaseDirectory;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -15,6 +16,7 @@ const BACKEND_HOST: &str = "127.0.0.1";
 const PREFERRED_BACKEND_PORT: u16 = 3001;
 const BACKEND_PORT_FALLBACK_START: u16 = 3002;
 const BACKEND_PORT_FALLBACK_END: u16 = 3099;
+const BUILTIN_PROJECT_NAME: &str = "blackboard";
 
 #[derive(Default)]
 struct SidecarState {
@@ -85,16 +87,16 @@ async fn start_desktop(app: tauri::AppHandle) -> Result<(), String> {
         .path()
         .resolve("home-template", BaseDirectory::Resource)
         .map_err(|err| format!("failed to resolve bundled home template resource: {err}"))?;
+    let seed_template = app
+        .path()
+        .resolve("seed", BaseDirectory::Resource)
+        .map_err(|err| format!("failed to resolve bundled seed resource: {err}"))?;
     let web_root = app
         .path()
         .resolve("web", BaseDirectory::Resource)
         .map_err(|err| format!("failed to resolve bundled web resource: {err}"))?;
 
-    if !home_template
-        .join(".bb")
-        .join("blackboard.json")
-        .is_file()
-    {
+    if !home_template.join(".bb").join("blackboard.json").is_file() {
         return Err(format!(
             "bundled home template is missing .bb/blackboard.json under {}",
             home_template.display()
@@ -111,6 +113,18 @@ async fn start_desktop(app: tauri::AppHandle) -> Result<(), String> {
             home_template.display()
         ));
     }
+    if !seed_template
+        .join(".bb")
+        .join("projects")
+        .join(BUILTIN_PROJECT_NAME)
+        .join("__project__.json")
+        .is_file()
+    {
+        return Err(format!(
+            "bundled seed is missing .bb/projects/{BUILTIN_PROJECT_NAME}/__project__.json under {}",
+            seed_template.display()
+        ));
+    }
     if !web_root.join("index.html").is_file() {
         return Err(format!(
             "bundled web frontend is missing index.html under {}",
@@ -121,6 +135,7 @@ async fn start_desktop(app: tauri::AppHandle) -> Result<(), String> {
     if !valid_workspace_root(&global_root) {
         run_workspace_init(&app, &global_root, &home_template, &log_path).await?;
     }
+    ensure_builtin_blackboard_project(&global_root, &seed_template, &log_path)?;
     write_desktop_state(&desktop_state, &endpoint, &log_path)?;
 
     spawn_sidecar(&app, &global_root, &web_root, &endpoint, &log_path).await?;
@@ -129,6 +144,175 @@ async fn start_desktop(app: tauri::AppHandle) -> Result<(), String> {
     open_main_window(&app, &endpoint)?;
     append_log(&log_path, "main window opened");
     Ok(())
+}
+
+fn ensure_builtin_blackboard_project(
+    workspace_root: &Path,
+    seed_template: &Path,
+    log_path: &Path,
+) -> Result<(), String> {
+    let source = seed_template
+        .join(".bb")
+        .join("projects")
+        .join(BUILTIN_PROJECT_NAME);
+    let target = workspace_root.join("projects").join(BUILTIN_PROJECT_NAME);
+
+    if !is_complete_project_capsule(&source) {
+        return Err(format!(
+            "bundled seed project is incomplete: {}",
+            source.display()
+        ));
+    }
+
+    if !is_complete_project_capsule(&target) {
+        copy_dir_missing(&source, &target).map_err(|err| {
+            format!(
+                "failed to materialize bundled {BUILTIN_PROJECT_NAME} project into {}: {err}",
+                target.display()
+            )
+        })?;
+        append_log(
+            log_path,
+            &format!(
+                "materialized builtin project {BUILTIN_PROJECT_NAME} at {}",
+                target.display()
+            ),
+        );
+    }
+
+    if !is_complete_project_capsule(&target) {
+        return Err(format!(
+            "builtin project {BUILTIN_PROJECT_NAME} is incomplete after materialization: {}",
+            target.display()
+        ));
+    }
+
+    ensure_builtin_project_registry_entry(workspace_root, log_path)
+}
+
+fn ensure_builtin_project_registry_entry(
+    workspace_root: &Path,
+    log_path: &Path,
+) -> Result<(), String> {
+    let projects_root = workspace_root.join("projects");
+    fs::create_dir_all(&projects_root).map_err(|err| {
+        format!(
+            "failed to create projects directory {}: {err}",
+            projects_root.display()
+        )
+    })?;
+    let registry_path = projects_root.join("__projects__.json");
+    let mut registry = if registry_path.is_file() {
+        let text = fs::read_to_string(&registry_path).map_err(|err| {
+            format!(
+                "failed to read projects registry {}: {err}",
+                registry_path.display()
+            )
+        })?;
+        serde_json::from_str::<Value>(&text).map_err(|err| {
+            format!(
+                "failed to parse projects registry {}: {err}",
+                registry_path.display()
+            )
+        })?
+    } else {
+        json!({ "projects": {}, "machines": {} })
+    };
+
+    if !registry.is_object() {
+        registry = json!({ "projects": {}, "machines": {} });
+    }
+    if !registry
+        .get("projects")
+        .is_some_and(|projects| projects.is_object())
+    {
+        registry["projects"] = json!({});
+    }
+    if !registry
+        .get("machines")
+        .is_some_and(|machines| machines.is_object())
+    {
+        registry["machines"] = json!({});
+    }
+
+    let projects = registry["projects"]
+        .as_object_mut()
+        .expect("projects object was initialized");
+    let entry = projects
+        .entry(BUILTIN_PROJECT_NAME.to_string())
+        .or_insert_with(|| {
+            json!({
+                "uuid": "00000000-0000-0000-0000-000000000000",
+                "locations": {}
+            })
+        });
+    if !entry.is_object() {
+        *entry = json!({
+            "uuid": "00000000-0000-0000-0000-000000000000",
+            "locations": {}
+        });
+    }
+    if entry
+        .get("uuid")
+        .and_then(Value::as_str)
+        .is_none_or(|uuid| uuid.trim().is_empty())
+    {
+        entry["uuid"] = json!("00000000-0000-0000-0000-000000000000");
+    }
+    if !entry
+        .get("locations")
+        .is_some_and(|locations| locations.is_object())
+    {
+        entry["locations"] = json!({});
+    }
+    entry["locations"]["CURRENT"] = json!({
+        "absolute_path": "",
+        "relative_path": format!("./{BUILTIN_PROJECT_NAME}")
+    });
+
+    let text = serde_json::to_string_pretty(&registry)
+        .map_err(|err| format!("failed to serialize projects registry: {err}"))?;
+    fs::write(&registry_path, format!("{text}\n")).map_err(|err| {
+        format!(
+            "failed to write projects registry {}: {err}",
+            registry_path.display()
+        )
+    })?;
+    append_log(
+        log_path,
+        &format!(
+            "ensured builtin project registry entry: {BUILTIN_PROJECT_NAME} -> ./{BUILTIN_PROJECT_NAME}"
+        ),
+    );
+    Ok(())
+}
+
+fn copy_dir_missing(source: &Path, target: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(target)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            copy_dir_missing(&source_path, &target_path)?;
+        } else if file_type.is_file() && !target_path.exists() {
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&source_path, &target_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn is_complete_project_capsule(root: &Path) -> bool {
+    root.join("__project__.json").is_file()
+        && root.join("__tickets__.json").is_file()
+        && root.join("__inbox__.json").is_file()
+        && root.join("inbox").is_dir()
+        && root.join("tickets").is_dir()
+        && root.join("wiki").is_dir()
 }
 
 async fn run_workspace_init(
@@ -185,7 +369,7 @@ async fn spawn_sidecar(
     let args = [
         "--root".to_string(),
         workspace_root.to_string_lossy().to_string(),
-        "http".to_string(),
+        "serve".to_string(),
         "--addr".to_string(),
         endpoint.addr.clone(),
         "--static-dir".to_string(),
@@ -198,11 +382,11 @@ async fn spawn_sidecar(
     );
     let (mut rx, child) = app
         .shell()
-        .sidecar("bb")
-        .map_err(|err| format!("failed to create bb http sidecar command: {err}"))?
+        .sidecar("bb-daemon")
+        .map_err(|err| format!("failed to create bb-daemon sidecar command: {err}"))?
         .args(args)
         .spawn()
-        .map_err(|err| format!("failed to spawn bb http sidecar: {err}"))?;
+        .map_err(|err| format!("failed to spawn bb-daemon sidecar: {err}"))?;
 
     append_log(log_path, &format!("bb sidecar pid={}", child.pid()));
     store_sidecar_child(app, child);

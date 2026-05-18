@@ -5,6 +5,7 @@ import type { SkillInfo } from '@/data/agents'
 import { loadAgentRegistry, loadAgentSkills, upsertAgent } from '@/data/agents'
 import type { BlackboardTicket, ProjectEntry } from '@/data/tickets'
 import { isOpenTicketStatus, loadBlackboardData, loadProjects } from '@/data/tickets'
+import { BbButton, BbDialog, BbField, BbToolbar } from '@/components/common'
 import { t } from '@/i18n'
 import AgentListPanel from './agents/AgentListPanel.vue'
 import AgentProfileSection from './agents/AgentProfileSection.vue'
@@ -171,10 +172,12 @@ onMounted(reload)
         <h2>{{ t('agents') }}</h2>
         <p>{{ t('agentsSubtitle') }}</p>
       </div>
-      <div class="bb-workspace-head-actions">
-        <button type="button" class="bb-top-action-button" @click="showNewAgent = true">+ {{ t('newAgent') }}</button>
-        <button type="button" class="bb-top-action-button" @click="reload">{{ t('refresh') }}</button>
-      </div>
+      <BbToolbar class="bb-workspace-head-actions" variant="inline">
+        <template #actions>
+          <BbButton size="lg" @click="showNewAgent = true">+ {{ t('newAgent') }}</BbButton>
+          <BbButton size="lg" @click="reload">{{ t('refresh') }}</BbButton>
+        </template>
+      </BbToolbar>
     </header>
 
     <div v-if="loading" class="bb-state-panel">{{ t('loadingAgents') }}</div>
@@ -227,43 +230,42 @@ onMounted(reload)
       </div>
     </template>
 
-    <!-- New Agent Modal -->
-    <div v-if="showNewAgent" class="aw-modal-overlay" @click.self="showNewAgent = false">
-      <div class="aw-modal">
-        <header class="aw-modal-header">
-          <h3>{{ t('newAgentTitle') }}</h3>
-          <button type="button" class="aw-modal-close" @click="showNewAgent = false">✕</button>
-        </header>
-        <div class="aw-modal-body">
-          <label class="aw-field">
-            <span>{{ t('agentIdLabel') }} <em>*</em></span>
-            <input v-model="newAgentForm.id" type="text" :placeholder="t('agentIdPlaceholder')" />
-          </label>
-          <label class="aw-field">
-            <span>{{ t('agentDisplayNameLabel') }} <em>*</em></span>
-            <input v-model="newAgentForm.display_name" type="text" :placeholder="t('agentDisplayNamePlaceholder')" />
-          </label>
-          <label class="aw-field">
-            <span>{{ t('agentKindLabel') }}</span>
-            <select v-model="newAgentForm.kind">
-              <option value="opencode">opencode</option>
-              <option value="codex">codex</option>
-              <option value="codebuddy">codebuddy</option>
-              <option value="custom">custom</option>
-            </select>
-          </label>
-          <label class="aw-field">
-            <span>{{ t('agentVariantLabel') }}</span>
-            <input v-model="newAgentForm.variant" type="text" :placeholder="t('agentVariantPlaceholder')" />
-          </label>
-        </div>
-        <footer class="aw-modal-footer">
-          <button type="button" class="aw-btn secondary" @click="showNewAgent = false">{{ t('cancel') }}</button>
-          <button type="button" class="aw-btn primary" :disabled="newAgentSaving || !newAgentForm.id || !newAgentForm.display_name" @click="createNewAgent">
-            {{ newAgentSaving ? t('creating') : t('create') }}
-          </button>
-        </footer>
-      </div>
-    </div>
+    <BbDialog
+      v-if="showNewAgent"
+      :title="t('newAgentTitle')"
+      :close-label="t('close')"
+      @close="showNewAgent = false"
+    >
+      <BbField>
+        <template #label>{{ t('agentIdLabel') }} <em>*</em></template>
+        <input v-model="newAgentForm.id" type="text" :placeholder="t('agentIdPlaceholder')" />
+      </BbField>
+      <BbField>
+        <template #label>{{ t('agentDisplayNameLabel') }} <em>*</em></template>
+        <input v-model="newAgentForm.display_name" type="text" :placeholder="t('agentDisplayNamePlaceholder')" />
+      </BbField>
+      <BbField :label="t('agentKindLabel')">
+        <select v-model="newAgentForm.kind">
+          <option value="opencode">opencode</option>
+          <option value="codex">codex</option>
+          <option value="codebuddy">codebuddy</option>
+          <option value="pi">pi</option>
+          <option value="custom">custom</option>
+        </select>
+      </BbField>
+      <BbField :label="t('agentVariantLabel')">
+        <input v-model="newAgentForm.variant" type="text" :placeholder="t('agentVariantPlaceholder')" />
+      </BbField>
+      <template #footer>
+        <BbButton variant="secondary" @click="showNewAgent = false">{{ t('cancel') }}</BbButton>
+        <BbButton
+          variant="primary"
+          :disabled="newAgentSaving || !newAgentForm.id || !newAgentForm.display_name"
+          @click="createNewAgent"
+        >
+          {{ newAgentSaving ? t('creating') : t('create') }}
+        </BbButton>
+      </template>
+    </BbDialog>
   </section>
 </template>

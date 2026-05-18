@@ -2,23 +2,38 @@
 
 use serde_json::{json, Map, Value};
 
-use crate::ticket;
+use crate::{inbox, ticket};
 
 pub struct GeneratedSchema {
     pub file_name: &'static str,
     pub value: Value,
 }
 
+#[must_use]
 pub fn generated_schemas() -> Vec<GeneratedSchema> {
-    vec![GeneratedSchema {
-        file_name: "ticket.schema.json",
-        value: ticket_schema(),
-    }]
+    vec![
+        GeneratedSchema {
+            file_name: "ticket.schema.json",
+            value: ticket_schema(),
+        },
+        GeneratedSchema {
+            file_name: "inbox.schema.json",
+            value: inbox_schema(),
+        },
+    ]
 }
 
+#[must_use]
 pub fn ticket_schema() -> Value {
     let mut schema = ticket::ticket_json_document_schema();
     apply_ticket_contract(&mut schema);
+    schema
+}
+
+#[must_use]
+pub fn inbox_schema() -> Value {
+    let mut schema = inbox::inbox_json_document_schema();
+    apply_inbox_contract(&mut schema);
     schema
 }
 
@@ -91,6 +106,62 @@ fn apply_ticket_contract(schema: &mut Value) {
     apply_attachment_contract(schema);
 }
 
+fn apply_inbox_contract(schema: &mut Value) {
+    let root = object_mut(schema);
+    root.insert(
+        "$schema".to_string(),
+        json!("https://json-schema.org/draft/2020-12/schema"),
+    );
+    root.insert(
+        "$id".to_string(),
+        json!("https://blackboard.local/schemas/inbox.schema.json"),
+    );
+    root.insert("title".to_string(), json!("Blackboard JSON Inbox Note"));
+    root.insert("additionalProperties".to_string(), json!(false));
+
+    set_required(
+        schema,
+        &[
+            "schema_version",
+            "title",
+            "time",
+            "source",
+            "project",
+            "topic",
+            "done",
+            "validation",
+            "next_step",
+            "related_locations",
+            "related_tickets",
+            "attachments",
+            "extra",
+        ],
+    );
+
+    property_mut(schema, "schema_version").insert("const".to_string(), json!(1));
+    set_min_length(property_mut(schema, "title"));
+    set_min_length(property_mut(schema, "time"));
+    set_min_length(property_mut(schema, "source"));
+    set_min_length(property_mut(schema, "project"));
+    set_min_length(property_mut(schema, "topic"));
+    apply_string_array_contract(schema, "done");
+    apply_string_array_contract(schema, "validation");
+    apply_string_array_contract(schema, "next_step");
+    apply_string_array_contract(schema, "related_locations");
+    apply_string_array_contract(schema, "related_tickets");
+
+    let extra = property_mut(schema, "extra");
+    extra.insert(
+        "additionalProperties".to_string(),
+        json!({
+            "type": "string",
+            "minLength": 1
+        }),
+    );
+
+    apply_attachment_contract(schema);
+}
+
 fn apply_story_contract(schema: &mut Value) {
     let story = definition_mut(schema, "TicketStory");
     story.insert("additionalProperties".to_string(), json!(false));
@@ -143,6 +214,15 @@ fn apply_attachment_contract(schema: &mut Value) {
     set_min_length(property_mut_in(attachment, "target"));
     set_optional_min_length(property_mut_in(attachment, "label"));
     set_optional_min_length(property_mut_in(attachment, "description"));
+}
+
+fn apply_string_array_contract(schema: &mut Value, name: &str) {
+    if let Some(items) = property_mut(schema, name)
+        .get_mut("items")
+        .and_then(Value::as_object_mut)
+    {
+        items.insert("minLength".to_string(), json!(1));
+    }
 }
 
 fn object_mut(value: &mut Value) -> &mut Map<String, Value> {

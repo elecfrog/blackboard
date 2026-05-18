@@ -21,6 +21,7 @@ import TaskGraphNodeInspector from '@/components/task-graph/TaskGraphNodeInspect
 import TaskGraphNodePalette from '@/components/task-graph/TaskGraphNodePalette.vue'
 import TaskGraphNodeShape from '@/components/task-graph/TaskGraphNodeShape.vue'
 import TaskGraphInputsPanel from '@/components/task-graph/TaskGraphInputsPanel.vue'
+import { BbActionGroup, BbButton, BbCheckboxField, BbField, BbSummaryChip } from '@/components/common'
 import {
   taskGraphNodeMetaLabel,
   taskGraphNodeTypes,
@@ -28,8 +29,10 @@ import {
   type TaskGraphNodeVisual,
 } from '@/components/task-graph/taskGraphNodeVisuals'
 import {
+  TaskGraphHttpError,
   saveProjectTaskGraph,
   validateTaskGraph,
+  canConnect,
   getNodePins,
   nodeToCanvasPins,
   nodeHeightForPins,
@@ -41,7 +44,7 @@ import {
   type TaskGraphValidationError,
 } from '@/data/taskGraphs'
 import { loadProjectAgents, type ProjectAgentProfile, type McpServerConfig } from '@/data/agents'
-import { t } from '@/i18n'
+import { t, tLines } from '@/i18n'
 
 type NodeType = TaskGraphNode['type']
 type EditorConfigPanel = 'inputs' | 'settings' | ''
@@ -80,16 +83,20 @@ type GraphInputPatch = Partial<Omit<TaskGraphInputParam, 'default'>> & {
 }
 
 const promptFileContent = ref('')
-const llmRuntimes = ['codex', 'opencode', 'codebuddy']
+const llmRuntimes = ['codex', 'opencode', 'codebuddy', 'pi']
 const branchOps = ['always', 'exists', 'equals', 'not_equals', '>', '>=', '<', '<=', 'contains', 'is_empty', 'not_empty', 'truthy', 'falsy']
 const DEFAULT_GRAPH_RUN_POLICY: TaskGraphRunPolicy = {
   allow_concurrent_runs: false,
   max_concurrent_runs: 1,
   queue_enabled: false,
   max_queue_wait_ms: 30 * 60 * 1000,
+  queue_timeout_retry_enabled: false,
+  max_queue_timeout_retries: 5,
 }
 const MIN_QUEUE_WAIT_MINUTES = 1
 const MAX_QUEUE_WAIT_MINUTES = 7 * 24 * 60
+const MIN_QUEUE_TIMEOUT_RETRIES = 1
+const MAX_QUEUE_TIMEOUT_RETRIES = 20
 
 const localGraph = ref<TaskGraphDefinition>(cloneGraph(props.graph))
 const originalVersion = ref(props.graph.version)
@@ -215,7 +222,10 @@ const graphSettingsSummary = computed(() => {
     ? t('taskGraphRunPolicyConcurrent', { count: policy.max_concurrent_runs })
     : t('taskGraphRunPolicySerial')
   const queue = policy.queue_enabled ? t('taskGraphRunPolicyQueueOn') : t('taskGraphRunPolicyQueueOff')
-  return `${concurrency} · ${queue}`
+  const retry = policy.queue_timeout_retry_enabled
+    ? t('taskGraphRunPolicyTimeoutRetryOn', { count: policy.max_queue_timeout_retries })
+    : t('taskGraphRunPolicyTimeoutRetryOff')
+  return `${concurrency} · ${queue} · ${retry}`
 })
 
 const selectedEdge = computed(() =>
@@ -327,10 +337,6 @@ function numberValue(event: Event) {
   return Number(inputValue(event))
 }
 
-function checkboxValue(event: Event) {
-  return event.target instanceof HTMLInputElement ? event.target.checked : false
-}
-
 function clampNumber(value: number, min: number, max: number, fallback: number) {
   if (!Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, Math.round(value)))
@@ -348,6 +354,12 @@ function updateGraphRunPolicy(patch: Partial<TaskGraphRunPolicy>) {
     MAX_QUEUE_WAIT_MINUTES * 60 * 1000,
     DEFAULT_GRAPH_RUN_POLICY.max_queue_wait_ms,
   )
+  next.max_queue_timeout_retries = clampNumber(
+    next.max_queue_timeout_retries,
+    MIN_QUEUE_TIMEOUT_RETRIES,
+    MAX_QUEUE_TIMEOUT_RETRIES,
+    DEFAULT_GRAPH_RUN_POLICY.max_queue_timeout_retries,
+  )
   if (!next.allow_concurrent_runs) {
     next.max_concurrent_runs = 1
   }
@@ -361,8 +373,7 @@ function updateGraphRunPolicy(patch: Partial<TaskGraphRunPolicy>) {
   }
 }
 
-function updateAllowConcurrentRuns(event: Event) {
-  const enabled = checkboxValue(event)
+function updateAllowConcurrentRuns(enabled: boolean) {
   updateGraphRunPolicy({
     allow_concurrent_runs: enabled,
     max_concurrent_runs: enabled ? Math.max(2, graphRunPolicy.value.max_concurrent_runs) : 1,
@@ -373,8 +384,11 @@ function updateMaxConcurrentRuns(event: Event) {
   updateGraphRunPolicy({ max_concurrent_runs: clampNumber(numberValue(event), 1, 32, 1) })
 }
 
-function updateQueueEnabled(event: Event) {
-  updateGraphRunPolicy({ queue_enabled: checkboxValue(event) })
+function updateQueueEnabled(enabled: boolean) {
+  updateGraphRunPolicy({
+    queue_enabled: enabled,
+    queue_timeout_retry_enabled: enabled ? graphRunPolicy.value.queue_timeout_retry_enabled : false,
+  })
 }
 
 function updateMaxQueueWaitMinutes(event: Event) {
@@ -385,6 +399,21 @@ function updateMaxQueueWaitMinutes(event: Event) {
     graphRunPolicyQueueWaitMinutes.value,
   )
   updateGraphRunPolicy({ max_queue_wait_ms: minutes * 60 * 1000 })
+}
+
+function updateQueueTimeoutRetryEnabled(enabled: boolean) {
+  updateGraphRunPolicy({ queue_timeout_retry_enabled: enabled })
+}
+
+function updateMaxQueueTimeoutRetries(event: Event) {
+  updateGraphRunPolicy({
+    max_queue_timeout_retries: clampNumber(
+      numberValue(event),
+      MIN_QUEUE_TIMEOUT_RETRIES,
+      MAX_QUEUE_TIMEOUT_RETRIES,
+      graphRunPolicy.value.max_queue_timeout_retries,
+    ),
+  })
 }
 
 function kebab(value: string, fallback: string) {
@@ -427,6 +456,19 @@ function withPalettePreset(node: TaskGraphNode, item?: PaletteNodeType): TaskGra
   }
 }
 
+function mergeRequiredGraphInputs(item?: PaletteNodeType): TaskGraphInputParam[] {
+  const requiredInputs = item?.requiredInputs ?? []
+  if (requiredInputs.length === 0) return graphInputs.value
+  const existing = new Set(graphInputs.value.map((input) => input.id))
+  const inputs = [...graphInputs.value]
+  for (const input of requiredInputs) {
+    if (existing.has(input.id)) continue
+    inputs.push(JSON.parse(JSON.stringify(input)) as TaskGraphInputParam)
+    existing.add(input.id)
+  }
+  return inputs
+}
+
 function defaultNode(type: NodeType, position?: { x: number; y: number }, item?: PaletteNodeType): TaskGraphNode {
   const id = uniqueNodeId(type)
   const visual = item ?? nodeTypes.find((nodeType) => nodeType.type === type)
@@ -449,9 +491,85 @@ function defaultNode(type: NodeType, position?: { x: number; y: number }, item?:
         prompt: { mode: 'inline', template: '' },
         skills: [],
         mcp_servers: [],
+        toolkits: ['blackboard_mcp'],
         custom_env: {},
         custom_args: [],
         output: { artifact_type: 'markdown', required: true },
+      },
+    }, item)
+  }
+  if (type === 'llm_coordinator') {
+    return withPalettePreset({
+      ...base,
+      label: item?.label ?? t('taskGraphNodeTypeCoordinator'),
+      config: {
+        preset: 'llm_coordinator',
+        run_as: 'llm',
+        runtime: 'opencode',
+        agent: 'native',
+        model: '',
+        prompt: { mode: 'inline', template: '' },
+        inputs: { input: '' },
+        output: { artifact_type: 'json', required: true },
+        skills: [],
+        mcp_servers: [],
+        toolkits: ['blackboard_mcp'],
+        custom_env: {},
+        custom_args: [],
+        coordinator: {
+          max_nodes: 32,
+          max_edges: 64,
+          allowed_node_types: [],
+        },
+        input_bindings: {},
+      },
+    }, item)
+  }
+  if (type === 'data_value') {
+    return withPalettePreset({
+      ...base,
+      label: item?.label ?? t('taskGraphNodeTypeDataValue'),
+      config: {
+        preset: 'data_value',
+        value_type: 'string',
+        value: '',
+      },
+    }, item)
+  }
+  if (type === 'input_var') {
+    return withPalettePreset({
+      ...base,
+      label: item?.label ?? t('taskGraphNodeTypeInputVar'),
+      config: {
+        input_id: graphInputs.value[0]?.id ?? '',
+      },
+    }, item)
+  }
+  if (type === 'intent_extract') {
+    return withPalettePreset({
+      ...base,
+      label: item?.label ?? t('taskGraphNodeTypeTaskIntent'),
+      config: {
+        preset: 'task_intent',
+        mode: 'intent_gate',
+        language: 'zh-CN',
+        inputs: {
+          request: '{{inputs.intent}}',
+          draft: {
+            intent_type: 'task',
+            request: '{{inputs.intent}}',
+          },
+        },
+      },
+    }, item)
+  }
+  if (type === 'plan') {
+    return withPalettePreset({
+      ...base,
+      label: item?.label ?? t('taskGraphNodeTypePlan'),
+      config: {
+        data: {},
+        output: { schema_name: 'plan' },
       },
     }, item)
   }
@@ -498,12 +616,90 @@ function defaultNode(type: NodeType, position?: { x: number; y: number }, item?:
       label: item?.label ?? t('taskGraphNodeTypeBranch'),
       config: {
         mode: 'first_match',
-        input_ref: '$.nodes.previous.output',
         rules: [
           { id: 'matched', label: t('taskGraphBranchMatched'), when: { path: '$.ok', op: 'truthy' } },
           { id: 'fallback', label: t('taskGraphBranchDefault'), when: { op: 'always' } },
         ],
         default_rule_id: 'fallback',
+      },
+    }, item)
+  }
+  if (type === 'llm_mutation') {
+    return withPalettePreset({
+      ...base,
+      label: item?.label ?? t('taskGraphNodeTypeMutation'),
+      config: {
+        preset: 'mutation',
+        mode: 'fanout',
+        target_node_id: '',
+        run_as: 'llm',
+        runtime: 'opencode',
+        agent: 'native',
+        model: '',
+        prompt: {
+          mode: 'inline',
+          template: tLines('taskGraphMutationPrompt'),
+        },
+        inputs: { input: '' },
+        output: { artifact_type: 'json', required: true },
+        skills: [],
+        mcp_servers: [],
+        toolkits: ['blackboard_mcp'],
+        custom_env: {},
+        custom_args: [],
+        generated: {
+          runtime: 'opencode',
+          agent: 'native',
+          model: '',
+          output_artifact_type: 'markdown',
+          prompt_template: tLines('taskGraphMutationScoutPrompt'),
+        },
+      },
+    }, item)
+  }
+  if (type === 'kb_plan') {
+    return withPalettePreset({
+      ...base,
+      label: item?.label ?? t('taskGraphNodeTypeKbPlan'),
+      config: {
+        mode: 'wiki_plan',
+        inputs: {},
+      },
+    }, item)
+  }
+  if (type === 'manifest_merge') {
+    return withPalettePreset({
+      ...base,
+      label: item?.label ?? t('taskGraphNodeTypeManifestMerge'),
+      config: {
+        inputs: {},
+      },
+    }, item)
+  }
+  if (type === 'schema_validate') {
+    return withPalettePreset({
+      ...base,
+      label: item?.label ?? t('taskGraphNodeTypeSchemaValidate'),
+      config: {
+        inputs: {},
+        schema: { type: 'object' },
+        value_key: 'value',
+        value_keys: [],
+        fail_on_invalid: false,
+      },
+    }, item)
+  }
+  if (type === 'system_write_output') {
+    return withPalettePreset({
+      ...base,
+      label: item?.label ?? t('taskGraphNodeTypeSystemWriteOutput'),
+      config: {
+        inputs: { content: '' },
+        output_path: 'wiki/output.md',
+        content: '{{inputs.content}}',
+        artifact_type: 'markdown',
+        create_parent_dirs: true,
+        overwrite: true,
       },
     }, item)
   }
@@ -524,8 +720,10 @@ function defaultNode(type: NodeType, position?: { x: number; y: number }, item?:
 function addNode(item: PaletteNodeType, position?: { x: number; y: number }) {
   if (isReadonly.value) return
   const node = defaultNode(item.type, position, item)
+  const inputs = mergeRequiredGraphInputs(item)
   localGraph.value = {
     ...localGraph.value,
+    inputs,
     nodes: [...localGraph.value.nodes, node],
   }
   selectedNodeId.value = node.id
@@ -1137,6 +1335,23 @@ function removeBranchRule(index: number) {
   })
 }
 
+function isDefaultBranchRules(node: TaskGraphNode) {
+  const rules = getBranchRules(node)
+  return rules.length === 2
+    && rules[0]?.id === 'matched'
+    && rules[1]?.id === 'fallback'
+}
+
+function intentGateBranchRules(): BranchRule[] {
+  return [
+    { id: 'simple', label: 'Simple', when: { path: '$.route', op: 'equals', value: 'simple' } },
+    { id: 'complex', label: 'Complex', when: { path: '$.route', op: 'equals', value: 'complex' } },
+    { id: 'needs_clarification', label: 'Needs clarification', when: { path: '$.route', op: 'equals', value: 'needs_clarification' } },
+    { id: 'unsupported', label: 'Unsupported', when: { path: '$.route', op: 'equals', value: 'unsupported' } },
+    { id: 'fallback', label: 'Fallback', when: { op: 'always' } },
+  ]
+}
+
 function updateEdge(id: string, updater: (edge: TaskGraphEdge) => TaskGraphEdge) {
   localGraph.value = {
     ...localGraph.value,
@@ -1202,6 +1417,54 @@ function handleNodeSelect(id: string) {
   focusCanvasWrap()
 }
 
+function nodePreset(node: TaskGraphNode) {
+  return typeof node.config.preset === 'string' ? node.config.preset : ''
+}
+
+function patchNodesForConnection(nodes: TaskGraphNode[], edge: Omit<TaskGraphEdge, 'id'>) {
+  if (edge.kind !== 'exec') return nodes
+  const source = nodes.find((node) => node.id === edge.from)
+  if (!source) return nodes
+
+  return nodes.map((node) => {
+    if (node.id === edge.from && node.type === 'llm_mutation') {
+      const current = configString(node, 'target_node_id')
+      if (!current) {
+        return {
+          ...node,
+          config: {
+            ...node.config,
+            target_node_id: edge.to,
+          },
+        }
+      }
+      return node
+    }
+
+    if (node.id !== edge.to) return node
+
+    if (node.type === 'branch') {
+      const isIntentGate = source.type === 'intent_extract'
+        && (nodePreset(source) === 'task_intent' || configString(source, 'mode') === 'intent_gate')
+      const nextConfig = { ...node.config }
+      let changed = false
+      if (isIntentGate && isDefaultBranchRules(node)) {
+        nextConfig.rules = intentGateBranchRules()
+        nextConfig.default_rule_id = 'fallback'
+        changed = true
+      }
+      if (changed) {
+        return {
+          ...node,
+          config: nextConfig,
+        }
+      }
+    }
+
+    return node
+  })
+}
+
 function connectionDefaults(connection: GraphCanvasConnection) {
   const source = localGraph.value.nodes.find((node) => node.id === connection.sourceId)
   const target = localGraph.value.nodes.find((node) => node.id === connection.targetId)
@@ -1209,14 +1472,13 @@ function connectionDefaults(connection: GraphCanvasConnection) {
   // 使用 sourceHandle 作为 from_pin（来自 GraphCanvas pin 的 handle）
   const fromPin = connection.sourceHandle ?? 'exec_out'
   let toPin = connection.targetHandle ?? 'exec_in'
+  const sourcePin = source ? getNodePins(source).find((pin) => pin.id === fromPin) : undefined
+  const targetPin = target ? getNodePins(target).find((pin) => pin.id === toPin) : undefined
+  if (sourcePin && targetPin && !canConnect(sourcePin, targetPin)) return null
 
   // 确定 edge kind：根据 source pin 的 category
   let edgeKind: TaskGraphEdge['kind'] = 'exec'
-  if (source) {
-    const pins = getNodePins(source)
-    const srcPin = pins.find((p) => p.id === fromPin)
-    if (srcPin?.category === 'data') edgeKind = 'data'
-  }
+  if (sourcePin?.category === 'data') edgeKind = 'data'
 
   const edge: Omit<TaskGraphEdge, 'id'> = {
     from: connection.sourceId,
@@ -1238,6 +1500,10 @@ function connectionDefaults(connection: GraphCanvasConnection) {
       edge.source_handle = `rule:${rule.id}`
       edge.label = rule.label
     }
+  } else if (source?.type === 'branch' && fromPin.startsWith('rule:')) {
+    const ruleId = fromPin.slice(5)
+    const rule = getBranchRules(source).find((item) => item.id === ruleId)
+    edge.label = rule?.label ?? ruleId
   } else if (source?.type === 'loop' && fromPin === 'exec_out') {
     const used = new Set(localGraph.value.edges.filter((item) => item.from === source.id).map((item) => item.from_pin ?? item.source_handle))
     if (!used.has('body')) {
@@ -1264,6 +1530,7 @@ function edgeIdSuffix(edge: Omit<TaskGraphEdge, 'id'>) {
 function handleConnectionCreate(connection: GraphCanvasConnection) {
   if (isReadonly.value || connection.sourceId === connection.targetId) return
   const defaults = connectionDefaults(connection)
+  if (!defaults) return
   const suffix = edgeIdSuffix(defaults)
   const edge: TaskGraphEdge = {
     id: edgeId(defaults.from, defaults.to, suffix),
@@ -1271,6 +1538,7 @@ function handleConnectionCreate(connection: GraphCanvasConnection) {
   }
   localGraph.value = {
     ...localGraph.value,
+    nodes: patchNodesForConnection(localGraph.value.nodes, defaults),
     edges: [...localGraph.value.edges, edge],
   }
   selectedEdgeId.value = edge.id
@@ -1306,7 +1574,7 @@ async function saveGraph() {
   const result = validateTaskGraph(localGraph.value, { project: props.project })
   if (result.status === 'failed') {
     const details = result.errors.slice(0, 5).map((e) => e.message).join('\n• ')
-    const suffix = result.errors.length > 5 ? `\n...（共 ${result.errors.length} 个错误）` : ''
+    const suffix = result.errors.length > 5 ? `\n${t('taskGraphValidateErrorCount', { count: result.errors.length })}` : ''
     showSaveNotification(
       'error',
       t('taskGraphSaveFailed'),
@@ -1324,10 +1592,18 @@ async function saveGraph() {
     localGraph.value = cloneGraph(saved.graph)
     originalVersion.value = saved.graph.version
     emit('saved', saved.graph)
-    const msg = saved.source === 'mock' ? t('taskGraphEditorMockSaved') : t('taskGraphEditorSaved')
+    const msg = t('taskGraphEditorSaved')
     showSaveNotification('success', msg)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    if (err instanceof TaskGraphHttpError && err.status === 400 && err.code === 'validation_failed') {
+      showSaveNotification(
+        'error',
+        t('taskGraphSaveFailed'),
+        saveFailureContent(t('taskGraphSaveValidationReason'), t('taskGraphSaveValidationAction'), msg),
+      )
+      return
+    }
     showSaveNotification(
       'error',
       t('taskGraphSaveFailed'),
@@ -1372,56 +1648,63 @@ function cancelClose() {
         <h3>{{ localGraph.title }}</h3>
         <p>{{ localGraph.scope }}/{{ localGraph.id }} · v{{ localGraph.version }}</p>
       </div>
-      <div>
-        <button type="button" class="bb-top-action-button" :disabled="saving" @click="saveGraph" :title="saveBlockReason">
-          <Save class="bb-top-action-svg" aria-hidden="true" />
+      <BbActionGroup class="task-graph-editor-head-actions" gap="sm">
+        <BbButton variant="primary" size="sm" :disabled="saving" :title="saveBlockReason" @click="saveGraph">
+          <template #leading>
+            <Save />
+          </template>
           <span>{{ saving ? t('saving') : t('save') }}</span>
-        </button>
-        <button type="button" class="bb-top-action-button" :disabled="saving" @click="emit('run')">
-          <Play class="bb-top-action-svg" aria-hidden="true" />
+        </BbButton>
+        <BbButton variant="secondary" size="sm" :disabled="saving" @click="emit('run')">
+          <template #leading>
+            <Play />
+          </template>
           <span>{{ t('taskGraphRun') }}</span>
-        </button>
-        <button type="button" class="bb-top-action-button" @click="handleClose">
-          <X class="bb-top-action-svg" aria-hidden="true" />
+        </BbButton>
+        <BbButton variant="secondary" size="sm" @click="handleClose">
+          <template #leading>
+            <X />
+          </template>
           <span>{{ t('close') }}</span>
-        </button>
-      </div>
+        </BbButton>
+      </BbActionGroup>
     </header>
 
     <div class="task-graph-editor-grid">
       <main class="task-graph-editor-main">
         <section class="task-graph-editor-summary-strip">
-          <button
-            type="button"
-            :class="['task-graph-editor-summary-chip', { active: activeConfigPanel === 'inputs' }]"
+          <BbSummaryChip
+            :title="t('taskGraphInputs')"
+            :subtitle="graphInputSummary"
+            :active="activeConfigPanel === 'inputs'"
             @click="toggleConfigPanel('inputs')"
           >
-            <ListChecks aria-hidden="true" />
-            <span>
-              <strong>{{ t('taskGraphInputs') }}</strong>
-              <small>{{ graphInputSummary }}</small>
-            </span>
-          </button>
-          <button
-            type="button"
-            :class="['task-graph-editor-summary-chip', { active: activeConfigPanel === 'settings' }]"
+            <template #icon>
+              <ListChecks />
+            </template>
+          </BbSummaryChip>
+          <BbSummaryChip
+            :title="t('taskGraphSettings')"
+            :subtitle="graphSettingsSummary"
+            :active="activeConfigPanel === 'settings'"
             @click="toggleConfigPanel('settings')"
           >
-            <Settings2 aria-hidden="true" />
-            <span>
-              <strong>{{ t('taskGraphSettings') }}</strong>
-              <small>{{ graphSettingsSummary }}</small>
-            </span>
-          </button>
-          <button
+            <template #icon>
+              <Settings2 />
+            </template>
+          </BbSummaryChip>
+          <BbButton
             v-if="activeConfigPanel"
-            type="button"
             class="task-graph-editor-summary-close"
+            variant="secondary"
+            size="sm"
             @click="activeConfigPanel = ''"
           >
-            <X aria-hidden="true" />
-            <span>{{ t('taskGraphEditorCloseConfig') }}</span>
-          </button>
+            <template #leading>
+              <X />
+            </template>
+            {{ t('taskGraphEditorCloseConfig') }}
+          </BbButton>
         </section>
 
         <Transition name="task-graph-config-panel">
@@ -1443,26 +1726,20 @@ function cancelClose() {
 
             <section v-else class="task-graph-settings">
               <h4>{{ t('taskGraphSettings') }}</h4>
-              <label>
-                <span>{{ t('label') }}</span>
+              <BbField :label="t('label')">
                 <input :value="localGraph.title" @input="localGraph = { ...localGraph, title: inputValue($event) }" />
-              </label>
-              <label>
-                <span>{{ t('description') }}</span>
+              </BbField>
+              <BbField :label="t('description')">
                 <textarea :value="localGraph.description ?? ''" @input="localGraph = { ...localGraph, description: inputValue($event) }" />
-              </label>
+              </BbField>
               <div class="task-graph-settings-section">
                 <h5>{{ t('taskGraphRunPolicy') }}</h5>
-                <label class="task-graph-settings-checkbox">
-                  <input
-                    type="checkbox"
-                    :checked="graphRunPolicy.allow_concurrent_runs"
-                    @change="updateAllowConcurrentRuns"
-                  />
-                  <span>{{ t('taskGraphAllowConcurrentRuns') }}</span>
-                </label>
-                <label class="task-graph-settings-number">
-                  <span>{{ t('taskGraphMaxConcurrentRuns') }}</span>
+                <BbCheckboxField
+                  :label="t('taskGraphAllowConcurrentRuns')"
+                  :checked="graphRunPolicy.allow_concurrent_runs"
+                  @change="updateAllowConcurrentRuns"
+                />
+                <BbField class="task-graph-settings-number" :label="t('taskGraphMaxConcurrentRuns')">
                   <input
                     type="number"
                     min="1"
@@ -1472,17 +1749,13 @@ function cancelClose() {
                     :value="graphRunPolicy.max_concurrent_runs"
                     @input="updateMaxConcurrentRuns"
                   />
-                </label>
-                <label class="task-graph-settings-checkbox">
-                  <input
-                    type="checkbox"
-                    :checked="graphRunPolicy.queue_enabled"
-                    @change="updateQueueEnabled"
-                  />
-                  <span>{{ t('taskGraphQueueEnabled') }}</span>
-                </label>
-                <label class="task-graph-settings-number">
-                  <span>{{ t('taskGraphMaxQueueWaitMinutes') }}</span>
+                </BbField>
+                <BbCheckboxField
+                  :label="t('taskGraphQueueEnabled')"
+                  :checked="graphRunPolicy.queue_enabled"
+                  @change="updateQueueEnabled"
+                />
+                <BbField class="task-graph-settings-number" :label="t('taskGraphMaxQueueWaitMinutes')">
                   <input
                     type="number"
                     min="1"
@@ -1492,7 +1765,24 @@ function cancelClose() {
                     :value="graphRunPolicyQueueWaitMinutes"
                     @input="updateMaxQueueWaitMinutes"
                   />
-                </label>
+                </BbField>
+                <BbCheckboxField
+                  :label="t('taskGraphQueueTimeoutRetryEnabled')"
+                  :disabled="!graphRunPolicy.queue_enabled"
+                  :checked="graphRunPolicy.queue_timeout_retry_enabled"
+                  @change="updateQueueTimeoutRetryEnabled"
+                />
+                <BbField class="task-graph-settings-number" :label="t('taskGraphMaxQueueTimeoutRetries')">
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    step="1"
+                    :disabled="!graphRunPolicy.queue_enabled || !graphRunPolicy.queue_timeout_retry_enabled"
+                    :value="graphRunPolicy.max_queue_timeout_retries"
+                    @input="updateMaxQueueTimeoutRetries"
+                  />
+                </BbField>
               </div>
             </section>
           </section>
@@ -1557,7 +1847,7 @@ function cancelClose() {
               <div :class="['task-graph-validation-state', validation.status]">
                 <CheckCircle2 v-if="validation.status === 'passed'" aria-hidden="true" />
                 <AlertTriangle v-else aria-hidden="true" />
-                <strong>{{ validation.status }}</strong>
+                <strong>{{ validation.status === 'passed' ? t('taskGraphValidationPassed') : t('taskGraphValidationFailed') }}</strong>
               </div>
               <ul v-if="validation.errors.length > 0" class="task-graph-error-list">
                 <li v-for="(err, index) in validation.errors.slice(0, 8)" :key="`${err.target}-${err.id}-${index}`">
@@ -1617,12 +1907,8 @@ function cancelClose() {
           </ul>
           <p class="task-graph-close-confirm-hint">{{ t('taskGraphCloseConfirmHint') }}</p>
           <footer>
-            <button type="button" class="bb-top-action-button" @click="cancelClose">
-              <span>{{ t('taskGraphCloseConfirmStay') }}</span>
-            </button>
-            <button type="button" class="bb-top-action-button task-graph-close-confirm-discard" @click="confirmClose">
-              <span>{{ t('taskGraphCloseConfirmDiscard') }}</span>
-            </button>
+            <BbButton variant="secondary" @click="cancelClose">{{ t('taskGraphCloseConfirmStay') }}</BbButton>
+            <BbButton variant="danger" @click="confirmClose">{{ t('taskGraphCloseConfirmDiscard') }}</BbButton>
           </footer>
         </section>
       </div>
@@ -1657,13 +1943,6 @@ function cancelClose() {
   min-width: 0;
   display: grid;
   gap: 2px;
-}
-
-.task-graph-editor-head > div:last-child {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .task-graph-editor-head span,
@@ -1706,8 +1985,7 @@ function cancelClose() {
   min-width: 0;
 }
 
-.task-graph-settings,
-.task-graph-node-card {
+.task-graph-settings {
   display: grid;
   align-content: start;
   gap: 9px;
@@ -1716,40 +1994,6 @@ function cancelClose() {
   border: 1px solid var(--bb-border-warm);
   border-radius: 8px;
   background: var(--bb-surface-soft);
-}
-
-.task-graph-node-readonly input,
-.task-graph-node-readonly select,
-.task-graph-node-readonly textarea,
-.task-graph-node-readonly button {
-  pointer-events: none;
-  opacity: 0.7;
-}
-
-.task-graph-variable-list button {
-  width: 100%;
-  min-width: 0;
-  min-height: 28px;
-  padding: 5px 7px;
-  border: 1px solid var(--task-graph-accent-border-light);
-  border-radius: 8px;
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
-  font-weight: 760;
-  overflow-wrap: anywhere;
-}
-
-.task-graph-variable-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.task-graph-variable-list button {
-  width: auto;
-  cursor: pointer;
 }
 
 .task-graph-palette,
@@ -1766,8 +2010,7 @@ function cancelClose() {
 
 .task-graph-palette h4,
 .task-graph-settings h4,
-.task-graph-settings h5,
-.task-graph-node-card h4 {
+.task-graph-settings h5 {
   margin: 0;
 }
 
@@ -1818,74 +2061,6 @@ function cancelClose() {
   display: none;
 }
 
-.task-graph-editor-summary-chip,
-.task-graph-editor-summary-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 0;
-  min-height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--bb-border-warm-medium);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-muted);
-  cursor: pointer;
-  font: inherit;
-}
-
-.task-graph-editor-summary-chip {
-  flex: 0 0 auto;
-  justify-content: start;
-  min-width: 154px;
-}
-
-.task-graph-editor-summary-chip.active {
-  border-color: color-mix(in srgb, var(--bb-accent) 36%, var(--bb-hairline));
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
-}
-
-.task-graph-editor-summary-chip svg,
-.task-graph-editor-summary-close svg {
-  flex: 0 0 auto;
-  width: 15px;
-  height: 15px;
-}
-
-.task-graph-editor-summary-chip > span {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
-  text-align: left;
-}
-
-.task-graph-editor-summary-chip strong,
-.task-graph-editor-summary-close span {
-  overflow: hidden;
-  color: currentColor;
-  font-size: 12px;
-  font-weight: 820;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-graph-editor-summary-chip small {
-  overflow: hidden;
-  color: var(--bb-text-muted);
-  font-size: 10px;
-  font-weight: 760;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-graph-editor-summary-chip.active small {
-  color: color-mix(in srgb, var(--bb-accent) 68%, var(--bb-text-muted));
-}
-
 .task-graph-editor-summary-close {
   margin-left: auto;
 }
@@ -1903,7 +2078,7 @@ function cancelClose() {
   border: 1px solid var(--bb-hairline);
   border-radius: 8px;
   background: color-mix(in srgb, var(--bb-surface) 96%, transparent);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+  box-shadow: var(--bb-md-shadow-soft);
   backdrop-filter: blur(8px);
 }
 
@@ -1993,180 +2168,8 @@ function cancelClose() {
   width: 336px;
   max-height: none;
   overflow: auto;
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 16px 36px var(--bb-graph-overlay-shadow);
   backdrop-filter: blur(8px);
-}
-
-.task-graph-node-card header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.task-graph-node-card header button,
-.task-graph-rule-row button,
-.task-graph-inline-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 28px;
-  border: 1px solid var(--bb-border-warm-medium);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-muted);
-  cursor: pointer;
-}
-
-.task-graph-node-card header button svg,
-.task-graph-rule-row button svg,
-.task-graph-inline-add svg {
-  width: 14px;
-  height: 14px;
-}
-
-.task-graph-node-delete-button {
-  padding: 0 8px;
-}
-
-.task-graph-node-delete-button span {
-  font-size: 11px;
-  font-weight: 760;
-}
-
-.task-graph-segmented {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--bb-border-warm-medium);
-  border-radius: 8px;
-  background: var(--bb-surface);
-}
-
-.task-graph-segmented button,
-.task-graph-mini-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 28px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--bb-text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 760;
-}
-
-.task-graph-segmented button.active {
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
-}
-
-.task-graph-agent-summary,
-.task-graph-inline-list,
-.task-graph-mcp-editor,
-.task-graph-advanced {
-  display: grid;
-  gap: 7px;
-  min-width: 0;
-}
-
-.task-graph-agent-summary,
-.task-graph-mcp-editor {
-  padding: 8px;
-  border: 1px solid var(--bb-border-warm-medium);
-  border-radius: 8px;
-  background: var(--bb-surface);
-}
-
-.task-graph-agent-summary strong,
-.task-graph-inline-list-head strong {
-  color: var(--bb-text-strong);
-  font-size: 12px;
-}
-
-.task-graph-agent-summary span,
-.task-graph-muted-note {
-  margin: 0;
-  color: var(--bb-text-muted);
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
-.task-graph-inline-list-head,
-.task-graph-inline-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px;
-}
-
-.task-graph-inline-row:has(input + input) {
-  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1fr) auto;
-}
-
-.task-graph-mcp-editor > .task-graph-inline-row {
-  grid-template-columns: minmax(0, 1fr) minmax(72px, 0.45fr) auto;
-}
-
-.task-graph-mini-button {
-  width: 30px;
-  border: 1px solid var(--bb-border-warm-medium);
-  background: var(--bb-surface-soft);
-}
-
-.task-graph-mini-button svg {
-  width: 14px;
-  height: 14px;
-}
-
-.task-graph-advanced summary {
-  color: var(--bb-text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 760;
-}
-
-.task-graph-settings label,
-.task-graph-node-card label {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.task-graph-settings label span,
-.task-graph-node-card label span {
-  color: var(--bb-text-muted);
-  font-size: 11px;
-  font-weight: 760;
-}
-
-.task-graph-settings input,
-.task-graph-settings select,
-.task-graph-settings textarea,
-.task-graph-node-card input,
-.task-graph-node-card select,
-.task-graph-node-card textarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  min-height: 32px;
-  padding: 7px 8px;
-  border: 1px solid var(--bb-border-warm-medium-strong);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-strong);
-  font: inherit;
-  font-size: 12px;
-}
-
-.task-graph-settings textarea,
-.task-graph-node-card textarea {
-  min-height: 80px;
-  resize: vertical;
 }
 
 .task-graph-settings {
@@ -2186,62 +2189,27 @@ function cancelClose() {
   font-weight: 800;
 }
 
-.task-graph-settings label {
+.task-graph-settings .bb-field {
   grid-template-columns: 76px minmax(0, 1fr);
   align-items: start;
   gap: 8px;
-}
-
-.task-graph-settings .task-graph-settings-checkbox {
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: center;
-}
-
-.task-graph-settings .task-graph-settings-checkbox input {
-  min-height: 16px;
-  width: 16px;
-  padding: 0;
 }
 
 .task-graph-settings input:disabled {
   opacity: 0.55;
 }
 
-.task-graph-settings label span {
+.task-graph-settings .bb-field-label {
   padding-top: 8px;
 }
 
-.task-graph-settings .task-graph-settings-checkbox span {
-  padding-top: 0;
+.task-graph-settings .bb-checkbox-field {
+  align-self: center;
 }
 
-.task-graph-settings textarea {
+.task-graph-settings .bb-field textarea {
   min-height: 64px;
   line-height: 1.4;
-}
-
-.task-graph-rule-list {
-  display: grid;
-  gap: 8px;
-}
-
-.task-graph-rule-row {
-  display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.8fr);
-  gap: 6px;
-}
-
-.task-graph-rule-row input:nth-of-type(3),
-.task-graph-rule-row input:nth-of-type(4),
-.task-graph-rule-row button {
-  grid-column: span 1;
-}
-
-.task-graph-inline-add {
-  justify-self: start;
-  padding: 0 9px;
-  font-size: 12px;
-  font-weight: 760;
 }
 
 .task-graph-validation-state {
@@ -2311,12 +2279,12 @@ function cancelClose() {
 }
 
 @media (max-width: 720px) {
-  .task-graph-settings label {
+  .task-graph-settings .bb-field {
     grid-template-columns: 1fr;
     gap: 5px;
   }
 
-  .task-graph-settings label span {
+  .task-graph-settings .bb-field-label {
     padding-top: 0;
   }
 }
@@ -2397,9 +2365,6 @@ function cancelClose() {
   padding-top: 4px;
 }
 
-.task-graph-close-confirm-discard {
-  opacity: 0.7;
-}
 </style>
 
 <style>

@@ -1,12 +1,15 @@
 use std::fs;
 use std::path::Path;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 use super::super::compiler::compile_graph_for_execution;
 use super::super::pregel::initial_checkpoint;
 use super::super::types::{TaskGraphDefinition, TaskGraphError};
-use super::model::*;
+use super::model::{
+    GraphRef, NodeError, NodeRunStatus, RunContext, RunPaused, RunStatus, TaskGraphRun,
+    TaskGraphRunDetail, TaskGraphRunNode, TaskGraphRunSummary,
+};
 use super::node_io::load_all_node_outputs;
 use super::{
     compiled_snapshot_path, generate_run_id, node_state_path, read_json, run_dir, run_json_path,
@@ -16,6 +19,7 @@ use crate::task_graph::topology::GraphRevision;
 
 // ─── CRUD Operations ─────────────────────────────────────────────────────────
 
+#[must_use]
 pub fn resolve_graph_input(
     graph_snapshot: &TaskGraphDefinition,
     input: serde_json::Value,
@@ -365,6 +369,7 @@ pub fn update_run_status(
         RunStatus::Succeeded | RunStatus::Failed | RunStatus::Cancelled => {
             run.completed_at = Some(now);
             run.paused = None;
+            run.active_nodes.clear();
         }
         RunStatus::Paused => {}
         _ => {}
@@ -374,9 +379,83 @@ pub fn update_run_status(
     Ok(run)
 }
 
+/// Mark a run as failed and reconcile any still-active node projections.
+///
+/// This is the terminal failure gate used by runner/coordinator fast-fail paths.
+/// A terminal run must not keep active nodes, and active node projections must not
+/// stay queued/running after the run itself is failed.
+pub fn fail_run_active_nodes(
+    workspace_root: &Path,
+    project: &str,
+    run_id: &str,
+    code: impl Into<String>,
+    message: impl Into<String>,
+) -> Result<TaskGraphRun, TaskGraphError> {
+    let dir = run_dir(workspace_root, project, run_id);
+    let run_file = run_json_path(&dir);
+
+    if !run_file.exists() {
+        return Err(TaskGraphError::RunNotFound {
+            project: project.to_string(),
+            run_id: run_id.to_string(),
+        });
+    }
+
+    let mut run: TaskGraphRun = read_json(&run_file)?;
+    if run.status != RunStatus::Failed {
+        validate_status_transition(run.status, RunStatus::Failed)?;
+    }
+
+    let code = code.into();
+    let message = message.into();
+    let active_nodes = run.active_nodes.clone();
+    let now = Utc::now().to_rfc3339();
+
+    run.status = RunStatus::Failed;
+    run.updated_at = now.clone();
+    run.completed_at = Some(now.clone());
+    run.paused = None;
+    run.active_nodes.clear();
+    write_json(&run_file, &run)?;
+
+    fail_active_node_states(&dir, active_nodes, &now, &code, &message)?;
+    Ok(run)
+}
+
+/// Extend a queued run's deadline without changing its original queue order.
+pub fn update_queued_run_deadline(
+    workspace_root: &Path,
+    project: &str,
+    run_id: &str,
+    queue_deadline_at: String,
+) -> Result<TaskGraphRun, TaskGraphError> {
+    let dir = run_dir(workspace_root, project, run_id);
+    let run_file = run_json_path(&dir);
+
+    if !run_file.exists() {
+        return Err(TaskGraphError::RunNotFound {
+            project: project.to_string(),
+            run_id: run_id.to_string(),
+        });
+    }
+
+    let mut run: TaskGraphRun = read_json(&run_file)?;
+    if run.status != RunStatus::Queued {
+        return Err(TaskGraphError::InvalidRunTransition {
+            from: format!("{:?}", run.status).to_lowercase(),
+            to: "queued".to_string(),
+        });
+    }
+
+    run.queue_deadline_at = Some(queue_deadline_at);
+    run.updated_at = Utc::now().to_rfc3339();
+    write_json(&run_file, &run)?;
+    Ok(run)
+}
+
 /// 级联取消一个 run 及其所有活跃的子 run。
 ///
-/// 遍历该 run 的所有 node state，找到 child_run_id 不为空且仍处于活跃状态的子 run，
+/// 遍历该 run 的所有 node state，找到 `child_run_id` 不为空且仍处于活跃状态的子 run，
 /// 递归取消它们，最后取消自身。
 pub fn cancel_run_cascade(
     workspace_root: &Path,
@@ -416,7 +495,7 @@ pub fn cancel_run_cascade(
     update_run_status(workspace_root, project, run_id, RunStatus::Cancelled)
 }
 
-/// Write a TaskGraphRun back to its run.json file (for updating fields like parent_run_id).
+/// Write a `TaskGraphRun` back to its run.json file (for updating fields like `parent_run_id`).
 pub fn write_run_json(
     workspace_root: &Path,
     project: &str,
@@ -484,25 +563,97 @@ pub fn set_run_paused(
 fn validate_status_transition(from: RunStatus, to: RunStatus) -> Result<(), TaskGraphError> {
     let valid = matches!(
         (from, to),
-        (RunStatus::Queued, RunStatus::Pending)
-            | (RunStatus::Queued, RunStatus::Failed)
-            | (RunStatus::Queued, RunStatus::Cancelled)
-            | (RunStatus::Pending, RunStatus::Running)
-            | (RunStatus::Pending, RunStatus::Failed)
-            | (RunStatus::Pending, RunStatus::Cancelled)
-            | (RunStatus::Running, RunStatus::Paused)
-            | (RunStatus::Running, RunStatus::Succeeded)
-            | (RunStatus::Running, RunStatus::Failed)
-            | (RunStatus::Running, RunStatus::Cancelled)
-            | (RunStatus::Paused, RunStatus::Running)
-            | (RunStatus::Paused, RunStatus::Cancelled)
+        (
+            RunStatus::Queued,
+            RunStatus::Pending | RunStatus::Failed | RunStatus::Cancelled
+        ) | (RunStatus::Pending | RunStatus::Paused, RunStatus::Running)
+            | (RunStatus::Pending | RunStatus::Running, RunStatus::Failed)
+            | (
+                RunStatus::Pending | RunStatus::Running | RunStatus::Paused,
+                RunStatus::Cancelled
+            )
+            | (RunStatus::Running, RunStatus::Paused | RunStatus::Succeeded)
     );
 
     if !valid {
         return Err(TaskGraphError::InvalidRunTransition {
-            from: format!("{:?}", from).to_lowercase(),
-            to: format!("{:?}", to).to_lowercase(),
+            from: format!("{from:?}").to_lowercase(),
+            to: format!("{to:?}").to_lowercase(),
         });
     }
     Ok(())
+}
+
+fn fail_active_node_states(
+    run_dir: &Path,
+    active_nodes: Vec<String>,
+    completed_at: &str,
+    code: &str,
+    message: &str,
+) -> Result<(), TaskGraphError> {
+    for node_id in active_nodes {
+        let path = node_state_path(run_dir, &node_id);
+        let mut node = if path.exists() {
+            read_json::<TaskGraphRunNode>(&path)?
+        } else {
+            TaskGraphRunNode {
+                node_id: node_id.clone(),
+                status: NodeRunStatus::Idle,
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+                iteration: None,
+                exit_code: None,
+                error: None,
+                output_artifact: None,
+                log_tail: None,
+                child_run_id: None,
+                runtime: None,
+                agent: None,
+                model: None,
+                agent_session_id: None,
+                agent_session: None,
+            }
+        };
+
+        if !matches!(
+            node.status,
+            NodeRunStatus::Idle
+                | NodeRunStatus::Queued
+                | NodeRunStatus::Running
+                | NodeRunStatus::Paused
+        ) {
+            continue;
+        }
+
+        if node.started_at.is_none() {
+            node.started_at = Some(completed_at.to_string());
+        }
+        if node.completed_at.is_none() {
+            node.completed_at = Some(completed_at.to_string());
+        }
+        if node.duration_ms.is_none() {
+            node.duration_ms = node
+                .started_at
+                .as_deref()
+                .and_then(|started_at| duration_ms_between(started_at, completed_at));
+        }
+        node.status = NodeRunStatus::Failed;
+        node.error = Some(NodeError {
+            code: code.to_string(),
+            message: message.to_string(),
+        });
+        node.log_tail = Some(message.to_string());
+
+        write_json(&path, &node)?;
+    }
+
+    Ok(())
+}
+
+fn duration_ms_between(started_at: &str, completed_at: &str) -> Option<u64> {
+    let started = DateTime::parse_from_rfc3339(started_at).ok()?;
+    let completed = DateTime::parse_from_rfc3339(completed_at).ok()?;
+    let millis = completed.signed_duration_since(started).num_milliseconds();
+    Some(millis.max(0) as u64)
 }

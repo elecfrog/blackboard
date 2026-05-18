@@ -29,6 +29,7 @@ import {
 import type { WikiTreeNode } from '@/data/wiki'
 import { loadWikiContent, loadWikiTree, uploadWikiFiles, wikiAssetUrl } from '@/data/wiki'
 import WikiTreeItem from '@/components/WikiTreeItem.vue'
+import { BbToolbar } from '@/components/common'
 import { locale, t } from '@/i18n'
 
 const props = defineProps<{
@@ -410,7 +411,8 @@ const selectedAssetUrl = computed(() =>
         <h2>{{ t('wiki') }}</h2>
         <p>{{ t('wikiSubtitle') }}</p>
       </div>
-      <div class="bb-workspace-head-actions">
+      <BbToolbar class="bb-workspace-head-actions" variant="inline">
+        <template #actions>
         <span v-if="uploadError" class="bb-wiki-upload-msg error">{{ uploadError }}</span>
         <span v-else-if="uploadSuccess" class="bb-wiki-upload-msg ok">
           {{ t('wikiUploadSuccess') }}
@@ -424,7 +426,8 @@ const selectedAssetUrl = computed(() =>
           <Upload :size="14" />
           <span>{{ uploading ? t('saving') : t('upload') }}</span>
         </button>
-      </div>
+        </template>
+      </BbToolbar>
     </header>
 
     <input
@@ -455,7 +458,7 @@ const selectedAssetUrl = computed(() =>
         <div v-else-if="isEmpty" class="bb-empty bb-wiki-empty-hint">
           {{ t('wikiEmpty') }}
         </div>
-        <ul v-else class="bb-wiki-tree-list">
+        <ul v-else class="bb-object-list bb-wiki-tree-list">
           <li v-for="node in wikiTree" :key="node.path">
             <WikiTreeItem
               :node="node"
@@ -658,12 +661,7 @@ const selectedAssetUrl = computed(() =>
 }
 
 .bb-wiki-tree-list {
-  list-style: none;
-  margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .bb-wiki-content {

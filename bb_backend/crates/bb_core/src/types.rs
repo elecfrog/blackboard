@@ -1,19 +1,34 @@
-//! Shared data types for the bb_core crate.
+//! Shared data types for the `bb_core` crate.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 // ─── Inbox types ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct InboxNoteEntry {
     pub name: String,
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub modified_at: String,
+    #[serde(default)]
+    pub excerpt: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub time: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub topic: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct InboxNote {
     pub name: String,
     pub content: String,
+    pub document: InboxJsonDocument,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -26,6 +41,14 @@ pub struct CreatedInboxNote {
 pub struct DeletedInboxNote {
     pub name: String,
     pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ArchivedInboxNote {
+    pub name: String,
+    pub original_path: String,
+    pub archived_name: String,
+    pub archived_path: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -47,6 +70,31 @@ pub struct InboxNoteInput {
     pub next_step: Vec<String>,
     #[serde(default)]
     pub related_locations: Vec<String>,
+    #[serde(default)]
+    pub related_tickets: Vec<String>,
+    #[serde(default)]
+    pub attachments: Vec<TicketAttachment>,
+    #[serde(default)]
+    pub extra: FrontmatterExtra,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct InboxJsonDocument {
+    pub schema_version: u32,
+    pub title: String,
+    pub time: String,
+    pub source: String,
+    pub project: String,
+    pub topic: String,
+    pub done: Vec<String>,
+    pub validation: Vec<String>,
+    pub next_step: Vec<String>,
+    pub related_locations: Vec<String>,
+    pub related_tickets: Vec<String>,
+    pub attachments: Vec<TicketAttachment>,
+    pub extra: FrontmatterExtra,
 }
 
 /// Persisted inbox index (`__inbox__.json`).
@@ -55,13 +103,7 @@ pub struct InboxIndex {
     pub notes: Vec<InboxIndexEntry>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct InboxIndexEntry {
-    pub name: String,
-    pub size: u64,
-    pub modified_at: String,
-    pub excerpt: String,
-}
+pub type InboxIndexEntry = InboxNoteEntry;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct NoteSearchResult {
@@ -371,7 +413,7 @@ pub struct TicketSearchMatch {
 
 // ─── Idea Canvas types ───────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct CreateIdeaCanvasInput {
     pub title: String,
@@ -379,7 +421,7 @@ pub struct CreateIdeaCanvasInput {
     pub id: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateIdeaCanvasInput {
     pub id: String,
@@ -413,13 +455,13 @@ pub struct UpdateStickyNoteInput {
     pub color: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct IdeaCanvasIndex {
     pub generated_at: String,
     pub canvases: Vec<IdeaCanvasEntry>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct IdeaCanvasEntry {
     pub id: String,
     pub title: String,
@@ -623,7 +665,7 @@ pub struct ProjectIndex {
     pub board_view: ProjectBoardViewSettings,
 }
 
-/// Project-scoped BoardView preferences persisted in `__project__.json`.
+/// Project-scoped `BoardView` preferences persisted in `__project__.json`.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct ProjectBoardViewSettings {
@@ -632,7 +674,8 @@ pub struct ProjectBoardViewSettings {
 }
 
 impl ProjectBoardViewSettings {
-    pub fn is_default(&self) -> bool {
+    #[must_use]
+    pub const fn is_default(&self) -> bool {
         self.hidden_statuses.is_empty()
     }
 }

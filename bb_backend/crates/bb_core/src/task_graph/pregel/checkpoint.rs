@@ -96,6 +96,7 @@ pub fn initial_checkpoint(compiled: &CompiledGraph, input: Value) -> PregelCheck
         updated_channels: vec![START_CHANNEL.to_string()],
     }
 }
+#[must_use]
 pub fn new_channel_versions(
     previous: &BTreeMap<String, u64>,
     current: &BTreeMap<String, u64>,

@@ -16,6 +16,7 @@ use crate::task_graph::definition::types::{NodePin, NodeType, PinDirection, Task
 pub enum NodeCategory {
     Terminal,
     Control,
+    Data,
     Runtime,
     Transform,
     Artifact,
@@ -123,6 +124,7 @@ pub struct NodeSpec {
     pub artifact_outputs: Vec<ArtifactOutputSpec>,
 }
 
+#[must_use]
 pub fn builtin_node_specs() -> Vec<NodeSpec> {
     let empty = Value::Object(Default::default());
     vec![
@@ -162,7 +164,21 @@ pub fn builtin_node_specs() -> Vec<NodeSpec> {
             NodeType::InputVar,
             &empty,
         ),
+        base_spec(
+            "data_value",
+            "Data Value",
+            NodeCategory::Data,
+            NodeType::DataValue,
+            &serde_json::json!({ "value_type": "string", "value": "" }),
+        ),
         base_spec("llm", "LLM", NodeCategory::Runtime, NodeType::Llm, &empty),
+        base_spec(
+            "llm_coordinator",
+            "LLM Coordinator",
+            NodeCategory::Runtime,
+            NodeType::LlmCoordinator,
+            &empty,
+        ),
         base_spec(
             "plan",
             "Plan",
@@ -204,6 +220,17 @@ pub fn builtin_node_specs() -> Vec<NodeSpec> {
             NodeCategory::Transform,
             NodeType::SchemaValidate,
             &empty,
+        ),
+        base_spec(
+            "system_write_output",
+            "System Write Output",
+            NodeCategory::Artifact,
+            NodeType::SystemWriteOutput,
+            &serde_json::json!({
+                "output_path": "",
+                "content": "{{inputs.content}}",
+                "artifact_type": "markdown"
+            }),
         ),
         base_spec(
             "shell",
@@ -326,14 +353,14 @@ pub fn builtin_node_specs() -> Vec<NodeSpec> {
     ]
 }
 
+#[must_use]
 pub fn node_spec_for(node: &TaskGraphNode) -> Option<NodeSpec> {
     let role = node_role_from_config(&node.config);
     builtin_node_specs().into_iter().find(|spec| {
-        if let Some(role) = role {
-            spec.role == Some(role)
-        } else {
-            spec.role.is_none() && spec.node_type == node.node_type
-        }
+        role.map_or_else(
+            || spec.role.is_none() && spec.node_type == node.node_type,
+            |r| spec.role == Some(r),
+        )
     })
 }
 
@@ -345,6 +372,7 @@ pub fn node_role_from_config(config: &Value) -> Option<NodeRole> {
 }
 
 impl NodeRole {
+    #[must_use]
     pub fn from_config_value(value: &str) -> Option<Self> {
         match value {
             "explorer_agent" => Some(Self::ExplorerAgent),
@@ -364,19 +392,21 @@ impl NodeRole {
     }
 }
 
-pub fn node_category_for(node_type: NodeType) -> NodeCategory {
+#[must_use]
+pub const fn node_category_for(node_type: NodeType) -> NodeCategory {
     match node_type {
         NodeType::Start | NodeType::End => NodeCategory::Terminal,
         NodeType::Branch | NodeType::Loop | NodeType::InputVar => NodeCategory::Control,
+        NodeType::DataValue => NodeCategory::Data,
         NodeType::HumanGate => NodeCategory::Approval,
-        NodeType::Llm | NodeType::Shell => NodeCategory::Runtime,
+        NodeType::Llm | NodeType::LlmCoordinator | NodeType::Shell => NodeCategory::Runtime,
         NodeType::LlmMutation
         | NodeType::Plan
         | NodeType::IntentExtract
         | NodeType::KbPlan
         | NodeType::ManifestMerge
         | NodeType::SchemaValidate => NodeCategory::Transform,
-        NodeType::SubGraph => NodeCategory::Artifact,
+        NodeType::SubGraph | NodeType::SystemWriteOutput => NodeCategory::Artifact,
     }
 }
 
@@ -496,7 +526,7 @@ fn blackboard_role(
 
 fn runtime_for_node_type(node_type: NodeType) -> Option<RuntimeBinding> {
     match node_type {
-        NodeType::Llm => Some(RuntimeBinding {
+        NodeType::Llm | NodeType::LlmCoordinator => Some(RuntimeBinding {
             kind: RuntimeBindingKind::Llm,
             provider: Some("codex".to_string()),
             profile: Some("native".to_string()),
@@ -552,6 +582,14 @@ fn runtime_for_node_type(node_type: NodeType) -> Option<RuntimeBinding> {
             variant: None,
             session_resume_policy: SessionResumePolicy::None,
         }),
+        NodeType::SystemWriteOutput => Some(RuntimeBinding {
+            kind: RuntimeBindingKind::Blackboard,
+            provider: Some("task_graph".to_string()),
+            profile: None,
+            model: None,
+            variant: None,
+            session_resume_policy: SessionResumePolicy::None,
+        }),
         NodeType::Shell => Some(RuntimeBinding {
             kind: RuntimeBindingKind::Shell,
             provider: Some("local".to_string()),
@@ -574,7 +612,9 @@ fn runtime_for_node_type(node_type: NodeType) -> Option<RuntimeBinding> {
 
 fn permissions_for_node_type(node_type: NodeType) -> Vec<PermissionSpec> {
     match node_type {
-        NodeType::Llm | NodeType::Plan => vec![required_permission(PermissionKind::ReadProject)],
+        NodeType::Llm | NodeType::LlmCoordinator | NodeType::Plan => {
+            vec![required_permission(PermissionKind::ReadProject)]
+        }
         NodeType::LlmMutation
         | NodeType::IntentExtract
         | NodeType::KbPlan
@@ -582,13 +622,14 @@ fn permissions_for_node_type(node_type: NodeType) -> Vec<PermissionSpec> {
         | NodeType::SchemaValidate => {
             vec![required_permission(PermissionKind::ReadProject)]
         }
+        NodeType::SystemWriteOutput => vec![required_permission(PermissionKind::WriteScoped)],
         NodeType::Shell => vec![required_permission(PermissionKind::ReadWorktree)],
         NodeType::SubGraph => vec![required_permission(PermissionKind::ReadProject)],
         _ => Vec::new(),
     }
 }
 
-fn required_permission(kind: PermissionKind) -> PermissionSpec {
+const fn required_permission(kind: PermissionKind) -> PermissionSpec {
     PermissionSpec {
         kind,
         required: true,
@@ -608,7 +649,7 @@ fn artifact(
     }
 }
 
-fn default_provider_for_role(role: NodeRole) -> &'static str {
+const fn default_provider_for_role(role: NodeRole) -> &'static str {
     match role {
         NodeRole::OpenCodeSession => "opencode",
         NodeRole::CodexSession => "codex",

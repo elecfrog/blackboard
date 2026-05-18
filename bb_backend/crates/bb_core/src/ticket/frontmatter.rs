@@ -5,12 +5,12 @@ use crate::{FrontmatterExtra, InboxError, TicketAttachment};
 use super::{validate_required_string, CORE_FRONTMATTER_FIELDS};
 
 #[derive(Debug, Default)]
-pub(crate) struct ParsedFrontmatter {
+pub struct ParsedFrontmatter {
     pub fields: BTreeMap<String, String>,
     pub error: Option<String>,
 }
 
-pub(crate) fn parse_ticket_frontmatter(content: &str) -> ParsedFrontmatter {
+pub fn parse_ticket_frontmatter(content: &str) -> ParsedFrontmatter {
     let mut lines = content.lines();
     let Some(first) = lines.next() else {
         return ParsedFrontmatter {
@@ -61,7 +61,7 @@ pub(crate) fn parse_ticket_frontmatter(content: &str) -> ParsedFrontmatter {
     ParsedFrontmatter { fields, error }
 }
 
-pub(crate) fn parse_frontmatter_assignment(line: &str) -> Result<(String, String), String> {
+pub fn parse_frontmatter_assignment(line: &str) -> Result<(String, String), String> {
     let (key, value) = line
         .split_once('=')
         .ok_or_else(|| "expected `key = \"value\"`".to_string())?;
@@ -85,7 +85,7 @@ pub(crate) fn parse_frontmatter_assignment(line: &str) -> Result<(String, String
     ))
 }
 
-pub(crate) fn unescape_quoted_value(value: &str) -> String {
+pub fn unescape_quoted_value(value: &str) -> String {
     let mut result = String::new();
     let mut escaped = false;
     for ch in value.chars() {
@@ -110,7 +110,7 @@ pub(crate) fn unescape_quoted_value(value: &str) -> String {
     result
 }
 
-pub(crate) fn escape_quoted_value(value: &str) -> String {
+pub fn escape_quoted_value(value: &str) -> String {
     let mut escaped = String::new();
     for ch in value.chars() {
         match ch {
@@ -124,7 +124,7 @@ pub(crate) fn escape_quoted_value(value: &str) -> String {
     escaped
 }
 
-pub(crate) fn split_ticket_frontmatter(
+pub fn split_ticket_frontmatter(
     content: &str,
 ) -> Result<(BTreeMap<String, String>, &str), InboxError> {
     let mut offset = 0;
@@ -165,7 +165,7 @@ pub(crate) fn split_ticket_frontmatter(
     ))
 }
 
-pub(crate) fn render_frontmatter(fields: &BTreeMap<String, String>) -> String {
+pub fn render_frontmatter(fields: &BTreeMap<String, String>) -> String {
     const CORE_ORDER: [&str; 7] = [
         "id",
         "lane",
@@ -235,7 +235,7 @@ pub(super) fn sanitize_extra_for_write(
     Ok(out)
 }
 
-pub(crate) fn extract_extra_fields(fields: &BTreeMap<String, String>) -> FrontmatterExtra {
+pub fn extract_extra_fields(fields: &BTreeMap<String, String>) -> FrontmatterExtra {
     let mut out = FrontmatterExtra::new();
     for (key, value) in fields {
         if key == "attachments" {
@@ -248,9 +248,7 @@ pub(crate) fn extract_extra_fields(fields: &BTreeMap<String, String>) -> Frontma
     out
 }
 
-pub(crate) fn extract_attachments_field(
-    fields: &BTreeMap<String, String>,
-) -> Vec<TicketAttachment> {
+pub fn extract_attachments_field(fields: &BTreeMap<String, String>) -> Vec<TicketAttachment> {
     fields
         .get("attachments")
         .and_then(|raw| serde_json::from_str::<Vec<TicketAttachment>>(raw).ok())

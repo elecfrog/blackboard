@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -274,9 +276,12 @@ def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def run_command(name: str, args: list[str], cwd: Path) -> dict[str, Any]:
+def run_command(name: str, args: list[str], cwd: Path, env: dict[str, str] | None = None) -> dict[str, Any]:
+    process_env = os.environ.copy()
+    if env:
+        process_env.update(env)
     try:
-        result = subprocess.run(args, cwd=cwd, text=True, capture_output=True, check=False)
+        result = subprocess.run(args, cwd=cwd, text=True, capture_output=True, check=False, env=process_env)
     except OSError as exc:
         return {
             "name": name,
@@ -294,6 +299,28 @@ def run_command(name: str, args: list[str], cwd: Path) -> dict[str, Any]:
         "stderr_tail": tail(result.stderr),
         "command": args,
     }
+
+
+def skipped_command(name: str, args: list[str], reason: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "status": "skipped_missing_tool",
+        "exit_code": None,
+        "stdout_tail": "",
+        "stderr_tail": reason,
+        "command": args,
+    }
+
+
+def cargo_env(data_root: Path, name: str) -> dict[str, str]:
+    target = data_root / "runtime" / "cargo-target" / name
+    target.mkdir(parents=True, exist_ok=True)
+    return {"CARGO_TARGET_DIR": str(target)}
+
+
+def is_stale_schema_result(command: dict[str, Any]) -> bool:
+    text = f"{command.get('stdout_tail') or ''}\n{command.get('stderr_tail') or ''}".lower()
+    return "stale schema" in text or "schema files are stale" in text
 
 
 def ticket_id_from_name(path: Path) -> str | None:
@@ -327,6 +354,7 @@ def audit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     if args.run_schema_check:
         if (repo_root / "bb_backend" / "Cargo.toml").is_file():
+            schema_cargo_env = cargo_env(data_root, "ticket-audit-schema")
             cmd = run_command(
                 "bb_schema_check",
                 [
@@ -342,8 +370,47 @@ def audit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                     str(data_root),
                 ],
                 repo_root,
+                env=schema_cargo_env,
             )
             commands.append(cmd)
+            if cmd["status"] != "passed" and args.run_maintenance and is_stale_schema_result(cmd):
+                generate_cmd = run_command(
+                    "bb_schema_generate",
+                    [
+                        "cargo",
+                        "run",
+                        "--manifest-path",
+                        "bb_backend/Cargo.toml",
+                        "-p",
+                        "bb_schema",
+                        "--",
+                        "generate",
+                        "--root",
+                        str(data_root),
+                    ],
+                    repo_root,
+                    env=schema_cargo_env,
+                )
+                commands.append(generate_cmd)
+                if generate_cmd["status"] == "passed":
+                    cmd = run_command(
+                        "bb_schema_check_after_generate",
+                        [
+                            "cargo",
+                            "run",
+                            "--manifest-path",
+                            "bb_backend/Cargo.toml",
+                            "-p",
+                            "bb_schema",
+                            "--",
+                            "check",
+                            "--root",
+                            str(data_root),
+                        ],
+                        repo_root,
+                        env=schema_cargo_env,
+                    )
+                    commands.append(cmd)
             if cmd["status"] != "passed":
                 sink.add("bb_schema_check", "generated schema is stale or command failed")
         else:
@@ -406,12 +473,17 @@ def audit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     verification = {
         "schema_file": schema_status,
         "bb_schema_check": "not_run",
+        "bb_schema_generate": "not_run",
         "rebuild_ticket_index": "not_run",
         "check_ticket_ids": "not_run",
         "qmd_embed": "not_run",
     }
     if args.run_schema_check and commands:
-        verification["bb_schema_check"] = commands[-1]["status"]
+        for command in commands:
+            if command["name"] == "bb_schema_generate":
+                verification["bb_schema_generate"] = command["status"]
+            if command["name"] in {"bb_schema_check", "bb_schema_check_after_generate"}:
+                verification["bb_schema_check"] = command["status"]
 
     if args.run_maintenance:
         maintenance = [
@@ -430,10 +502,16 @@ def audit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             ("qmd_embed", ["qmd", "embed"]),
         ]
         for name, command in maintenance:
-            cmd = run_command(name, command, repo_root)
+            if name == "qmd_embed" and shutil.which(command[0]) is None:
+                cmd = skipped_command(name, command, f"{command[0]} not found; optional embed maintenance skipped")
+            else:
+                cmd = run_command(name, command, repo_root)
+                if name == "qmd_embed" and cmd["exit_code"] is None:
+                    cmd["status"] = "skipped_missing_tool"
+                    cmd["stderr_tail"] = cmd.get("stderr_tail") or "optional embed maintenance tool failed to spawn"
             commands.append(cmd)
             verification[name] = cmd["status"]
-            if cmd["status"] != "passed":
+            if cmd["status"] not in {"passed", "skipped_missing_tool"}:
                 sink.add(name, f"{name} failed", file=cmd.get("stderr_tail") or cmd.get("stdout_tail") or None)
 
     status = "passed" if not sink.findings else "failed"

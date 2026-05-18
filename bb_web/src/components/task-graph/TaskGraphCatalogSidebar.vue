@@ -1,69 +1,83 @@
 <script setup lang="ts">
 import {
   AlertCircle,
+  ChevronDown,
+  ChevronRight,
   CircleCheck,
   CirclePause,
   CircleX,
+  Folder,
+  FolderOpen,
   GitFork,
+  Grid2X2,
   LoaderCircle,
-  Lock,
-  Pencil,
+  MoreVertical,
   Play,
+  Plus,
+  Star,
   Workflow,
 } from 'lucide-vue-next'
-import { computed } from 'vue'
-import BbDropdown, { type BbDropdownOption } from '@/components/BbDropdown.vue'
+import { computed, ref } from 'vue'
+import BbIconCommand from '@/components/common/BbIconCommand.vue'
+import BbObjectItem from '@/components/common/BbObjectItem.vue'
 import { t } from '@/i18n'
-import { type TaskGraphCatalogItem, type TaskGraphScope } from '@/data/taskGraphs'
+import {
+  type TaskGraphCatalogGroup,
+  type TaskGraphCatalogGroupKind,
+  type TaskGraphCatalogItem,
+} from '@/data/taskGraphs'
 
 const props = defineProps<{
   graphs: TaskGraphCatalogItem[]
-  filter: 'all' | TaskGraphScope
+  groups: TaskGraphCatalogGroup[]
   selectedRef: { scope: string; id: string } | null
-  filterOptions: BbDropdownOption[]
   actionBusy: string
   project: string
 }>()
 
 const emit = defineEmits<{
-  'update:filter': [value: string]
   open: [graph: TaskGraphCatalogItem]
   run: [graph: TaskGraphCatalogItem]
   customize: [graph: TaskGraphCatalogItem]
+  'create-group': [kind: TaskGraphCatalogGroupKind]
+  'rename-group': [groupId: string, title: string]
+  'delete-group': [groupId: string]
+  'move-graph': [graph: TaskGraphCatalogItem, groupId: string]
+  'toggle-favorite': [graph: TaskGraphCatalogItem]
 }>()
 
-const filteredGraphs = computed(() =>
-  props.graphs.filter((graph) => props.filter === 'all' || graph.scope === props.filter),
-)
+const expanded = ref<string[]>(['smart:all', 'system', 'project-ungrouped'])
 
-const systemGraphs = computed(() => filteredGraphs.value.filter((graph) => graph.scope === 'system'))
-const projectGraphs = computed(() => filteredGraphs.value.filter((graph) => graph.scope === 'project'))
+const favoriteGraphs = computed(() => props.graphs.filter((graph) => graph.favorite))
+const systemGroups = computed(() => groupsForKind('system'))
+const projectGroups = computed(() => groupsForKind('project'))
 
-const catalogStats = computed(() => ({
-  system: props.graphs.filter((graph) => graph.scope === 'system').length,
-  project: props.graphs.filter((graph) => graph.scope === 'project').length,
-}))
-
-function formatDate(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
+function groupsForKind(kind: TaskGraphCatalogGroupKind) {
+  return props.groups
+    .filter((group) => group.kind === kind)
+    .slice()
+    .sort((a, b) => a.sort_order - b.sort_order || a.title.localeCompare(b.title))
 }
 
-function lastRunLabel(graph: TaskGraphCatalogItem) {
-  const run = graph.last_run
-  return run
-    ? `${run.status} · ${formatDate(run.updated_at)}`
-    : t('taskGraphNeverRun')
+function graphsForGroup(group: TaskGraphCatalogGroup) {
+  return props.graphs
+    .filter((graph) => graph.scope === group.kind && (graph.group_id ?? '') === group.id)
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.title.localeCompare(b.title))
 }
 
-function runActionText(graph: TaskGraphCatalogItem) {
-  return graph.compile_error ? t('taskGraphCompileError') : t('taskGraphRun')
+function isExpanded(id: string) {
+  return expanded.value.includes(id)
+}
+
+function toggleExpanded(id: string) {
+  expanded.value = isExpanded(id)
+    ? expanded.value.filter((item) => item !== id)
+    : [...expanded.value, id]
+}
+
+function selected(graph: TaskGraphCatalogItem) {
+  return props.selectedRef?.scope === graph.scope && props.selectedRef?.id === graph.id
 }
 
 function runActionStatus(graph: TaskGraphCatalogItem) {
@@ -80,112 +94,192 @@ function runActionIcon(graph: TaskGraphCatalogItem) {
   if (status === 'failed' || status === 'cancelled') return CircleX
   return Play
 }
+
+function graphIcon(graph: TaskGraphCatalogItem) {
+  return graph.scope === 'system' ? Workflow : GitFork
+}
+
+function onMoveGraph(event: Event, graph: TaskGraphCatalogItem) {
+  const groupId = (event.target as HTMLSelectElement).value
+  if (groupId && groupId !== graph.group_id) emit('move-graph', graph, groupId)
+}
+
+function canDeleteGroup(group: TaskGraphCatalogGroup) {
+  return group.id !== 'system' && group.id !== 'project-ungrouped'
+}
 </script>
 
 <template>
   <aside class="task-graph-catalog">
-    <div class="task-graph-filters" :aria-label="t('taskGraphFilter')">
-      <BbDropdown
-        class="task-graph-filter-dropdown"
-        :model-value="filter"
-        :options="filterOptions"
-        :label="t('taskGraphFilter')"
-        :min-width="220"
-        @change="emit('update:filter', $event)"
-      />
-    </div>
+    <section class="graph-catalog-smart">
+      <button type="button" class="catalog-row primary" @click="toggleExpanded('smart:all')">
+        <component :is="isExpanded('smart:all') ? ChevronDown : ChevronRight" aria-hidden="true" />
+        <Grid2X2 aria-hidden="true" />
+        <span>{{ t('taskGraphAll') }}</span>
+        <strong>{{ graphs.length }}</strong>
+      </button>
+      <div v-if="isExpanded('smart:all')" class="catalog-children">
+        <BbObjectItem
+          v-for="graph in graphs"
+          :key="`all:${graph.scope}:${graph.id}`"
+          :title="graph.title"
+          :active="selected(graph)"
+          @select="emit('open', graph)"
+        >
+          <template #leading>
+            <component :is="graphIcon(graph)" />
+          </template>
+        </BbObjectItem>
+      </div>
 
-    <section v-if="systemGraphs.length > 0" class="task-graph-section">
-      <header>
-        <h3>{{ t('taskGraphSystem') }}</h3>
-        <span>{{ systemGraphs.length }}</span>
-      </header>
-      <article
-        v-for="graph in systemGraphs"
-        :key="`${graph.scope}:${graph.id}`"
-        :class="['task-graph-card', { selected: selectedRef?.scope === graph.scope && selectedRef?.id === graph.id }]"
-      >
-        <div class="task-graph-card-head">
-          <button type="button" class="task-graph-card-main" @click="emit('open', graph)">
-            <span class="task-graph-card-icon system">
-              <Workflow aria-hidden="true" />
-            </span>
-            <span>
-              <strong>{{ graph.title }}</strong>
-              <span v-if="graph.compile_error" class="task-graph-card-state compile-error">
-                <AlertCircle aria-hidden="true" />
-                {{ t('taskGraphCompileError') }}
-              </span>
-              <span v-else-if="project !== 'blackboard'" class="task-graph-card-state readonly">
-                <Lock aria-hidden="true" />
-                {{ t('taskGraphReadonly') }}
-              </span>
-              <span v-else class="task-graph-card-state editable">
-                <Pencil aria-hidden="true" />
-                {{ t('taskGraphEditable') }}
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            class="task-graph-run-action"
-            :data-status="runActionStatus(graph)"
-            :title="graph.compile_error ? `${t('taskGraphCompileError')} · ${graph.compile_error}` : `${runActionText(graph)} · ${lastRunLabel(graph)}`"
-            :aria-label="graph.compile_error ? `${t('taskGraphCompileError')} · ${graph.compile_error}` : `${runActionText(graph)} · ${lastRunLabel(graph)}`"
-            :disabled="!!actionBusy || !!graph.compile_error"
-            @click="emit('run', graph)"
-          >
-            <component :is="runActionIcon(graph)" aria-hidden="true" />
-          </button>
-        </div>
-        <p>{{ graph.description }}</p>
-      </article>
+      <button type="button" class="catalog-row" @click="toggleExpanded('smart:favorites')">
+        <component :is="isExpanded('smart:favorites') ? ChevronDown : ChevronRight" aria-hidden="true" />
+        <Star aria-hidden="true" />
+        <span>{{ t('taskGraphFavoriteTitle') }}</span>
+        <strong>{{ favoriteGraphs.length }}</strong>
+      </button>
+      <div v-if="isExpanded('smart:favorites')" class="catalog-children">
+        <BbObjectItem
+          v-for="graph in favoriteGraphs"
+          :key="`favorite:${graph.scope}:${graph.id}`"
+          :title="graph.title"
+          :active="selected(graph)"
+          @select="emit('open', graph)"
+        >
+          <template #leading>
+            <component :is="graphIcon(graph)" />
+          </template>
+        </BbObjectItem>
+        <div v-if="favoriteGraphs.length === 0" class="catalog-empty">{{ t('taskGraphFavoriteEmpty') }}</div>
+      </div>
     </section>
 
-    <section class="task-graph-section">
+    <section class="graph-group-section">
       <header>
-        <h3>{{ t('taskGraphProject') }}</h3>
-        <span>{{ projectGraphs.length }}</span>
+        <span>{{ t('taskGraphSystemGroups') }}</span>
+        <BbIconCommand size="mini" variant="ghost" :title="t('taskGraphGroupCreateSystem')" :disabled="!!actionBusy" @click="emit('create-group', 'system')">
+          <Plus aria-hidden="true" />
+        </BbIconCommand>
       </header>
-      <div v-if="projectGraphs.length === 0" class="task-graph-empty">{{ t('taskGraphNoProjectGraphs') }}</div>
-      <article
-        v-for="graph in projectGraphs"
-        :key="`${graph.scope}:${graph.id}`"
-        :class="['task-graph-card', { selected: selectedRef?.scope === graph.scope && selectedRef?.id === graph.id }]"
-      >
-        <div class="task-graph-card-head">
-          <button type="button" class="task-graph-card-main" @click="emit('open', graph)">
-            <span class="task-graph-card-icon project">
-              <GitFork aria-hidden="true" />
-            </span>
-            <span>
-              <strong>{{ graph.title }}</strong>
-              <span class="task-graph-card-state editable">
-                <Pencil aria-hidden="true" />
-                {{ t('taskGraphEditable') }}
-              </span>
-            </span>
+      <div v-for="group in systemGroups" :key="group.id" class="graph-group">
+        <div class="catalog-row group-row">
+          <button type="button" class="catalog-row-main" @click="toggleExpanded(group.id)">
+            <component :is="isExpanded(group.id) ? ChevronDown : ChevronRight" aria-hidden="true" />
+            <component :is="isExpanded(group.id) ? FolderOpen : Folder" aria-hidden="true" />
+            <span>{{ group.title }}</span>
+            <strong>{{ graphsForGroup(group).length }}</strong>
           </button>
-          <button
-            type="button"
-            class="task-graph-run-action"
-            :data-status="runActionStatus(graph)"
-            :title="graph.compile_error ? `${t('taskGraphCompileError')} · ${graph.compile_error}` : `${runActionText(graph)} · ${lastRunLabel(graph)}`"
-            :aria-label="graph.compile_error ? `${t('taskGraphCompileError')} · ${graph.compile_error}` : `${runActionText(graph)} · ${lastRunLabel(graph)}`"
-            :disabled="!!actionBusy || !!graph.compile_error"
-            @click="emit('run', graph)"
-          >
-            <component :is="runActionIcon(graph)" aria-hidden="true" />
-          </button>
+          <BbIconCommand size="mini" variant="ghost" :title="t('taskGraphGroupRename')" @click="emit('rename-group', group.id, group.title)">
+            <MoreVertical aria-hidden="true" />
+          </BbIconCommand>
         </div>
-        <p>{{ graph.description }}</p>
-        <dl>
-          <div>
-            <dt>{{ t('taskGraphOrigin') }}</dt>
-            <dd>{{ graph.origin ? `${graph.origin.scope}/${graph.origin.id}` : t('taskGraphNoOrigin') }}</dd>
-          </div>
-        </dl>
-      </article>
+        <div v-if="isExpanded(group.id)" class="catalog-children">
+          <article
+            v-for="graph in graphsForGroup(group)"
+            :key="`${graph.scope}:${graph.id}`"
+            class="graph-item"
+          >
+            <BbObjectItem
+              class="graph-item-main"
+              :title="graph.title"
+              :active="selected(graph)"
+              @select="emit('open', graph)"
+            >
+              <template #leading>
+                <Workflow />
+              </template>
+            </BbObjectItem>
+            <BbIconCommand class="graph-favorite-command" size="mini" variant="ghost" :title="t('taskGraphFavoriteTitle')" @click="emit('toggle-favorite', graph)">
+              <Star :class="{ filled: graph.favorite }" aria-hidden="true" />
+            </BbIconCommand>
+            <BbIconCommand
+              class="graph-run-command"
+              size="mini"
+              variant="ghost"
+              :title="t('taskGraphRun')"
+              :data-status="runActionStatus(graph)"
+              :disabled="!!actionBusy || !!graph.compile_error"
+              @click="emit('run', graph)"
+            >
+              <component :is="runActionIcon(graph)" aria-hidden="true" />
+            </BbIconCommand>
+            <select class="graph-move-select" :value="graph.group_id ?? ''" @change="onMoveGraph($event, graph)">
+              <option v-for="target in systemGroups" :key="target.id" :value="target.id">
+                {{ target.title }}
+              </option>
+            </select>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="graph-group-section">
+      <header>
+        <span>{{ t('taskGraphProjectGroups') }}</span>
+        <BbIconCommand size="mini" variant="ghost" :title="t('taskGraphGroupCreateProject')" :disabled="!!actionBusy" @click="emit('create-group', 'project')">
+          <Plus aria-hidden="true" />
+        </BbIconCommand>
+      </header>
+      <div v-for="group in projectGroups" :key="group.id" class="graph-group">
+        <div class="catalog-row group-row">
+          <button type="button" class="catalog-row-main" @click="toggleExpanded(group.id)">
+            <component :is="isExpanded(group.id) ? ChevronDown : ChevronRight" aria-hidden="true" />
+            <component :is="isExpanded(group.id) ? FolderOpen : Folder" aria-hidden="true" />
+            <span>{{ group.title }}</span>
+            <strong>{{ graphsForGroup(group).length }}</strong>
+          </button>
+          <BbIconCommand size="mini" variant="ghost" :title="t('taskGraphGroupRename')" @click="emit('rename-group', group.id, group.title)">
+            <MoreVertical aria-hidden="true" />
+          </BbIconCommand>
+          <BbIconCommand
+            v-if="canDeleteGroup(group)"
+            size="mini"
+            variant="danger"
+            :title="t('taskGraphGroupDelete')"
+            @click="emit('delete-group', group.id)"
+          >
+            ×
+          </BbIconCommand>
+        </div>
+        <div v-if="isExpanded(group.id)" class="catalog-children">
+          <article
+            v-for="graph in graphsForGroup(group)"
+            :key="`${graph.scope}:${graph.id}`"
+            class="graph-item"
+          >
+            <BbObjectItem
+              class="graph-item-main"
+              :title="graph.title"
+              :active="selected(graph)"
+              @select="emit('open', graph)"
+            >
+              <template #leading>
+                <GitFork />
+              </template>
+            </BbObjectItem>
+            <BbIconCommand class="graph-favorite-command" size="mini" variant="ghost" :title="t('taskGraphFavoriteTitle')" @click="emit('toggle-favorite', graph)">
+              <Star :class="{ filled: graph.favorite }" aria-hidden="true" />
+            </BbIconCommand>
+            <BbIconCommand
+              class="graph-run-command"
+              size="mini"
+              variant="ghost"
+              :title="t('taskGraphRun')"
+              :data-status="runActionStatus(graph)"
+              :disabled="!!actionBusy || !!graph.compile_error"
+              @click="emit('run', graph)"
+            >
+              <component :is="runActionIcon(graph)" aria-hidden="true" />
+            </BbIconCommand>
+            <select class="graph-move-select" :value="graph.group_id ?? ''" @change="onMoveGraph($event, graph)">
+              <option v-for="target in projectGroups" :key="target.id" :value="target.id">
+                {{ target.title }}
+              </option>
+            </select>
+          </article>
+          <div v-if="graphsForGroup(group).length === 0" class="catalog-empty">{{ t('taskGraphGroupEmpty') }}</div>
+        </div>
+      </div>
     </section>
   </aside>
 </template>
@@ -194,264 +288,164 @@ function runActionIcon(graph: TaskGraphCatalogItem) {
 .task-graph-catalog {
   display: grid;
   align-content: start;
-  gap: 14px;
-  padding: 12px;
+  gap: 12px;
   min-width: 0;
   min-height: 0;
+  padding: 10px;
+  overflow: auto;
   border: 1px solid var(--bb-hairline);
   border-radius: 8px;
   background: var(--bb-surface);
 }
 
-.task-graph-filters {
-  display: block;
-}
-
-.task-graph-filter-dropdown {
-  width: 100%;
-}
-
-.task-graph-filter-dropdown :deep(.bb-popup-select-trigger) {
-  min-height: 34px;
-  padding: 4px 8px;
-  border-radius: 8px;
-}
-
-.task-graph-filter-dropdown :deep(.bb-popup-select-badge) {
-  flex-basis: 22px;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  font-size: 11px;
-}
-
-.task-graph-filter-dropdown :deep(.bb-popup-select-copy strong) {
-  font-size: 12px;
-}
-
-.task-graph-section {
+.graph-catalog-smart,
+.graph-group-section,
+.graph-group {
   display: grid;
-  gap: 8px;
+  gap: 5px;
+  min-width: 0;
 }
 
-.task-graph-section > header {
+.graph-group-section {
+  padding-top: 8px;
+  border-top: 1px solid var(--bb-hairline);
+}
+
+.graph-group-section > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 28px;
   color: var(--bb-text-muted);
+  font-size: 12px;
+  font-weight: 820;
 }
 
-.task-graph-section h3 {
-  margin: 0;
-  color: var(--bb-text-strong);
-  font-size: 14px;
-}
-
-.task-graph-card {
+.catalog-row {
   display: grid;
-  gap: 8px;
-  padding: 9px;
-  border: 1px solid var(--bb-border-warm);
-  border-radius: 8px;
-  background: var(--bb-surface);
-}
-
-.task-graph-card.selected {
-  border-color: var(--bb-theme-primary-border-strong);
-  background: var(--bb-theme-primary-soft-strong);
-  box-shadow: inset 0 0 0 1px var(--bb-theme-primary-border);
-}
-
-.task-graph-card-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-columns: 16px 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-}
-
-.task-graph-card-main {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
   width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--bb-text-muted);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.catalog-row.primary {
+  color: var(--bb-text-strong);
+}
+
+.catalog-row:hover,
+.catalog-row.group-row:hover {
+  background: var(--bb-surface-soft);
+}
+
+.catalog-row svg,
+.catalog-row-main svg {
+  width: 15px;
+  height: 15px;
+}
+
+.catalog-row span,
+.catalog-row-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-row strong,
+.catalog-row-main strong {
+  min-width: 28px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--bb-surface-soft);
+  color: var(--bb-text-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.catalog-row.group-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
   padding: 0;
+}
+
+.catalog-row-main {
+  display: grid;
+  grid-template-columns: 16px 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 8px;
   border: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
+  font: inherit;
   text-align: left;
 }
 
-.task-graph-card-main > span:last-child {
+.catalog-children {
   display: grid;
   gap: 4px;
+  padding-left: 18px;
+}
+
+.graph-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
-}
-
-.task-graph-card-main strong {
-  display: block;
-  overflow-wrap: anywhere;
-  color: var(--bb-text-strong);
-  font-size: 12px;
-  font-weight: 780;
-  line-height: 1.22;
-}
-
-.task-graph-card p {
-  display: none;
-  margin: 0;
-  line-height: 1.45;
-}
-
-.task-graph-card-icon {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
+  padding: 4px;
   border-radius: 8px;
 }
 
-.task-graph-card-icon svg,
-.task-graph-run-action svg,
-.task-graph-card-state svg {
-  width: 16px;
-  height: 16px;
+.graph-item-main {
+  --bb-object-item-height: 28px;
+  padding-inline: 4px;
 }
 
-.task-graph-card-icon.system {
-  background: color-mix(in srgb, var(--bb-focus) 12%, var(--bb-surface));
-  color: var(--bb-focus);
-}
-
-.task-graph-card-icon.project {
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
-}
-
-.task-graph-card dl {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-  margin: 0;
-}
-
-.task-graph-card dl > div {
-  min-width: 0;
-  padding: 8px;
-  border-radius: 8px;
-  background: var(--bb-surface-soft);
-}
-
-.task-graph-card dd {
-  margin: 2px 0 0;
-  overflow-wrap: anywhere;
-  color: var(--bb-text-strong);
-  font-size: 12px;
-  font-weight: 760;
-}
-
-.task-graph-run-action {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: 1px solid var(--task-graph-accent-border-light);
-  border-radius: 8px;
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
-  cursor: pointer;
-}
-
-.task-graph-run-action:hover {
-  border-color: var(--task-graph-accent-border-medium);
-  color: var(--bb-accent);
-}
-
-.task-graph-run-action:disabled {
-  cursor: progress;
-  opacity: 0.56;
-}
-
-.task-graph-run-action svg {
-  color: currentColor;
-}
-
-.task-graph-run-action[data-status='queued'] svg,
-.task-graph-run-action[data-status='running'] svg,
-.task-graph-run-action[data-status='pending'] svg {
+.graph-run-command[data-status='queued'] svg,
+.graph-run-command[data-status='running'] svg,
+.graph-run-command[data-status='pending'] svg {
   animation: task-graph-spin 0.95s linear infinite;
 }
 
-.task-graph-run-action[data-status='queued'],
-.task-graph-run-action[data-status='running'],
-.task-graph-run-action[data-status='pending'] {
-  border-color: var(--task-graph-focus-border);
-  background: color-mix(in srgb, var(--bb-focus) 12%, var(--bb-surface));
-  color: var(--bb-focus);
-}
-
-.task-graph-run-action[data-status='paused'] {
-  border-color: color-mix(in srgb, var(--bb-warning) 34%, var(--bb-hairline));
-  background: color-mix(in srgb, var(--bb-warning) 12%, var(--bb-surface));
+.graph-favorite-command svg.filled {
+  fill: currentColor;
   color: var(--bb-warning);
 }
 
-.task-graph-run-action[data-status='succeeded'] {
-  border-color: var(--task-graph-accent-border-medium);
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
+.graph-move-select {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 26px;
+  border: 1px solid var(--bb-border-warm);
+  border-radius: 7px;
+  background: var(--bb-surface);
+  color: var(--bb-text-muted);
+  font-size: 11px;
 }
 
-.task-graph-run-action[data-status='failed'],
-.task-graph-run-action[data-status='cancelled'] {
-  border-color: var(--task-graph-error-border);
-  background: color-mix(in srgb, var(--bb-error) 12%, var(--bb-surface));
-  color: var(--bb-error);
+.catalog-empty {
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--bb-surface-soft);
+  color: var(--bb-text-muted);
+  font-size: 12px;
 }
 
 @keyframes task-graph-spin {
   to {
     transform: rotate(360deg);
   }
-}
-
-.task-graph-card-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  width: max-content;
-  max-width: 100%;
-  min-height: 20px;
-  padding: 0 7px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 820;
-}
-
-.task-graph-card-state.readonly {
-  background: color-mix(in srgb, var(--bb-focus) 12%, var(--bb-surface));
-  color: var(--bb-focus);
-}
-
-.task-graph-card-state.editable {
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
-}
-
-.task-graph-card-state.compile-error {
-  background: color-mix(in srgb, var(--bb-error) 14%, var(--bb-surface));
-  color: var(--bb-error);
-}
-
-.task-graph-empty {
-  padding: 14px;
-  border: 1px dashed var(--bb-border-warm-dashed);
-  border-radius: 8px;
-  background: var(--bb-surface-soft);
-  color: var(--bb-text-muted);
-  font-size: 12px;
-  text-align: center;
 }
 </style>

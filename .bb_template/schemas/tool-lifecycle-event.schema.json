@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://blackboard.local/schemas/tool-lifecycle-event.schema.json",
+  "title": "Blackboard TaskGraph Tool Lifecycle Event",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "superstep",
+    "node_id",
+    "node_run_id",
+    "tool_call_id",
+    "tool_name",
+    "tool_kind",
+    "attempt",
+    "sequence",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "superstep": { "type": "integer", "minimum": 0 },
+    "node_id": { "type": "string", "minLength": 1 },
+    "node_run_id": { "type": "string", "minLength": 1 },
+    "tool_call_id": { "type": "string", "minLength": 1 },
+    "tool_name": { "type": "string", "minLength": 1 },
+    "tool_kind": { "type": "string", "minLength": 1 },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["running", "succeeded", "failed", "cancelled", "timeout", "paused", "skipped"]
+    },
+    "started_at": { "type": "string", "minLength": 1 },
+    "ended_at": { "type": "string", "minLength": 1 },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "input_summary": { "type": ["object", "array", "string", "number", "boolean", "null"] },
+    "output_summary": { "type": ["object", "array", "string", "number", "boolean", "null"] },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "category": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "content_type": { "type": "string", "minLength": 1 },
+          "label": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

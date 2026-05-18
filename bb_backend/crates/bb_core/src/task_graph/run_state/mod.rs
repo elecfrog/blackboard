@@ -15,14 +15,16 @@ mod lifecycle;
 mod model;
 mod node_io;
 mod superstep;
+mod tool_lifecycle;
 
 pub use context::{pop_loop_frame, push_loop_frame, record_branch_decision, record_loop_iteration};
 pub use fork_join::{
     count_exec_in_edges, detect_join_nodes, is_join_ready, record_branch_completion,
 };
 pub use lifecycle::{
-    cancel_run_cascade, create_queued_run, create_run, list_runs, read_run, read_run_detail,
-    resolve_graph_input, set_run_paused, update_run_status, write_run_json,
+    cancel_run_cascade, create_queued_run, create_run, fail_run_active_nodes, list_runs, read_run,
+    read_run_detail, resolve_graph_input, set_run_paused, update_queued_run_deadline,
+    update_run_status, write_run_json,
 };
 pub use model::*;
 pub use node_io::{
@@ -34,6 +36,11 @@ pub use superstep::{
     read_graph_revision, read_latest_superstep_checkpoint, read_pending_pregel_writes,
     read_pregel_checkpoint_tuple, write_graph_revision, write_mutation_batch,
     write_pending_pregel_writes, write_superstep_checkpoint,
+};
+pub use tool_lifecycle::{
+    append_tool_lifecycle_event, ToolLifecycleArtifact, ToolLifecycleError,
+    ToolLifecycleEventInput, ToolLifecycleEventKind, ToolLifecycleStatus,
+    TOOL_LIFECYCLE_SCHEMA_VERSION,
 };
 
 // ─── Path helpers ────────────────────────────────────────────────────────────
@@ -62,11 +69,11 @@ fn compiled_snapshot_path(dir: &Path) -> PathBuf {
 }
 
 fn node_state_path(dir: &Path, node_id: &str) -> PathBuf {
-    dir.join("nodes").join(format!("{}.json", node_id))
+    dir.join("nodes").join(format!("{node_id}.json"))
 }
 
 fn node_log_path(dir: &Path, node_id: &str) -> PathBuf {
-    dir.join("logs").join(format!("{}.log", node_id))
+    dir.join("logs").join(format!("{node_id}.log"))
 }
 
 fn artifacts_dir(dir: &Path) -> PathBuf {
@@ -102,7 +109,7 @@ fn mutation_batch_path(dir: &Path, superstep: u64, batch_id: &str) -> PathBuf {
 }
 
 fn node_output_path(dir: &Path, node_id: &str) -> PathBuf {
-    dir.join("node_outputs").join(format!("{}.json", node_id))
+    dir.join("node_outputs").join(format!("{node_id}.json"))
 }
 
 // ─── Run ID generation ───────────────────────────────────────────────────────
@@ -111,7 +118,7 @@ fn generate_run_id() -> String {
     let now = Utc::now();
     let ts = now.format("%Y%m%d-%H%M%S").to_string();
     let suffix = &Uuid::new_v4().to_string()[..8];
-    format!("run-{}-{}", ts, suffix)
+    format!("run-{ts}-{suffix}")
 }
 
 // ─── File helpers ────────────────────────────────────────────────────────────

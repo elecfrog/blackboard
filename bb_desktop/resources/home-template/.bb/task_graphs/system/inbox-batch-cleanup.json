@@ -2,46 +2,57 @@
   "schema_version": 1,
   "id": "inbox-batch-cleanup",
   "scope": "system",
-  "title": "Inbox 批量清理",
-  "description": "运行 bb-pm 执行 Inbox 清理任务，按批量参数判断并真实沉淀/删除 note。",
-  "version": 6,
+  "title": "Inbox Batch Cleanup",
+  "description": "Loop 每轮用工具加载 batch-count 条 JSON inbox note 及展示投影作为 ResourceBundle，Pi/LLM 用稳定 note_id 做语义判断，系统按本轮 node_outputs 精确执行，避免 Windows 长命令行。",
+  "version": 15,
   "readonly": true,
   "metadata": {
     "tags": [
-      "bb-pm",
-      "inbox"
+      "resource-bundle",
+      "pi",
+      "llm-assisted",
+      "inbox",
+      "ticket"
     ],
     "related_tickets": [],
-    "owner": "blackboard"
+    "owner": "blackboard",
+    "run_policy": {
+      "allow_concurrent_runs": false,
+      "max_concurrent_runs": 1,
+      "queue_enabled": true,
+      "max_queue_wait_ms": 1800000,
+      "queue_timeout_retry_enabled": false,
+      "max_queue_timeout_retries": 5
+    }
   },
   "inputs": [
     {
       "id": "batch-count",
       "label": "一次处理几条",
       "type": "number",
-      "default": 2,
-      "description": "每轮 cleanup task 最多沉淀并删除的 inbox note 数量。",
-      "min": 1.0,
-      "max": 10.0
+      "default": 5,
+      "description": "每轮最多让 LLM 决策并由系统工具沉淀删除的 inbox note 数量。",
+      "min": 1,
+      "max": 20
     },
     {
       "id": "max-iterations",
       "label": "循环次数",
       "type": "number",
-      "default": 3,
-      "description": "Loop 最多执行多少轮；例如 3 轮 × 每轮 2 条可覆盖 0-5。",
-      "min": 1.0,
-      "max": 50.0
+      "default": 5,
+      "description": "Loop 最多执行多少轮。",
+      "min": 1,
+      "max": 50
     }
   ],
   "nodes": [
     {
-      "id": "42f3c8ee-9923-4359-95ed-f4fafdfe7292",
+      "id": "start",
       "type": "start",
       "label": "Start",
       "position": {
-        "x": -50.03982667116018,
-        "y": 219.9586397058824
+        "x": -736,
+        "y": 40
       },
       "config": {},
       "pins": [
@@ -55,21 +66,21 @@
       ]
     },
     {
-      "id": "3db02982-0728-4a77-8763-c73eec9658b7",
+      "id": "cleanup-loop",
       "type": "loop",
-      "label": "Batch Inbox Cleanup Loop",
-      "description": "循环次数来自全局输入 max-iterations；每轮按 batch-count 处理一批 inbox note。",
+      "label": "Inbox Cleanup Loop",
+      "description": "每轮先构造 ResourceBundle，再让 LLM 决策，最后系统工具执行。",
       "position": {
-        "x": 256.0,
-        "y": 219.9586397058824
+        "x": -427.6538453640005,
+        "y": 40
       },
       "config": {
-        "body_entry": "3d0b8ead-4ec2-43be-a087-b1221159694a",
-        "body_exit": "3d0b8ead-4ec2-43be-a087-b1221159694a",
+        "body_entry": "collect-resource-bundle",
+        "body_exit": "apply-output-validate",
         "condition": {
-          "input_ref": "$.nodes.3d0b8ead-4ec2-43be-a087-b1221159694a.output",
+          "input_ref": "$.nodes.apply-output-validate.output",
           "op": "equals",
-          "path": "$.continue",
+          "path": "$.data.continue",
           "value": true
         },
         "max_iterations": 3,
@@ -109,49 +120,34 @@
       ]
     },
     {
-      "id": "392d9322-0809-468e-9794-8e56575fddfa",
-      "type": "end",
-      "label": "Success",
+      "id": "collect-resource-bundle",
+      "type": "shell",
+      "label": "Collect Inbox ResourceBundle",
+      "description": "薄工具：只按 batch-count 读取当前 inbox 前 N 条 JSON note 的 path/name/document/content，并附 active ticket catalog；不做归因判断。",
       "position": {
-        "x": 576.0,
-        "y": 335.9586397058824
+        "x": -80,
+        "y": 40
       },
       "config": {
-        "result": "succeeded"
-      },
-      "pins": [
-        {
-          "id": "exec_in",
-          "label": "In",
-          "direction": "in",
-          "category": "exec",
-          "required": true
-        }
-      ]
-    },
-    {
-      "id": "b7ffec9f-2a60-4e25-9832-baba8485fecc",
-      "type": "llm",
-      "label": "Batch Inbox Cleanup",
-      "position": {
-        "x": 576.0,
-        "y": 127.95863970588238
-      },
-      "config": {
-        "agent": "bb-pm",
-        "inputs": {
-          "batch-count": "{{inputs.batch-count}}"
+        "args": [
+          "{{env.scripts_dir}}/collect_inbox_resource_bundle.py",
+          "--project",
+          "{{env.project}}",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--batch-count",
+          "{{inputs.batch-count}}"
+        ],
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
         },
-        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
-        "output": {
-          "artifact_type": "markdown",
-          "required": true
-        },
-        "prompt": {
-          "mode": "file",
-          "template": "agents/prompts/task-graph-inbox-cleanup.md"
-        },
-        "runtime": "opencode"
+        "command": "python3",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "read_only",
+        "timeout_ms": 120000
       },
       "pins": [
         {
@@ -170,52 +166,509 @@
         },
         {
           "id": "output",
-          "label": "Output",
+          "label": "ResourceBundle",
           "direction": "out",
           "category": "data",
           "value_type": "json",
           "required": false
         }
       ]
+    },
+    {
+      "id": "llm-decide-cleanup",
+      "type": "llm",
+      "label": "LLM Decide Cleanup",
+      "description": "Pi LLM 节点：只基于本轮 ResourceBundle 中的 JSON note document/content 与 active ticket catalog 做语义判断，输出 decisions。",
+      "position": {
+        "x": 224,
+        "y": 40
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "resource_bundle": "{{nodes.collect-resource-bundle.output.stdout_json}}"
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 Blackboard inbox cleanup 的 Pi LLM 节点。\n\n系统已经用工具为你加载了本轮需要处理的 ResourceBundle。注意：ResourceBundle 不是摘要提示词，而是本轮真实资源输入。\n它包含：\n- inbox.note_count：当前 inbox 总数\n- inbox.notes：本轮按 batch-count 取出的 JSON note，每条有稳定 id、path、name、absolute_path、document、content\n- tickets.active_tickets：当前可写入的 active tickets catalog\n\nResourceBundle JSON:\n{{inputs.resource_bundle}}\n\n你的职责：\n1. 只处理 ResourceBundle.data_sources.inbox.notes 里列出的这些 note，不要假设还有别的 note。\n2. decisions 必须引用 note.id，例如 note_1；不要自己复制中文文件名作为主键。\n3. 根据 JSON document、展示投影、文件名、路径、ticket 标题/summary/feature/component 语义判断目标 active ticket。\n4. 文件名或 document 里的 078 / 000078 这类 token 是强置信信号，但如果 document/content 明显冲突，则 retain。\n5. 只能输出 high-confidence decisions；不确定就放 retained。\n6. 不直接写文件，不调用 shell，不删除 note。系统后续节点会根据你的 JSON 和 ResourceBundle 执行。\n7. 只输出 JSON 对象，不要 Markdown，不要解释。\n\n输出 schema:\n{\n  \"processed\": true,\n  \"decisions\": [\n    {\"note_id\": \"note_1\", \"ticket_id\": \"000078\", \"confidence\": \"high\", \"reason\": \"为什么这条 note 明确属于该 ticket\"}\n  ],\n  \"retained\": [\n    {\"note_id\": \"note_2\", \"reason\": \"为什么本轮不能高置信处理\"}\n  ],\n  \"continue\": true\n}\n\n如果本轮 notes 里没有任何可高置信处理项，输出 processed=false, decisions=[], continue=false。"
+        },
+        "retry": {
+          "backoff_ms": 1000,
+          "enabled": true,
+          "max_attempts": 3
+        },
+        "run_as": "llm",
+        "runtime": "pi",
+        "tool_policy": {
+          "allowed_tools": []
+        },
+        "resource_bundle": {
+          "input": "resource_bundle",
+          "required": true
+        },
+        "output_contract": {
+          "artifact_type": "json",
+          "required": true
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "resource_bundle",
+          "label": "Resource Bundle",
+          "direction": "in",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Decision",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "normalize-decision",
+      "type": "shell",
+      "label": "Normalize Decision Shape",
+      "description": "薄工具：只修复 LLM 输出的 JSON 外形；完整决策原样通过，单个 retained item 只包装成 retained，不做语义归因。",
+      "position": {
+        "x": 512,
+        "y": 40
+      },
+      "config": {
+        "args": [
+          "{{env.scripts_dir}}/normalize_inbox_cleanup_decision.py",
+          "--decision-json",
+          "{{nodes.llm-decide-cleanup.output}}"
+        ],
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
+        },
+        "command": "python3",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "read_only",
+        "timeout_ms": 120000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Normalized Decision",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "decision-output-validate",
+      "type": "schema_validate",
+      "label": "Decision Validate",
+      "description": "校验 LLM 决策 contract，确保系统执行节点只接收结构化决策。",
+      "position": {
+        "x": 807.0823813023004,
+        "y": 40
+      },
+      "config": {
+        "fail_on_invalid": true,
+        "inputs": {
+          "value": "{{nodes.normalize-decision.output.stdout_json}}"
+        },
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "continue": {
+              "type": "boolean"
+            },
+            "decisions": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "confidence": {
+                    "enum": [
+                      "high"
+                    ],
+                    "type": "string"
+                  },
+                  "note_id": {
+                    "pattern": "^note_[0-9]+$",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "ticket_id": {
+                    "pattern": "^[0-9]{6}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "note_id",
+                  "ticket_id",
+                  "confidence",
+                  "reason"
+                ],
+                "type": "object"
+              },
+              "maxItems": 20,
+              "type": "array"
+            },
+            "processed": {
+              "type": "boolean"
+            },
+            "retained": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "note_id": {
+                    "pattern": "^note_[0-9]+$",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "note_id",
+                  "reason"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "processed",
+            "decisions",
+            "retained",
+            "continue"
+          ],
+          "type": "object"
+        },
+        "schema_name": "inbox_cleanup_decision"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Validated Decision",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "apply-decisions",
+      "type": "shell",
+      "label": "Apply Cleanup Decisions",
+      "description": "系统工具执行 LLM 决策：从本轮 node_outputs 读取 decision/resource bundle，append progress_record，删除已沉淀 note，重建 index 并校验。",
+      "position": {
+        "x": 1100.2098130153472,
+        "y": 40
+      },
+      "config": {
+        "args": [
+          "{{env.scripts_dir}}/apply_inbox_cleanup_decisions.py",
+          "--project",
+          "{{env.project}}",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--batch-count",
+          "{{inputs.batch-count}}",
+          "--decisions-node-output",
+          "decision-output-validate",
+          "--resource-bundle-node-output",
+          "collect-resource-bundle"
+        ],
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
+        },
+        "command": "python3",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "project_write",
+        "timeout_ms": 300000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Apply Result",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "apply-output-validate",
+      "type": "schema_validate",
+      "label": "Apply Output Validate",
+      "description": "校验系统执行结果，loop 只读取这里的 continue。",
+      "position": {
+        "x": 1395.6617964008822,
+        "y": 40
+      },
+      "config": {
+        "fail_on_invalid": true,
+        "inputs": {
+          "value": "{{nodes.apply-decisions.output.stdout_json}}"
+        },
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "continue": {
+              "type": "boolean"
+            },
+            "deleted": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "processed": {
+              "type": "boolean"
+            },
+            "rejected": {
+              "type": "array"
+            },
+            "remaining_note_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "retained": {
+              "type": "array"
+            },
+            "tickets_updated": {
+              "items": {
+                "pattern": "^[0-9]{6}$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "verification": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "processed",
+            "deleted",
+            "retained",
+            "rejected",
+            "tickets_updated",
+            "remaining_note_count",
+            "continue",
+            "verification"
+          ],
+          "type": "object"
+        },
+        "schema_name": "inbox_cleanup_apply_output"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Validated Apply Result",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": -80,
+        "y": 224
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
     }
   ],
   "edges": [
     {
-      "id": "f1aa8dee-5b93-4c2e-9ff9-48c44474541b",
-      "from": "42f3c8ee-9923-4359-95ed-f4fafdfe7292",
-      "to": "3db02982-0728-4a77-8763-c73eec9658b7",
+      "id": "edge-start-loop",
+      "from": "start",
+      "to": "cleanup-loop",
       "kind": "exec",
       "from_pin": "exec_out",
-      "to_pin": "exec_in",
-      "source_handle": "pin:right",
-      "target_handle": "pin:left"
+      "to_pin": "exec_in"
     },
     {
-      "id": "aaba72ee-3c5a-412d-b50a-f6ebcc98ce1a",
-      "from": "3db02982-0728-4a77-8763-c73eec9658b7",
-      "to": "392d9322-0809-468e-9794-8e56575fddfa",
+      "id": "edge-loop-bundle",
+      "from": "cleanup-loop",
+      "to": "collect-resource-bundle",
+      "kind": "exec",
+      "from_pin": "body",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-bundle-llm",
+      "from": "collect-resource-bundle",
+      "to": "llm-decide-cleanup",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-bundle-llm-data",
+      "from": "collect-resource-bundle",
+      "to": "llm-decide-cleanup",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "resource_bundle"
+    },
+    {
+      "id": "edge-llm-normalize",
+      "from": "llm-decide-cleanup",
+      "to": "normalize-decision",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-normalize-validate",
+      "from": "normalize-decision",
+      "to": "decision-output-validate",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-validate-apply",
+      "from": "decision-output-validate",
+      "to": "apply-decisions",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-apply-validate",
+      "from": "apply-decisions",
+      "to": "apply-output-validate",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-loop-end",
+      "from": "cleanup-loop",
+      "to": "end-success",
       "kind": "exec",
       "label": "Completed",
       "from_pin": "exit",
-      "to_pin": "exec_in",
-      "source_handle": "exit",
-      "target_handle": "pin:left"
-    },
-    {
-      "id": "1f18b2f5-2ace-4d13-8325-a94b54366321",
-      "from": "3db02982-0728-4a77-8763-c73eec9658b7",
-      "to": "b7ffec9f-2a60-4e25-9832-baba8485fecc",
-      "kind": "exec",
-      "from_pin": "body",
-      "to_pin": "exec_in",
-      "source_handle": "body"
+      "to_pin": "exec_in"
     }
   ],
   "layout": {
     "viewport": {
-      "x": 0.0,
-      "y": 0.0,
-      "scale": 1.0
+      "x": 0,
+      "y": 0,
+      "scale": 1
     }
   }
 }

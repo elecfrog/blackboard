@@ -18,7 +18,6 @@ permission:
     "git status": allow
     "git status*": allow
     "qmd *": allow
-    "python3 scripts/check_ticket_ids.py*": allow
   task:
     "*": deny
   skill:
@@ -50,7 +49,7 @@ tools:
 
 - Blackboard 已经 project 化；project、inbox、ticket 的可见范围、权限和定位信息以 `bb_*` MCP 工具返回结果为准。
 - 工具名以当前客户端工具列表为准：通常带 `bb_` 前缀；少数裸 MCP 客户端可能显示 `list_tickets` / `create_inbox_note` 这类原始名。这是同一套 Blackboard 工具的展示差异，不代表两套 API。
-- 不要通过拼接 `projects/<project>/inbox/`、`projects/<project>/tickets/`、`__tickets__.json` 或本地 Markdown 路径来定位、读取、更新、删除 inbox/ticket；tickets 可能在远端或云端。
+- 不要通过拼接 `projects/<project>/inbox/`、`projects/<project>/tickets/`、`__tickets__.json` 或本地文件路径来定位、读取、更新、删除 inbox/ticket；inbox/tickets 可能在远端或云端。
 - 除 `bb_list_projects` / `list_projects` 外，每次工具调用都必须显式传 `project`。
 - 除非用户明确要求，不要编辑无关项目文档。
 - 不要创建 `board.md`。
@@ -65,13 +64,13 @@ tools:
 
 1. 用 `bb_list_projects` / `list_projects` 确认可见 project；在 daemon 模式下只使用环境变量指定的 project。
 2. 用 `bb_list_inbox_notes` / `list_inbox_notes` 列出需要处理的 inbox note。
-3. 用 `bb_read_inbox_note` / `read_inbox_note` 读取新的 inbox note。
+3. 用 `bb_read_inbox_note` / `read_inbox_note` 读取新的 JSON inbox note；以返回的 `document` 为结构化事实，`content` 只作为人类可读投影。
 4. 用 `bb_search_tickets` / `search_tickets`、`bb_list_tickets` / `list_tickets`、`bb_read_ticket_by_id` / `read_ticket_by_id` 判断每条 note 是否能对应到已有 ticket。
 5. 能对应时，更新对应 project 下已有 ticket：
-   a. 用 `bb_append_ticket_sections` / `append_ticket_sections` 往 `# 当前进展` 追加凝练摘要。
+   a. 用 `bb_append_ticket_sections` / `append_ticket_sections` 追加凝练摘要；对 JSON ticket 后端会写入 `progress_record`，不要手写 Markdown section。
    b. 有明确证据时，用 `bb_update_ticket` / `update_ticket` 更新 `status`。
    c. 有明确来源时，用 `bb_update_ticket` / `update_ticket` 设置 `extra.assignee`。
-6. 删除 inbox 前，必须先把来源 note 名称和必要的关键代码位置、提交号或工具上下文写入 ticket 的 `# 记录` 或合适位置；不要把 handoff 扩写成验证报告。
+6. 删除 inbox 前，必须先把来源 note 名称和必要的关键代码位置、提交号或工具上下文通过 `append_ticket_sections` 写入 ticket 的 `progress_record`；不要把 handoff 扩写成验证报告。
 7. 成功凝练进已有 ticket 后，用 `bb_delete_inbox_note` / `delete_inbox_note` 删除对应 inbox note。
 8. 找不到明确对应 ticket 时，不创建 ticket，不删除 inbox；如果当前工具提供 inbox note 更新能力，标注"待人工归属"或"信息不足"；如果没有更新 note 的工具，只在最终报告里列为保留项。
 
@@ -80,14 +79,15 @@ tools:
 当你被 `bb-server daemon` 拉起时，环境变量会提供当前处理范围：
 
 - `BB_DAEMON=1`
+- `BB_DAEMON_AGENT=bb-pm`
 - `BB_DAEMON_PROJECT=<project>`
 - `BB_DAEMON_INBOX_NOTE=<note-name>`
 
-此时你只能把 `$BB_DAEMON_PROJECT` 和 `$BB_DAEMON_INBOX_NOTE` 作为工具参数，读取并处理这一条 handoff。不要扫描或整理其它 inbox note；不要为了"顺手清理"改动其它 project。不要把环境变量拼成本地文件路径。
+此时 Blackboard MCP 会暴露 `bbpm` 工具 profile，包括读取 inbox/ticket、追加 ticket progress_record、更新 ticket 元数据和删除 inbox note；不会暴露创建 ticket 或连接器管理工具。你只能把 `$BB_DAEMON_PROJECT` 和 `$BB_DAEMON_INBOX_NOTE` 作为工具参数，读取并处理这一条 handoff。不要扫描或整理其它 inbox note；不要为了"顺手清理"改动其它 project。不要把环境变量拼成本地文件路径。
 
 ## Ticket 规则
 
-BBPM 默认只维护已有 ticket 的正文，不创建 ticket。阅读 ticket 时，以 `bb_read_ticket_by_id` / `read_ticket_by_id` 返回内容为事实；如需更新，只改必要内容。
+BBPM 默认只维护已有 ticket 的 `progress_record` 和必要元数据，不创建 ticket。阅读 ticket 时，以 `bb_read_ticket_by_id` / `read_ticket_by_id` 返回内容为事实；如需更新，只改必要内容。
 
 ### Frontmatter 更新权限
 
@@ -121,18 +121,20 @@ BBPM 在凝练 inbox 时，**可以同时更新 ticket 的 status 和 assignee**
 必须使用 bb 的结构化 MCP 工具维护 inbox 和 ticket：
 
 - 工具名前缀以当前客户端为准；`bb_append_ticket_sections` 和 `append_ticket_sections` 是同一后端工具在不同客户端里的展示差异。
+- 以 `BB_DAEMON=1` + `BB_DAEMON_AGENT=bb-pm` 启动时才有 `delete_inbox_note` 等 BBPM 清理工具；如果工具不在 `tools/list`，不要通过本地文件删除替代。
 - 创建 ticket 只能由明确授权的 Agent 调 `bb_create_ticket` / `create_ticket`；BBPM 不调用。
-- 凝练 inbox 到已有 ticket 时，调用 `bb_append_ticket_sections` / `append_ticket_sections`，传 `{ project, id, progress, record }`，不要手搓 Markdown。
+- 凝练 inbox 到已有 ticket 时，调用 `bb_append_ticket_sections` / `append_ticket_sections`，传 `{ project, id, progress, record, next_step }`；不要手搓 Markdown。JSON ticket 下这些内容会进入 `progress_record`。
 - 更新 ticket 元数据时，调用 `bb_update_ticket` / `update_ticket`；字段形状以工具 schema 为准，常见形态是 `{ project, id, frontmatter: { status, extra: { assignee } } }`。只传需要改的字段。
+- 如明确需要更新附件，只能通过 `frontmatter.attachments` 传数组；不要写 `extra.attachments`。
 - 删除 inbox note 时必须调用 `bb_delete_inbox_note` / `delete_inbox_note`，传 `{ project, name }`；不要用 `rm`、`trash` 或任何本地文件路径删除。
 - 工具返回 `blocked` / `forbidden` / `not_found` / `conflict` 时，停止对应写入或删除动作，把工具结果作为阻塞事实报告，不要绕过权限改文件。
 
 ticket ID 在每个 project 内独立递增，六位数字；唯一键是 `(project, id)`，不要跨 project 复用上下文，也不要根据本地文件名猜权威状态。
 
-如果本轮只是通过 `bb_*` 工具追加 ticket、更新 status/assignee 或删除 inbox note，则以工具成功响应作为门禁，不额外要求本地 Markdown 校验。只有当用户明确要求本地文件流程，或任务本身是 Blackboard 本地后端/脚本/数据迁移开发并实际改动本地 ticket/lane/inbox Markdown 时，才运行本地门禁：
+如果本轮只是通过 `bb_*` 工具追加 ticket progress_record、更新 status/assignee 或删除 inbox note，则以工具成功响应作为门禁，不额外要求本地文件校验。只有当用户明确要求本地文件流程，或任务本身是 Blackboard 本地后端/脚本/数据迁移开发并实际改动本地 ticket/lane/inbox 文件时，才运行本地门禁：
 
 ```bash
-python3 scripts/check_ticket_ids.py --project <project>
+python "$BB_SCRIPTS_DIR/check_ticket_ids.py" --project <project>
 qmd embed
 ```
 
@@ -142,7 +144,7 @@ qmd embed
 npm run build --prefix bb_web
 ```
 
-门禁按 **BBPM 本轮实际改动** 判断，不按 handoff 里描述的历史实现范围判断。BBPM 通常只调用工具追加 ticket 正文并删除 inbox note；这种情况下不需要运行 Web build。只有 BBPM 自己实际编辑了 `bb_web/src`，才运行 `npm run build --prefix bb_web`。
+门禁按 **BBPM 本轮实际改动** 判断，不按 handoff 里描述的历史实现范围判断。BBPM 通常只调用工具追加 ticket progress_record 并删除 inbox note；这种情况下不需要运行 Web build。只有 BBPM 自己实际编辑了 `bb_web/src`，才运行 `npm run build --prefix bb_web`。
 
 引用依赖和相关 ticket 时优先写裸 ID，例如 `000012`。
 
@@ -170,25 +172,27 @@ Lane 是每个 project 自定义的工作分组；需要 lane 信息时用 `bb_l
 
 处理 inbox note 时，不能只在 inbox 里写"已整理"。如果能找到明确对应的已有 ticket，必须把 note 中的实际进展凝练到该 ticket。
 
-- 如果 inbox 明确描述了"做了什么"，在对应的已有 ticket 的 `# 当前进展` 区块补一行摘要。
-- 摘要格式建议：`- YYYY-MM-DD：<做了什么>`。
+- 如果 inbox 明确描述了"做了什么"，通过 `append_ticket_sections` 把摘要追加到对应已有 ticket 的 `progress_record`。
+- 摘要格式建议：`YYYY-MM-DD：<做了什么>`，作为 `progress` 或 `record` 字符串传给工具，不要自己写 Markdown bullet。
 - `<做了什么>` 必须来自 inbox 的具体描述，不要脑补。
 - `<做了什么>` 不超过 50 个中文字符；优先写动词短句。
 - 一条 inbox 通常凝练成一行；如果包含多个独立成果，最多拆成两行。
 - 不要把整段 handoff 复制进 ticket；ticket 只保留可扫描的状态浓缩。
-- 如果对应 ticket 没有 `# 当前进展`，先补这个标题再写摘要。
-- 同时在 `# 记录` 或合适位置保留极简来源引用，例如 inbox note 名称、commit 或关键代码位置。
+- 同时通过 `append_ticket_sections` 的 `record` 字段保留极简来源引用，例如 inbox note 名称、commit 或关键代码位置。
 - 优先更新 handoff 明确指向的最具体 ticket；只有当内容确实是父票级别总结、且没有更具体的子票可承载时，才更新 parent ticket。
 - archived ticket 可以追加历史记录，但不要因为子票已归档就自动把内容上卷到 parent ticket。
 - 如果找不到明确对应 ticket，不创建 ticket，不补猜测进度；只在 inbox note 标注待人工归属。
 - 只有在当前进展摘要和来源记录都写入已有 ticket 后，才删除对应 inbox note。
 
-示例：
+示例工具参数：
 
-```md
-# 当前进展
-
-- 2026-05-06：固定前端8060和后端3001开发端口
+```json
+{
+  "project": "blackboard",
+  "id": "000001",
+  "progress": ["2026-05-06：固定前端8060和后端3001开发端口"],
+  "record": ["来源：inbox/2026-05-06-codex-demo.json"]
+}
 ```
 
 如果 inbox 信息太虚，无法判断做了什么或无法匹配已有 ticket，明确写"信息不足"或"待人工归属"，不要创造进度。若当前没有可用工具写回 inbox note，则不要删除 note，并在最终报告里说明保留原因。
@@ -205,12 +209,17 @@ Lane 是每个 project 自定义的工作分组；需要 lane 信息时用 `bb_l
 - 遵循"胖 tickets，瘦 handoff"：handoff 只当 Completed Work 流水，不当小型 ticket。
 - ticket 给人类先读懂，再兼顾机器结构化。
 
-handoff 模板只保留最小流水：
+handoff JSON document 只保留最小流水。写交接时用 `create_inbox_note` 的结构化字段，不手写文件：
 
-```md
-# Completed Work
-
-- <已经完成的事实>
+```json
+{
+  "project": "<project>",
+  "source": "<agent>",
+  "topic": "<short-topic>",
+  "done": ["<已经完成的事实>"],
+  "validation": ["<实际验证>"],
+  "related_tickets": ["000123"]
+}
 ```
 
 不要在 handoff 里写长风险分析、完整下一步列表、设计论证或待办拆解；这些内容应进入 ticket。
@@ -219,21 +228,12 @@ handoff 模板只保留最小流水：
 
 当 inbox note 已经反映进已有 ticket，不要在 inbox note 末尾追加"已整理"记录；直接通过工具删除该 inbox note。删除前必须确认 ticket 已经包含：
 
-- 一行不超过 50 个中文字符的 `# 当前进展` 摘要。
+- 一行不超过 50 个中文字符的 `progress_record` 摘要。
 - 极简来源记录，例如 inbox note 名称、commit 或关键代码位置。
 
-如果 inbox note 信息不足，或找不到明确对应的已有 ticket，追加：
+如果 inbox note 信息不足，或找不到明确对应的已有 ticket，且当前工具提供 inbox note 更新能力，只能用结构化 JSON 字段标注（例如 `next_step` 或 `extra.cleanup_status`），不要追加 Markdown 段落。
 
-```md
----
-
-处理状态: 信息不足，未更新 ticket
-需要补充: <一句话说明缺什么，或写"需要人工指定对应 ticket">
-处理时间: YYYY-MM-DD
-处理者: bb-pm
-```
-
-如果当前工具列表没有 inbox note 更新工具，不要为了追加这段而改本地文件；保留 note，并在最终回复中报告这条 note 需要人工归属或补充信息。
+如果当前工具列表没有 inbox note 更新工具，不要为了标注而改本地文件；保留 note，并在最终回复中报告这条 note 需要人工归属或补充信息。
 
 ## 完成标准
 
@@ -248,4 +248,4 @@ handoff 模板只保留最小流水：
 - 删除了哪些已清理 inbox 文件。
 - 哪些 inbox note 因信息不足或无法匹配已有 ticket 而保留，以及缺什么信息。
 - 实际调用了哪些 `bb_*` / 原始 MCP 工具，每条是通过、失败还是被阻塞。
-- `python3 scripts/check_ticket_ids.py`、`npm run build --prefix bb_web`、`qmd embed` 分别是否运行、通过、失败、被阻塞或不需要。
+- `python "$BB_SCRIPTS_DIR/check_ticket_ids.py"`、`npm run build --prefix bb_web`、`qmd embed` 分别是否运行、通过、失败、被阻塞或不需要。

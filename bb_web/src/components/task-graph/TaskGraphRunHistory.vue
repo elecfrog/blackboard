@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { RefreshCw } from 'lucide-vue-next'
 import { computed } from 'vue'
+import { BbButton, BbEmptyState, BbStatusPill } from '@/components/common'
 import { t } from '@/i18n'
 import { type TaskGraphRef, type TaskGraphRunSummary } from '@/data/taskGraphs'
 
 const props = defineProps<{
   runs: TaskGraphRunSummary[]
-  source: 'rest' | 'mock'
+  source: 'rest'
   loading: boolean
 }>()
 
@@ -62,16 +63,16 @@ function runIdLabel(runId: string) {
     <header>
       <div>
         <h4>{{ t('taskGraphRunHistory') }}</h4>
-        <span>{{ source === 'mock' ? t('taskGraphMockSource') : t('taskGraphRestSource') }} · {{ runs.length }}</span>
+        <span>{{ t('taskGraphRestSource') }} · {{ runs.length }}</span>
       </div>
-      <button type="button" :disabled="loading" @click="emit('reload')">
-        <RefreshCw aria-hidden="true" />
+      <BbButton size="sm" variant="secondary" :disabled="loading" @click="emit('reload')">
+        <template #leading>
+          <RefreshCw aria-hidden="true" />
+        </template>
         {{ t('refresh') }}
-      </button>
+      </BbButton>
     </header>
-    <div v-if="runs.length === 0" class="task-graph-run-history-empty">
-      {{ t('taskGraphRunHistoryEmpty') }}
-    </div>
+    <BbEmptyState v-if="runs.length === 0" :message="t('taskGraphRunHistoryEmpty')" />
     <div v-else class="task-graph-run-history-table">
       <table>
         <thead>
@@ -93,7 +94,7 @@ function runIdLabel(runId: string) {
           >
             <td>{{ runIdLabel(run.id) }}</td>
             <td>
-              <span class="task-graph-run-status-pill" :data-status="run.status">{{ run.status }}</span>
+              <BbStatusPill :status="run.status" />
             </td>
             <td>{{ formatDateTime(run.started_at ?? run.created_at) }}</td>
             <td>{{ formatDateTime(run.completed_at) }}</td>
@@ -105,7 +106,7 @@ function runIdLabel(runId: string) {
               </span>
             </td>
             <td>
-              <button type="button" @click="emit('open', run)">{{ t('taskGraphView') }}</button>
+              <BbButton size="sm" variant="secondary" @click="emit('open', run)">{{ t('taskGraphView') }}</BbButton>
             </td>
           </tr>
         </tbody>
@@ -140,8 +141,8 @@ function runIdLabel(runId: string) {
   font-size: 13px;
 }
 
-.task-graph-run-history header button,
-.task-graph-run-history-table button {
+.task-graph-run-history header button:not(.bb-button),
+.task-graph-run-history-table button:not(.bb-button) {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -156,18 +157,9 @@ function runIdLabel(runId: string) {
   font-weight: 760;
 }
 
-.task-graph-run-history header button svg {
+.task-graph-run-history header button:not(.bb-button) svg {
   width: 14px;
   height: 14px;
-}
-
-.task-graph-run-history-empty {
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--bb-surface-soft);
-  color: var(--bb-text-muted);
-  font-size: 12px;
-  text-align: center;
 }
 
 .task-graph-run-history-table {
@@ -199,17 +191,6 @@ function runIdLabel(runId: string) {
   background: var(--bb-accent-soft);
 }
 
-.task-graph-run-status-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: var(--bb-surface-soft);
-  color: var(--bb-text-muted);
-  font-weight: 820;
-}
-
 .task-graph-run-revision {
   display: inline-flex;
   margin-left: 6px;
@@ -218,26 +199,4 @@ function runIdLabel(runId: string) {
   font-weight: 760;
 }
 
-.task-graph-run-status-pill[data-status='queued'],
-.task-graph-run-status-pill[data-status='running'],
-.task-graph-run-status-pill[data-status='pending'] {
-  background: color-mix(in srgb, var(--bb-focus) 12%, var(--bb-surface));
-  color: var(--bb-focus);
-}
-
-.task-graph-run-status-pill[data-status='paused'] {
-  background: color-mix(in srgb, var(--bb-warning) 12%, var(--bb-surface));
-  color: var(--bb-warning);
-}
-
-.task-graph-run-status-pill[data-status='succeeded'] {
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
-}
-
-.task-graph-run-status-pill[data-status='failed'],
-.task-graph-run-status-pill[data-status='cancelled'] {
-  background: color-mix(in srgb, var(--bb-error) 12%, var(--bb-surface));
-  color: var(--bb-error);
-}
 </style>

@@ -71,6 +71,13 @@ export interface SkillCatalog {
   skills: SkillInfo[]
 }
 
+export interface RuntimeModelCatalog {
+  runtime: string
+  source: string
+  models: string[]
+  error?: string | null
+}
+
 export interface ProjectAgentRegistration {
   project: string
   agent: string
@@ -103,6 +110,12 @@ export async function loadAgentSkills(): Promise<SkillCatalog> {
 
 export async function loadProjectAgents(project: string): Promise<ProjectAgentList> {
   return fetchJson<ProjectAgentList>(`/api/projects/${encodeURIComponent(project)}/agents`)
+}
+
+export async function loadRuntimeModels(project: string, runtime: string): Promise<RuntimeModelCatalog> {
+  return fetchJson<RuntimeModelCatalog>(
+    `/api/projects/${encodeURIComponent(project)}/runtime-models/${encodeURIComponent(runtime)}`,
+  )
 }
 
 async function writeJson<T>(url: string, method: string, body?: unknown): Promise<T> {

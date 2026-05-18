@@ -225,7 +225,7 @@ pub struct TaskGraphRunNode {
     pub output_artifact: Option<OutputArtifact>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log_tail: Option<String>,
-    /// If this node is a sub_graph node, this is the child run ID it spawned.
+    /// If this node is a `sub_graph` node, this is the child run ID it spawned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub child_run_id: Option<String>,
     /// Runtime used for execution (e.g. "opencode", "codex").
@@ -237,10 +237,10 @@ pub struct TaskGraphRunNode {
     /// Model used for LLM execution (e.g. "claude-sonnet-4-20250514").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// AgentSession backing this node when it is executed through the shared runtime.
+    /// `AgentSession` backing this node when it is executed through the shared runtime.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_session_id: Option<String>,
-    /// Lightweight AgentSession summary for UI rendering without loading events.
+    /// Lightweight `AgentSession` summary for UI rendering without loading events.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_session: Option<AgentSessionSummary>,
 }
@@ -296,7 +296,7 @@ pub struct TaskGraphRun {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paused: Option<RunPaused>,
     pub context: RunContext,
-    /// If this run is a child run invoked by a sub_graph node, this is the parent run ID.
+    /// If this run is a child run invoked by a `sub_graph` node, this is the parent run ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_run_id: Option<String>,
     /// LangGraph-style checkpoint namespace for nested subgraph runs.

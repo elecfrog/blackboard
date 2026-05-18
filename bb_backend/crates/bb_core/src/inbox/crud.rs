@@ -1,13 +1,17 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
+use std::path::Path;
 
 use crate::{
-    Blackboard, CreatedInboxNote, DeletedInboxNote, InboxError, InboxNote, InboxNoteEntry,
-    InboxNoteInput,
+    ArchivedInboxNote, Blackboard, CreatedInboxNote, DeletedInboxNote, InboxError, InboxNote,
+    InboxNoteEntry, InboxNoteInput,
 };
 
 use super::input::validate_input;
-use super::render::render_note;
+use super::render::{
+    document_from_input, inbox_excerpt, parse_inbox_json_document, render_note,
+    serialize_inbox_json_document,
+};
 
 impl Blackboard {
     pub fn list_notes(&self) -> Result<Vec<InboxNoteEntry>, InboxError> {
@@ -30,9 +34,31 @@ impl Blackboard {
             }
 
             let name = entry.file_name().to_string_lossy().to_string();
-            if crate::is_valid_note_name(&name) {
-                notes.push(InboxNoteEntry { name });
+            if !crate::is_valid_note_name(&name) {
+                continue;
             }
+            let path = entry.path();
+            let content = fs::read_to_string(&path).map_err(|source| InboxError::Io {
+                path: path.clone(),
+                source,
+            })?;
+            let Ok(document) = parse_inbox_json_document(&content) else {
+                continue;
+            };
+            let meta = fs::metadata(&path).map_err(|source| InboxError::Io {
+                path: path.clone(),
+                source,
+            })?;
+            notes.push(InboxNoteEntry {
+                name,
+                size: meta.len(),
+                modified_at: super::index::modified_at_rfc3339(&meta),
+                excerpt: inbox_excerpt(&document),
+                title: document.title,
+                time: document.time,
+                source: document.source,
+                topic: document.topic,
+            });
         }
 
         notes.sort_by(|a, b| a.name.cmp(&b.name));
@@ -63,8 +89,13 @@ impl Blackboard {
             path: canonical,
             source,
         })?;
+        let document = parse_inbox_json_document(&content).map_err(InboxError::InvalidInput)?;
 
-        Ok(InboxNote { name, content })
+        Ok(InboxNote {
+            name,
+            content: render_note(&document),
+            document,
+        })
     }
 
     pub fn create_note(&self, input: InboxNoteInput) -> Result<CreatedInboxNote, InboxError> {
@@ -74,13 +105,14 @@ impl Blackboard {
         let source = crate::slug_segment(&input.source, "unknown");
         let topic = crate::slug_segment(&input.topic, "note");
         let base = format!("{date}-{source}-{topic}");
-        let content = render_note(&input);
+        let document = document_from_input(input)?;
+        let content = serialize_inbox_json_document(&document)?;
 
         for attempt in 0..1000 {
             let name = if attempt == 0 {
-                format!("{base}.md")
+                format!("{base}.json")
             } else {
-                format!("{base}-{attempt}.md")
+                format!("{base}-{attempt}.json")
             };
             crate::validate_note_name(&name)?;
 
@@ -141,4 +173,66 @@ impl Blackboard {
             path: format!("inbox/{name}"),
         })
     }
+
+    pub fn archive_note(&self, name: &str) -> Result<ArchivedInboxNote, InboxError> {
+        let name = crate::validate_note_name(name)?;
+        let path = self.inbox().join(&name);
+
+        if !path.starts_with(self.inbox()) {
+            return Err(InboxError::InvalidName(name));
+        }
+
+        let canonical = match crate::canonicalize(&path) {
+            Ok(path) => path,
+            Err(InboxError::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+                return Err(InboxError::NotFound(name));
+            }
+            Err(err) => return Err(err),
+        };
+
+        if !canonical.starts_with(self.inbox()) || !canonical.is_file() {
+            return Err(InboxError::InvalidName(name));
+        }
+
+        let archive_dir = self.inbox().join("archive");
+        fs::create_dir_all(&archive_dir).map_err(|source| InboxError::Io {
+            path: archive_dir.clone(),
+            source,
+        })?;
+        let archived_name = allocate_archived_note_name(&archive_dir, &name)?;
+        let archived_path = archive_dir.join(&archived_name);
+        fs::rename(&canonical, &archived_path).map_err(|source| InboxError::Io {
+            path: archived_path.clone(),
+            source,
+        })?;
+        let _ = self.rebuild_inbox_index();
+
+        Ok(ArchivedInboxNote {
+            name: name.clone(),
+            original_path: format!("inbox/{name}"),
+            archived_name: archived_name.clone(),
+            archived_path: format!("inbox/archive/{archived_name}"),
+        })
+    }
+}
+
+fn allocate_archived_note_name(archive_dir: &Path, name: &str) -> Result<String, InboxError> {
+    if !archive_dir.join(name).exists() {
+        return Ok(name.to_string());
+    }
+
+    let stem = name
+        .strip_suffix(".json")
+        .ok_or_else(|| InboxError::InvalidName(name.to_string()))?;
+    for attempt in 1..1000 {
+        let candidate = format!("{stem}-{attempt}.json");
+        crate::validate_note_name(&candidate)?;
+        if !archive_dir.join(&candidate).exists() {
+            return Ok(candidate);
+        }
+    }
+
+    Err(InboxError::InvalidInput(
+        "could not allocate a collision-free archived inbox filename".to_string(),
+    ))
 }

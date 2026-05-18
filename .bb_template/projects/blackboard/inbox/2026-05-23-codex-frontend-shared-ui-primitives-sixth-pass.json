@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "title": "继续收敛 Task Graph LLM 表单字段到 BbField",
+  "time": "2026-05-23T15:35:32Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "frontend-shared-ui-primitives-sixth-pass",
+  "done": [
+    "将 `TaskGraphLlmNodeForm` 中剩余裸 `label/input/select/textarea` 字段迁到 `BbField`，覆盖 agent profile、runtime/provider/model、prompt file/preview、enhanced LLM contract、MCP detail fields。",
+    "删除 `.task-graph-llm-form input/select/textarea` 和 `.task-graph-llm-form label` broad selector，保留 checkbox row 的最小本地布局样式。",
+    "将 prompt preview 的 inline `min-height` 改为局部类 `task-graph-prompt-preview`，避免模板内联样式继续扩散。"
+  ],
+  "validation": [
+    "`npm run build --prefix bb_web`: 通过。",
+    "`git diff --check -- bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue`: 通过，仅 CRLF 提示。",
+    "`rg` 检查 LLM 表单 broad selectors 和 inline min-height：未命中。",
+    "Browser in-app smoke：当前 task graph URL 可加载且 console error 为 0；该 route 当前渲染 catalog shell，未展示 LLM 表单，因此真实视觉验收仍需稳定打开 editor inspector 的 route/fixture。"
+  ],
+  "next_step": [
+    "继续收敛 `TaskGraphNodeInspector` 顶部基础字段和部分 node-specific fields 到 `BbField`。",
+    "继续拆除 inspector / editor 里 broad descendant selectors，尤其是直接命中 `label input select textarea` 的样式。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

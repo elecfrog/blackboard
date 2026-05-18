@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Plus, X } from 'lucide-vue-next'
+import { BbActionGroup, BbButton, BbField } from '@/components/common'
 import { t } from '@/i18n'
 
 defineProps<{
@@ -43,13 +44,12 @@ defineExpose({
             <h3 id="task-graph-create-title">{{ t('taskGraphCreateDialogTitle') }}</h3>
             <p id="task-graph-create-description">{{ t('taskGraphCreateDialogDescription') }}</p>
           </div>
-          <button type="button" :title="t('close')" :disabled="busy" @click="emit('close')">
+          <BbButton type="button" variant="secondary" size="sm" icon-only :title="t('close')" :disabled="busy" @click="emit('close')">
             <X aria-hidden="true" />
-          </button>
+          </BbButton>
         </header>
         <section class="task-graph-create-modal-fields">
-          <label>
-            <span>{{ t('taskGraphCreateNameLabel') }}</span>
+          <BbField :label="t('taskGraphCreateNameLabel')">
             <input
               ref="titleInput"
               autocomplete="off"
@@ -57,17 +57,21 @@ defineExpose({
               :placeholder="t('taskGraphCreatePlaceholder')"
               @input="emit('update:title', ($event.target as HTMLInputElement).value)"
             />
-          </label>
+          </BbField>
         </section>
         <p v-if="error" class="task-graph-create-modal-error" role="alert">{{ error }}</p>
         <footer>
-          <button type="button" class="bb-top-action-button" :disabled="busy" @click="emit('close')">
-            <span>{{ t('close') }}</span>
-          </button>
-          <button type="submit" class="bb-top-action-button task-graph-create-submit" :disabled="busy">
-            <Plus class="bb-top-action-svg" aria-hidden="true" />
-            <span>{{ busy ? t('saving') : t('create') }}</span>
-          </button>
+          <BbActionGroup gap="sm">
+            <BbButton type="button" variant="secondary" :disabled="busy" @click="emit('close')">
+              {{ t('close') }}
+            </BbButton>
+            <BbButton type="submit" variant="primary" :disabled="busy">
+              <template #leading>
+                <Plus aria-hidden="true" />
+              </template>
+              {{ busy ? t('saving') : t('create') }}
+            </BbButton>
+          </BbActionGroup>
         </footer>
       </form>
     </div>
@@ -127,40 +131,10 @@ defineExpose({
   line-height: 1.45;
 }
 
-.task-graph-create-modal header button {
-  display: grid;
-  flex: 0 0 auto;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--bb-border-warm-medium);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-muted);
-  cursor: pointer;
-}
-
-.task-graph-create-modal header button svg {
-  width: 15px;
-  height: 15px;
-}
-
 .task-graph-create-modal-fields {
   display: grid;
   gap: 12px;
   min-width: 0;
-}
-
-.task-graph-create-modal-fields label {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.task-graph-create-modal-fields label span {
-  color: var(--bb-text-muted);
-  font-size: 12px;
-  font-weight: 760;
 }
 
 .task-graph-create-modal-fields input {
@@ -190,11 +164,5 @@ defineExpose({
 
 .task-graph-create-modal footer {
   justify-content: flex-end;
-}
-
-.task-graph-create-submit {
-  border-color: var(--bb-text-strong);
-  background: var(--bb-text-strong);
-  color: var(--bb-surface);
 }
 </style>

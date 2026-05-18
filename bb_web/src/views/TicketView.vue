@@ -3,12 +3,13 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
 import TicketStructuredDocument from '@/components/TicketStructuredDocument.vue'
-import type { BlackboardPayload, LaneDef } from '@/data/tickets'
+import type { BlackboardPayload, LaneDef, TicketSpec } from '@/data/tickets'
 import {
   boardRoute,
   loadBlackboardData,
   loadLanes,
   loadTicketDetail,
+  patchTicket,
   resolveLaneMeta,
   ticketRoute,
 } from '@/data/tickets'
@@ -24,6 +25,7 @@ const loading = ref(true)
 const error = ref('')
 const detailLoading = ref(false)
 const detailError = ref('')
+const specSaving = ref(false)
 
 const indexedTicket = computed(() => payload.value?.tickets.find((item) => item.id === props.id))
 const ticket = computed(() => ticketDetail.value ?? indexedTicket.value)
@@ -70,6 +72,43 @@ watch(
   },
   { immediate: true },
 )
+
+async function updateTicketSpec(spec: TicketSpec | undefined) {
+  if (!ticket.value || !spec || specSaving.value) return
+  const target = ticket.value
+  const previousPayload = payload.value
+  const previousDetail = ticketDetail.value
+  specSaving.value = true
+  detailError.value = ''
+  ticketDetail.value = { ...target, spec, updated_at: new Date().toISOString().slice(0, 10) }
+  if (payload.value) {
+    payload.value = {
+      ...payload.value,
+      tickets: payload.value.tickets.map((item) =>
+        item.id === target.id ? { ...item, spec, updated_at: new Date().toISOString().slice(0, 10) } : item,
+      ),
+    }
+  }
+
+  try {
+    const result = await patchTicket(props.project, target.id, { spec })
+    ticketDetail.value = {
+      ...target,
+      ...result.ticket,
+      file_path: result.ticket.path,
+      dependencies: target.dependencies,
+      attachments: result.ticket.attachments,
+      spec: result.ticket.spec ?? spec,
+      extra: result.ticket.extra,
+    }
+  } catch (err) {
+    payload.value = previousPayload
+    ticketDetail.value = previousDetail
+    detailError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    specSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -95,6 +134,8 @@ watch(
               :ticket="ticket"
               :loading="detailLoading"
               :error="detailError"
+              :spec-saving="specSaving"
+              @spec-change="updateTicketSpec"
             />
           </article>
 

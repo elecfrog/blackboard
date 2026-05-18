@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { BbInlineAction, BbSectionHeader } from '@/components/common'
 import { t } from '@/i18n'
 // Metrics are placeholder — backend API not yet available
 interface MetricCard {
@@ -18,9 +19,7 @@ const metrics: MetricCard[] = [
 
 <template>
   <div class="aw-section">
-    <div class="aw-section-header">
-      <h4>{{ t('metricsSectionTitle') }}</h4>
-    </div>
+    <BbSectionHeader class="aw-section-header" :title="t('metricsSectionTitle')" title-tag="h4" :divider="false" />
     <div class="aw-metrics-grid">
       <div v-for="m in metrics" :key="m.labelKey" class="aw-metric-card">
         <span class="aw-metric-label">{{ t(m.labelKey) }}</span>
@@ -31,7 +30,7 @@ const metrics: MetricCard[] = [
       </div>
     </div>
     <div class="aw-metrics-footer">
-      <a href="#" class="aw-link">{{ t('metricsViewAnalytics') }}</a>
+      <BbInlineAction href="#">{{ t('metricsViewAnalytics') }}</BbInlineAction>
     </div>
   </div>
 </template>

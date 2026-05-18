@@ -8,6 +8,7 @@ impl Blackboard {
     /// Distinct from `wiki_root_if_present`: callers that want to *create*
     /// the directory (e.g. the upload endpoint) need the path even when the
     /// directory is missing.
+    #[must_use]
     pub fn wiki_root_path(&self) -> PathBuf {
         self.root.join("wiki")
     }
@@ -15,6 +16,7 @@ impl Blackboard {
     /// Absolute path to `projects/<project>/wiki/` when the directory
     /// currently exists on disk; otherwise `None`. Kept for read-only
     /// callers that treat a missing directory as an empty wiki.
+    #[must_use]
     pub fn wiki_root(&self) -> Option<PathBuf> {
         let wiki = self.wiki_root_path();
         if wiki.is_dir() {

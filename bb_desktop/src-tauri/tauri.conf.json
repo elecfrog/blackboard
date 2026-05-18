@@ -20,7 +20,8 @@
       "nsis"
     ],
     "externalBin": [
-      "binaries/bb"
+      "binaries/bb",
+      "binaries/bb-daemon"
     ],
     "resources": {
       "../resources/web/": "web",

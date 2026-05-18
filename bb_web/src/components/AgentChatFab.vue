@@ -96,7 +96,7 @@ const chatSubtitle = computed(() =>
       })
     : t('agentChatSubtitle', { project: project.value }),
 )
-const runtimeOptions = ['opencode', 'codex', 'codebuddy']
+const runtimeOptions = ['opencode', 'codex', 'codebuddy', 'pi']
 const runtimeDropdownOptions = computed(() =>
   runtimeOptions.map((runtime) => ({
     content: runtime,
@@ -654,7 +654,7 @@ function graphRunMeta(runId: string) {
 function chatEventMeta(sessionId: string, status: string) {
   return [
     currentProviderSessionId.value
-      ? `oc:${shortSessionId(currentProviderSessionId.value)}`
+      ? `provider:${shortSessionId(currentProviderSessionId.value)}`
       : '',
     `as:${shortSessionId(sessionId)}`,
     status,

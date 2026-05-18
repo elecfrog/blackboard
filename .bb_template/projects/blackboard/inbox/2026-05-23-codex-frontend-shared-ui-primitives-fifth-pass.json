@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "title": "继续收敛 Task Graph dense rows：Branch 与 LLM inline rows",
+  "time": "2026-05-23T15:33:07Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "frontend-shared-ui-primitives-fifth-pass",
+  "done": [
+    "将 `TaskGraphBranchNodeForm` 的基础字段迁到 `BbField`，将 branch rule row 迁到 `BbDenseRow`，删除本地 field/control skin。",
+    "将 `TaskGraphLlmNodeForm` 中 input bindings、prompt vars、skills、MCP server 首行、custom env、custom args 等 inline rows 迁到 `BbDenseRow`，对应输入控件使用 `bb-dense-control`。",
+    "保留 LLM 表单复杂 JSON/textarea/MCP detail 区域的历史 broad styles，避免本轮把复杂表单一次性改散；下一轮可继续收敛到 `BbField`。"
+  ],
+  "validation": [
+    "`npm run build --prefix bb_web`: 通过。",
+    "`git diff --check` 针对本轮相关文件：通过，仅 CRLF 提示。",
+    "`rg` 检查 branch form 历史 broad selector 与旧 inline-row div：未命中。",
+    "Browser in-app smoke：当前 task graph URL 可加载且 console error 为 0；该 route 当前渲染 catalog shell，dense rows 未出现在 DOM，因此真实视觉验收仍需能稳定打开 editor inspector 的 route/fixture。"
+  ],
+  "next_step": [
+    "继续把 `TaskGraphLlmNodeForm` 里剩余裸 `label/input/select/textarea` 迁到 `BbField`，然后移除 `.task-graph-llm-form input/select/textarea` broad selector。",
+    "收敛 `TaskGraphNodeInspector` 顶部基础字段与子图字段，减少 inspector 自己画 field/control 的情况。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/task-graph/TaskGraphBranchNodeForm.vue",
+    "bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue",
+    "bb_web/src/components/common/BbDenseRow.vue",
+    "bb_web/src/styles.css",
+    "bb_web/src/components/common/index.ts"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

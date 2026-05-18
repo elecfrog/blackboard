@@ -343,7 +343,7 @@ fn load_registry_optional(bb_root: &Path) -> Result<Option<AgentRegistryFile>, I
     Ok(Some(registry))
 }
 
-fn default_registry() -> AgentRegistryFile {
+const fn default_registry() -> AgentRegistryFile {
     AgentRegistryFile {
         version: Some(1),
         agents: Vec::new(),

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "title": "Codex BrowserUse lifecycle 收口修复与真实跑测",
+  "time": "2026-05-25T02:35:19Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "taskgraph-codex-browseruse-lifecycle-rerun",
+  "done": [
+    "修复 AgentSession completed event 后 provider 进程不退出导致 TaskGraph 卡 running：新增 completed grace 后终止进程树并按 CompletedEvent 收口。",
+    "修复 Browser Use/node_repl 持有 stdout/stderr 管道导致 reader join 无限等待：新增 reader join grace，超时从 AgentSession events 合成 capture。",
+    "Browser Use toolkit bootstrap 改为安全读取 globalThis.process?.env，并注入默认后端 iab,chrome 与 15s backend timeout。",
+    "scripts/dev.py 支持 BB_DAEMON_PORT/BB_SERVER_PORT/BB_FRONTEND_PORT 环境变量，以绕过 Windows 幽灵端口监听。",
+    "用 dev.py 启动 daemon 3031/server 3002/frontend 8060，真实运行 frontend-ui-convergence-codex run-20260525-022320-30748afe，最终 succeeded。",
+    "Graph 本轮 Codex patch 收敛 TaskGraphCatalogSidebar 的 icon button 到 BbIconCommand；系统写出 runtime/frontend-ui-convergence/frontend-ui-convergence-codex-2026-05-25-r4.md。"
+  ],
+  "validation": [
+    "cargo fmt --all: 通过。",
+    "cargo test -p bb_core agent_session::runtime --lib: 8 passed。",
+    "cargo test -p bb_core task_graph::tool_layer --lib: 9 passed。",
+    "cargo check -p bb_daemon -p bb_server: 通过。",
+    "Graph static-validate: git diff --check -- bb_web/src bb_web/DESIGN.md exit 0；npm run build --prefix bb_web exit 0。",
+    "interactive-smoke: Browser Use 后端 iab/chrome 均不可用，节点报告 blocked；runtime 不再卡死，run 仍正确收口到 succeeded。"
+  ],
+  "next_step": [
+    "后续若要真实视觉验收，需要修 Browser Use 后端可用性；当前 graph 已能把 Browser Use unavailable 作为 blocked 事实收口，不再挂死。"
+  ],
+  "related_locations": [
+    "bb_backend/crates/bb_core/src/agent_session/runtime.rs",
+    "bb_backend/crates/bb_core/src/task_graph/tool_layer.rs",
+    "scripts/dev.py",
+    "bb_web/src/components/task-graph/TaskGraphCatalogSidebar.vue",
+    ".bb_template/runtime/task_graph_runs/blackboard/run-20260525-022320-30748afe",
+    ".bb_template/runtime/frontend-ui-convergence/frontend-ui-convergence-codex-2026-05-25-r4.md"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

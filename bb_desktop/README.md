@@ -1,7 +1,8 @@
 # Blackboard Desktop
 
 Tauri v2 desktop launcher for Blackboard. The desktop app owns the native
-window and starts the existing Rust `bb` CLI as a sidecar HTTP server.
+window and starts the Rust `bb-daemon` sidecar HTTP server. The `bb` sidecar
+is still bundled for one-shot workspace initialization.
 
 ## Development
 
@@ -10,7 +11,7 @@ python ..\scripts\desktop.py prepare --dev
 npm run dev
 ```
 
-`prepare` builds `bb_web`, builds the `bb` sidecar into an isolated target
+`prepare` builds `bb_web`, builds the `bb` and `bb-daemon` sidecars into an isolated target
 directory, copies the target-triple binary into `src-tauri/binaries/`, and
 creates curated bundle resources under `resources/`: production web assets,
 the demo seed, and the user-level home template generated from the repo
@@ -39,7 +40,7 @@ python ..\scripts\desktop.py portable
 This emits a single self-contained launcher at
 `src-tauri\target\release\portable\Blackboard-portable-x64.exe`.
 
-The portable launcher embeds the release desktop executable, the `bb` sidecar,
+The portable launcher embeds the release desktop executable, the `bb`/`bb-daemon` sidecars,
 the bundled web resources, the demo seed, and the user-level home template. On
 first run it extracts that payload into
 `%LOCALAPPDATA%\Blackboard\portable\<payload-hash>\` and launches Blackboard
@@ -56,7 +57,7 @@ confirmation, injects a new one:
 ├── __project__.json
 ├── __tickets__.json
 ├── __inbox__.json
-├── inbox\
+├── inbox\        # JSON inbox handoff notes
 ├── tickets\
 └── wiki\
 ```
@@ -78,9 +79,10 @@ folder is opened, Blackboard initializes or reads the project capsule at
 lets `/api/projects` and MCP `list_projects` see projects from every folder the
 user has opened.
 
-`agents\`, `templates\`, `task_graphs\`, and `runtime\` belong to the global
-home by default. Project-local versions may be created later as overrides, but
-Open Folder does not copy global system configuration into project capsules.
+`agents\`, `schemas\`, `task_graphs\`, and `runtime\` belong to the global
+home by default. `templates\` is deprecated; schema-owned contracts live under
+`schemas\`. Project-local versions may be created later as overrides, but Open
+Folder does not copy global system configuration into project capsules.
 
 Desktop runtime state and logs live under `~\.bb\runtime\desktop\`: the active
 sidecar URLs are recorded in `state.json`, and logs are written under `logs\`.

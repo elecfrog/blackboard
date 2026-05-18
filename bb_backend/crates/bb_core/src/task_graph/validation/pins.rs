@@ -1,14 +1,17 @@
 use std::collections::HashMap;
 
-use crate::task_graph::definition::types::*;
+use crate::task_graph::definition::types::{
+    NodeType, PinDirection, TaskGraphDefinition, TaskGraphEdge, TaskGraphNode,
+    TaskGraphValidationError,
+};
 
 // ─── Pin connection validation ───────────────────────────────────────────────
 
 /// 校验所有 edge 的 Pin 连接合法性：
-/// - from_pin 必须存在于源节点 pins 中且方向为 out
-/// - to_pin 必须存在于目标节点 pins 中且方向为 in
+/// - `from_pin` 必须存在于源节点 pins 中且方向为 out
+/// - `to_pin` 必须存在于目标节点 pins 中且方向为 in
 /// - 连接的两个 pin category 必须匹配
-/// - required=true 的 InPin 必须有 edge 连入
+/// - required=true 的 `InPin` 必须有 edge 连入
 pub(super) fn validate_pin_connections(
     def: &TaskGraphDefinition,
     node_map: &HashMap<&str, &TaskGraphNode>,
@@ -25,7 +28,7 @@ pub(super) fn validate_pin_connections(
             match from_pin {
                 None => {
                     errors.push(TaskGraphValidationError {
-                        path: format!("edges[{}].from_pin", i),
+                        path: format!("edges[{i}].from_pin"),
                         code: "pin_not_found".to_string(),
                         message: format!(
                             "Edge '{}' from_pin '{}' not found on node '{}'",
@@ -36,7 +39,7 @@ pub(super) fn validate_pin_connections(
                 Some(pin) => {
                     if pin.direction != PinDirection::Out {
                         errors.push(TaskGraphValidationError {
-                            path: format!("edges[{}].from_pin", i),
+                            path: format!("edges[{i}].from_pin"),
                             code: "pin_direction_mismatch".to_string(),
                             message: format!(
                                 "Edge '{}' from_pin '{}' on node '{}' is not an Out pin",
@@ -58,7 +61,7 @@ pub(super) fn validate_pin_connections(
             match to_pin {
                 None => {
                     errors.push(TaskGraphValidationError {
-                        path: format!("edges[{}].to_pin", i),
+                        path: format!("edges[{i}].to_pin"),
                         code: "pin_not_found".to_string(),
                         message: format!(
                             "Edge '{}' to_pin '{}' not found on node '{}'",
@@ -69,7 +72,7 @@ pub(super) fn validate_pin_connections(
                 Some(pin) => {
                     if pin.direction != PinDirection::In {
                         errors.push(TaskGraphValidationError {
-                            path: format!("edges[{}].to_pin", i),
+                            path: format!("edges[{i}].to_pin"),
                             code: "pin_direction_mismatch".to_string(),
                             message: format!(
                                 "Edge '{}' to_pin '{}' on node '{}' is not an In pin",
@@ -90,7 +93,7 @@ pub(super) fn validate_pin_connections(
             if let (Some(fp), Some(tp)) = (from_pin, to_pin) {
                 if fp.category != tp.category {
                     errors.push(TaskGraphValidationError {
-                        path: format!("edges[{}]", i),
+                        path: format!("edges[{i}]"),
                         code: "pin_category_mismatch".to_string(),
                         message: format!(
                             "Edge '{}' connects {:?} pin '{}' to {:?} pin '{}' — category mismatch",
@@ -106,18 +109,16 @@ pub(super) fn validate_pin_connections(
     for node in &def.nodes {
         for pin in &node.pins {
             if pin.required && pin.direction == PinDirection::In {
-                let has_incoming = incoming
-                    .get(node.id.as_str())
-                    .map(|edges| edges.iter().any(|e| e.to_pin.as_deref() == Some(&pin.id)))
-                    .unwrap_or(false);
+                let has_incoming = incoming.get(node.id.as_str()).is_some_and(|edges| {
+                    edges.iter().any(|e| e.to_pin.as_deref() == Some(&pin.id))
+                });
                 if !has_incoming {
                     // 对 Start 节点不报错（它没有 InPin）
                     // 对于 exec_in，如果节点有任何 incoming edge（即使没有 to_pin），也算通过
                     // 这是为了兼容升级过程中可能的中间状态
                     let has_any_incoming = incoming
                         .get(node.id.as_str())
-                        .map(|edges| !edges.is_empty())
-                        .unwrap_or(false);
+                        .is_some_and(|edges| !edges.is_empty());
                     if !has_any_incoming {
                         errors.push(TaskGraphValidationError {
                             path: format!("nodes[{}].pins[{}]", node.id, pin.id),

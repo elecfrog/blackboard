@@ -114,11 +114,10 @@ fn apply_channel_update(
         return Ok(());
     }
 
-    let class = compiled
-        .channels
-        .get(channel)
-        .map(|channel| channel.class.clone())
-        .unwrap_or(CompiledChannelClass::EphemeralValue { guard: true });
+    let class = compiled.channels.get(channel).map_or(
+        CompiledChannelClass::EphemeralValue { guard: true },
+        |channel| channel.class.clone(),
+    );
 
     match class {
         CompiledChannelClass::NamedBarrierValue => {
@@ -288,19 +287,15 @@ pub(super) fn channel_is_available(
         return false;
     };
     if channel == TASKS_CHANNEL {
-        return value
-            .as_array()
-            .map(|items| !items.is_empty())
-            .unwrap_or(false);
+        return value.as_array().is_some_and(|items| !items.is_empty());
     }
     match compiled.channels.get(channel).map(|channel| &channel.class) {
         Some(CompiledChannelClass::NamedBarrierValue) => {
             value.get("ready").and_then(Value::as_bool).unwrap_or(false)
         }
-        Some(CompiledChannelClass::Topic { .. }) => value
-            .as_array()
-            .map(|items| !items.is_empty())
-            .unwrap_or(false),
+        Some(CompiledChannelClass::Topic { .. }) => {
+            value.as_array().is_some_and(|items| !items.is_empty())
+        }
         Some(_) => true,
         None => is_reserved_runtime_channel(channel),
     }

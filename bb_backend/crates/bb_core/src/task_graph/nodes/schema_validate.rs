@@ -6,11 +6,14 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
+use crate::fs_util::resolve_slash;
 use crate::task_graph::definition::types::{TaskGraphError, TaskGraphNode};
 use crate::task_graph::nodes::eval;
 use crate::task_graph::pregel::outcome::NodeOutcome;
 use crate::task_graph::pregel::runner::RunnerOptions;
-use crate::task_graph::run_state::{NodeError, NodeRunStatus, TaskGraphRun, TaskGraphRunNode};
+use crate::task_graph::run_state::{
+    self, ArtifactContentType, NodeError, NodeRunStatus, TaskGraphRun, TaskGraphRunNode,
+};
 
 const RUNTIME_NAME: &str = "schema_validate";
 const DEFAULT_VALUE_KEY: &str = "value";
@@ -32,7 +35,13 @@ struct SchemaValidateConfig {
     #[serde(default)]
     artifact_path: Option<String>,
     #[serde(default)]
+    artifact_scope: Option<String>,
+    #[serde(default)]
+    artifact_name: Option<String>,
+    #[serde(default)]
     schema_name: Option<String>,
+    #[serde(default)]
+    repair: Option<SchemaRepairConfig>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -42,10 +51,18 @@ struct SchemaSourceConfig {
     #[serde(default)]
     prefix: Option<String>,
     #[serde(default)]
+    ids: Vec<String>,
+    #[serde(default)]
     exclude: Vec<String>,
 }
 
-pub(crate) fn execute_schema_validate_node(
+#[derive(Debug, Clone, Default, Deserialize)]
+struct SchemaRepairConfig {
+    #[serde(default)]
+    kind: Option<String>,
+}
+
+pub fn execute_schema_validate_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
     run: &TaskGraphRun,
@@ -64,7 +81,8 @@ pub(crate) fn execute_schema_validate_node(
         &run.context,
     );
 
-    let value = resolve_source_value(&config, &inputs, run);
+    let raw_value = resolve_source_value(&config, &inputs, run);
+    let (value, repair_notes) = repair_source_value(&config, raw_value);
     let mut errors = Vec::new();
     validate_json_schema(&value, &config.schema, "$", &mut errors);
     let valid = errors.is_empty();
@@ -79,10 +97,15 @@ pub(crate) fn execute_schema_validate_node(
         "valid": valid,
         "schema_name": config.schema_name,
         "errors": errors,
+        "repair_notes": repair_notes,
         "data": value,
         "artifact_path": artifact_path,
         "artifact_type": "json",
     });
+    let has_repair_notes = output
+        .get("repair_notes")
+        .and_then(Value::as_array)
+        .is_some_and(|items| !items.is_empty());
 
     if valid || !config.fail_on_invalid {
         Ok(outcome(
@@ -91,7 +114,11 @@ pub(crate) fn execute_schema_validate_node(
             Some(output),
             None,
             if valid {
-                "schema validation passed".to_string()
+                if has_repair_notes {
+                    "schema validation passed after deterministic repair".to_string()
+                } else {
+                    "schema validation passed".to_string()
+                }
             } else {
                 "schema validation failed; continuing for repair".to_string()
             },
@@ -115,20 +142,273 @@ fn default_value_key() -> String {
     DEFAULT_VALUE_KEY.to_string()
 }
 
+fn repair_source_value(config: &SchemaValidateConfig, value: Value) -> (Value, Vec<String>) {
+    match config
+        .repair
+        .as_ref()
+        .and_then(|repair| repair.kind.as_deref())
+    {
+        Some("code_research_scout_outputs" | "external_research_scout_outputs") => {
+            repair_research_scout_outputs(value)
+        }
+        _ => (value, vec![]),
+    }
+}
+
+fn repair_research_scout_outputs(value: Value) -> (Value, Vec<String>) {
+    let Value::Object(map) = value else {
+        return (value, vec![]);
+    };
+
+    let mut notes = Vec::new();
+    let mut repaired = Map::new();
+    for (scout_id, scout_output) in map {
+        let (normalized, scout_notes) = normalize_scout_output(&scout_id, scout_output);
+        notes.extend(scout_notes);
+        repaired.insert(scout_id, normalized);
+    }
+
+    (Value::Object(repaired), notes)
+}
+
+fn normalize_scout_output(scout_id: &str, value: Value) -> (Value, Vec<String>) {
+    match value {
+        Value::Object(mut object) => {
+            let mut notes = Vec::new();
+            if let Some(findings) = object.remove("findings") {
+                let (normalized, finding_notes) = normalize_findings(scout_id, findings);
+                object.insert("findings".to_string(), normalized);
+                notes.extend(finding_notes);
+            } else if looks_like_flat_finding(&object) {
+                let finding = normalize_finding_object(scout_id, Value::Object(object.clone()))
+                    .unwrap_or_else(|| {
+                        json!({
+                            "title": scout_id,
+                            "summary": "Scout returned an incomplete flat finding.",
+                            "source_anchors": []
+                        })
+                    });
+                object.insert("findings".to_string(), Value::Array(vec![finding]));
+                notes.push(format!("{scout_id}: wrapped flat finding into findings[]"));
+            } else {
+                object.insert("findings".to_string(), Value::Array(vec![]));
+                notes.push(format!(
+                    "{scout_id}: inserted empty findings[] for metadata-only scout output"
+                ));
+            }
+
+            ensure_string_array(&mut object, "risks");
+            ensure_string_array(&mut object, "coverage_notes");
+            (Value::Object(object), notes)
+        }
+        Value::String(text) => {
+            let summary = text.trim();
+            if summary.is_empty() {
+                (
+                    json!({
+                        "findings": [],
+                        "risks": [],
+                        "coverage_notes": ["Scout returned an empty string."]
+                    }),
+                    vec![format!(
+                        "{scout_id}: converted empty string output to empty findings[]"
+                    )],
+                )
+            } else {
+                (
+                    json!({
+                        "findings": [{
+                            "title": scout_id,
+                            "summary": summary,
+                            "source_anchors": []
+                        }],
+                        "risks": [],
+                        "coverage_notes": ["Scout returned a string; wrapped as one finding."]
+                    }),
+                    vec![format!("{scout_id}: wrapped string output as one finding")],
+                )
+            }
+        }
+        Value::Null => (
+            json!({
+                "findings": [],
+                "risks": [],
+                "coverage_notes": ["Scout output was null."]
+            }),
+            vec![format!(
+                "{scout_id}: converted null output to empty findings[]"
+            )],
+        ),
+        other => (
+            json!({
+                "findings": [{
+                    "title": scout_id,
+                    "summary": prompt_value_for_repair(&other),
+                    "source_anchors": []
+                }],
+                "risks": [],
+                "coverage_notes": ["Scout returned a non-object value; wrapped as one finding."]
+            }),
+            vec![format!(
+                "{scout_id}: wrapped non-object output as one finding"
+            )],
+        ),
+    }
+}
+
+fn looks_like_flat_finding(object: &Map<String, Value>) -> bool {
+    object.contains_key("title")
+        || object.contains_key("summary")
+        || object.contains_key("source_anchors")
+}
+
+fn normalize_findings(scout_id: &str, value: Value) -> (Value, Vec<String>) {
+    let mut notes = Vec::new();
+    let findings = match value {
+        Value::Array(items) => items,
+        Value::Object(_) | Value::String(_) => {
+            notes.push(format!(
+                "{scout_id}: wrapped non-array findings into findings[]"
+            ));
+            vec![value]
+        }
+        _ => {
+            notes.push(format!("{scout_id}: replaced invalid findings with []"));
+            vec![]
+        }
+    };
+
+    let mut normalized = Vec::new();
+    for finding in findings {
+        if let Some(finding) = normalize_finding_object(scout_id, finding) {
+            normalized.push(finding);
+        } else {
+            notes.push(format!("{scout_id}: dropped empty finding item"));
+        }
+    }
+
+    (Value::Array(normalized), notes)
+}
+
+fn normalize_finding_object(scout_id: &str, value: Value) -> Option<Value> {
+    match value {
+        Value::Object(mut object) => {
+            let title = object
+                .remove("title")
+                .and_then(string_value)
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| scout_id.to_string());
+            let summary = object
+                .remove("summary")
+                .and_then(string_value)
+                .filter(|value| !value.trim().is_empty())?;
+            let source_anchors = object
+                .remove("source_anchors")
+                .map_or_else(|| Value::Array(vec![]), string_array_value);
+            Some(json!({
+                "title": title,
+                "summary": summary,
+                "source_anchors": source_anchors,
+            }))
+        }
+        Value::String(text) => {
+            let summary = text.trim();
+            if summary.is_empty() {
+                None
+            } else {
+                Some(json!({
+                    "title": scout_id,
+                    "summary": summary,
+                    "source_anchors": []
+                }))
+            }
+        }
+        _ => None,
+    }
+}
+
+fn ensure_string_array(object: &mut Map<String, Value>, key: &str) {
+    let value = object
+        .remove(key)
+        .map_or_else(|| Value::Array(vec![]), string_array_value);
+    object.insert(key.to_string(), value);
+}
+
+fn string_array_value(value: Value) -> Value {
+    match value {
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .filter_map(string_value)
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .map(Value::String)
+                .collect(),
+        ),
+        Value::String(text) => {
+            let text = text.trim();
+            if text.is_empty() {
+                Value::Array(vec![])
+            } else {
+                Value::Array(vec![Value::String(text.to_string())])
+            }
+        }
+        _ => Value::Array(vec![]),
+    }
+}
+
+fn string_value(value: Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text),
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+fn prompt_value_for_repair(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        other => serde_json::to_string(other)
+            .unwrap_or_else(|_| "Unserializable scout output".to_string()),
+    }
+}
+
 fn resolve_source_value(
     config: &SchemaValidateConfig,
     inputs: &eval::NodeInputs,
     run: &TaskGraphRun,
 ) -> Value {
     if let Some(source) = &config.source {
+        if source.kind.as_deref() == Some("node_outputs_by_ids") {
+            let exclude = source.exclude.iter().cloned().collect::<BTreeSet<_>>();
+            let mut values = Map::new();
+            for id in source
+                .ids
+                .iter()
+                .map(|id| id.trim())
+                .filter(|id| !id.is_empty() && !exclude.contains(*id))
+            {
+                values.insert(
+                    id.to_string(),
+                    run.context
+                        .node_outputs
+                        .get(id)
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                );
+            }
+            return Value::Object(values);
+        }
+
         if source.kind.as_deref() == Some("node_outputs_by_prefix") {
             let prefix = source.prefix.as_deref().unwrap_or_default();
-            let exclude = source.exclude.iter().collect::<BTreeSet<_>>();
+            let exclude = source.exclude.iter().cloned().collect::<BTreeSet<_>>();
             let mut keys = run
                 .context
                 .node_outputs
                 .keys()
-                .filter(|key| key.starts_with(prefix) && !exclude.contains(key))
+                .filter(|key| key.starts_with(prefix) && !exclude.contains((*key).as_str()))
                 .cloned()
                 .collect::<Vec<_>>();
             keys.sort();
@@ -160,6 +440,41 @@ fn write_artifact_if_requested(
     opts: &RunnerOptions,
     run: &TaskGraphRun,
 ) -> Result<Option<String>, TaskGraphError> {
+    if config.artifact_scope.as_deref() == Some("run") {
+        let artifact_id = config
+            .artifact_name
+            .as_deref()
+            .map(trim_json_extension)
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| {
+                format!(
+                    "{}-output",
+                    node_safe_name(config.schema_name.as_deref()).trim_matches('-')
+                )
+            });
+        let content =
+            serde_json::to_string_pretty(value).map_err(|source| TaskGraphError::Parse {
+                path: PathBuf::from(&artifact_id),
+                source,
+            })?;
+        let artifact = run_state::write_artifact(
+            &opts.workspace_root,
+            &opts.project,
+            &opts.run_id,
+            &artifact_id,
+            &content,
+            ArtifactContentType::Json,
+        )?;
+        let path = opts
+            .workspace_root
+            .join("runtime")
+            .join("task_graph_runs")
+            .join(&opts.project)
+            .join(&opts.run_id)
+            .join(&artifact.path);
+        return Ok(Some(resolve_slash(&path)));
+    }
+
     let Some(template) = config.artifact_path.as_deref() else {
         return Ok(None);
     };
@@ -194,7 +509,25 @@ fn write_artifact_if_requested(
         path: path.clone(),
         source,
     })?;
-    Ok(Some(path.display().to_string().replace('\\', "/")))
+    Ok(Some(resolve_slash(&path)))
+}
+
+fn trim_json_extension(value: &str) -> String {
+    value.trim().trim_end_matches(".json").to_string()
+}
+
+fn node_safe_name(value: Option<&str>) -> String {
+    value
+        .unwrap_or("schema-validate")
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
 
 fn validate_json_schema(value: &Value, schema: &Value, path: &str, errors: &mut Vec<String>) {
@@ -205,6 +538,37 @@ fn validate_json_schema(value: &Value, schema: &Value, path: &str, errors: &mut 
         errors.push(format!("{path}: schema must be an object"));
         return;
     };
+
+    if let Some(any_of) = schema_obj.get("anyOf").and_then(Value::as_array) {
+        if any_of.is_empty() {
+            errors.push(format!("{path}: anyOf must contain at least 1 schema"));
+            return;
+        }
+
+        let mut first_errors = Vec::new();
+        for candidate in any_of {
+            let mut candidate_errors = Vec::new();
+            validate_json_schema(value, candidate, path, &mut candidate_errors);
+            if candidate_errors.is_empty() {
+                return;
+            }
+            if first_errors.is_empty() {
+                first_errors = candidate_errors;
+            }
+        }
+
+        let reason = first_errors
+            .into_iter()
+            .take(3)
+            .collect::<Vec<_>>()
+            .join("; ");
+        errors.push(if reason.is_empty() {
+            format!("{path}: did not match anyOf")
+        } else {
+            format!("{path}: did not match anyOf ({reason})")
+        });
+        return;
+    }
 
     if let Some(type_spec) = schema_obj.get("type") {
         if !matches_type(value, type_spec) {
@@ -380,7 +744,7 @@ fn type_label(type_spec: &Value) -> String {
     }
 }
 
-fn value_type(value: &Value) -> &'static str {
+const fn value_type(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
         Value::Bool(_) => "boolean",
@@ -530,5 +894,174 @@ mod tests {
 
         assert!(errors.iter().any(|error| error.contains("needs_repair")));
         assert!(errors.iter().any(|error| error.contains("enum")));
+    }
+
+    #[test]
+    fn supports_any_of_schema_variants() {
+        let mut errors = Vec::new();
+        validate_json_schema(
+            &json!({
+                "title": "NodeOutcome",
+                "summary": "Execution output",
+                "source_anchors": ["src/lib.rs:1"]
+            }),
+            &json!({
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "required": ["findings"],
+                        "properties": {
+                            "findings": {"type": "array", "minItems": 1}
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "required": ["title", "summary", "source_anchors"],
+                        "properties": {
+                            "title": {"type": "string", "minLength": 1},
+                            "summary": {"type": "string", "minLength": 1},
+                            "source_anchors": {
+                                "type": "array",
+                                "minItems": 1,
+                                "items": {"type": "string", "minLength": 1}
+                            }
+                        }
+                    }
+                ]
+            }),
+            "$",
+            &mut errors,
+        );
+
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn source_by_ids_collects_exact_node_outputs_and_marks_missing() {
+        let config = SchemaValidateConfig {
+            inputs: None,
+            schema: json!({}),
+            value_key: default_value_key(),
+            value_keys: vec![],
+            source: Some(SchemaSourceConfig {
+                kind: Some("node_outputs_by_ids".to_string()),
+                prefix: None,
+                ids: vec!["scout-a".to_string(), "missing-scout".to_string()],
+                exclude: vec![],
+            }),
+            fail_on_invalid: false,
+            artifact_path: None,
+            artifact_scope: None,
+            artifact_name: None,
+            schema_name: None,
+            repair: None,
+        };
+        let mut node_outputs = Map::new();
+        node_outputs.insert("scout-a".to_string(), json!({"findings": []}));
+        node_outputs.insert("scout-b".to_string(), json!({"findings": []}));
+        let run = TaskGraphRun {
+            id: "run-test".to_string(),
+            project: "blackboard".to_string(),
+            graph_ref: crate::task_graph::run_state::GraphRef {
+                scope: crate::task_graph::definition::types::TaskGraphScope::Project,
+                id: "graph-test".to_string(),
+                version: 1,
+            },
+            status: crate::task_graph::run_state::RunStatus::Running,
+            created_at: "2026-05-20T00:00:00Z".to_string(),
+            queued_at: None,
+            queue_deadline_at: None,
+            started_at: None,
+            updated_at: "2026-05-20T00:00:00Z".to_string(),
+            completed_at: None,
+            current_superstep: 0,
+            last_checkpoint_id: None,
+            pregel_checkpoint: None,
+            current_graph_revision: 0,
+            active_nodes: vec![],
+            paused: None,
+            context: crate::task_graph::run_state::RunContext {
+                input: json!({}),
+                node_outputs,
+                branch_decisions: vec![],
+                loop_iterations: vec![],
+                loop_stack: vec![],
+                completed_branches: Default::default(),
+            },
+            parent_run_id: None,
+            checkpoint_ns: None,
+        };
+
+        let value = resolve_source_value(&config, &Map::new(), &run);
+
+        assert_eq!(value["scout-a"], json!({"findings": []}));
+        assert!(value["missing-scout"].is_null());
+        assert!(value.get("scout-b").is_none());
+    }
+
+    #[test]
+    fn repairs_research_scout_outputs_for_metadata_only_and_string_values() {
+        let config = SchemaValidateConfig {
+            inputs: None,
+            schema: json!({}),
+            value_key: default_value_key(),
+            value_keys: vec![],
+            source: None,
+            fail_on_invalid: false,
+            artifact_path: None,
+            artifact_scope: None,
+            artifact_name: None,
+            schema_name: Some("code_research_scout_outputs".to_string()),
+            repair: Some(SchemaRepairConfig {
+                kind: Some("code_research_scout_outputs".to_string()),
+            }),
+        };
+
+        let (value, notes) = repair_source_value(
+            &config,
+            json!({
+                "metadata-only": {
+                    "coverage_notes": ["looked at validation"],
+                    "risks": ["no findings"]
+                },
+                "string-output": "plain scout summary",
+                "normal": {
+                    "findings": [{
+                        "title": "Runtime",
+                        "summary": "Pregel runtime exists",
+                        "source_anchors": []
+                    }]
+                }
+            }),
+        );
+
+        assert!(!notes.is_empty());
+        assert_eq!(value["metadata-only"]["findings"], json!([]));
+        assert_eq!(
+            value["string-output"]["findings"][0]["summary"],
+            json!("plain scout summary")
+        );
+        assert_eq!(value["normal"]["findings"][0]["source_anchors"], json!([]));
+
+        let external_config = SchemaValidateConfig {
+            schema_name: Some("external_research_scout_outputs".to_string()),
+            repair: Some(SchemaRepairConfig {
+                kind: Some("external_research_scout_outputs".to_string()),
+            }),
+            ..config
+        };
+
+        let (external_value, external_notes) = repair_source_value(
+            &external_config,
+            json!({
+                "metadata-only": {
+                    "coverage_notes": ["external source was inaccessible"],
+                    "risks": ["source unavailable"]
+                }
+            }),
+        );
+
+        assert!(!external_notes.is_empty());
+        assert_eq!(external_value["metadata-only"]["findings"], json!([]));
     }
 }

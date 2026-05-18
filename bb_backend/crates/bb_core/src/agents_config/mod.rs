@@ -6,7 +6,7 @@
 //! (e.g. `~/.codex/AGENTS.md`). Individual connectors may point at a
 //! specialized source file while still writing the tool-required target name.
 //! MCP server target injection is part of this connector domain as
-//! `mcp_connector`; Blackboard's own MCP server tools live in `bb_cli`.
+//! `mcp_connector`; Blackboard's own MCP server tools live in `bb_daemon`.
 //!
 //! The catalog of supported Agents is intentionally a static array for the
 //! first version. Future iterations can layer a `<bb-root>/agents/connectors.toml`
@@ -240,21 +240,18 @@ fn inspect_connector_target(
             } else {
                 AgentConnectorState::Drift
             }
+        } else if Some(target_full.as_str()) == source_full.as_deref() {
+            AgentConnectorState::Synced
         } else {
-            if Some(target_full.as_str()) == source_full.as_deref() {
-                AgentConnectorState::Synced
-            } else {
-                AgentConnectorState::Drift
-            }
+            AgentConnectorState::Drift
         };
     } else {
-        let parent_exists = target_path.parent().map(|p| p.is_dir()).unwrap_or(false);
+        let parent_exists = target_path.parent().is_some_and(std::path::Path::is_dir);
         let rules_root_exists = target_spec.connector_type == AgentConnectorType::Rules
             && target_path
                 .parent()
                 .and_then(Path::parent)
-                .map(|p| p.is_dir())
-                .unwrap_or(false);
+                .is_some_and(std::path::Path::is_dir);
         state = if parent_exists || rules_root_exists {
             AgentConnectorState::Missing
         } else {
@@ -263,8 +260,8 @@ fn inspect_connector_target(
     }
 
     Ok(AgentConnectorTarget {
-        label: target_spec.label.to_string(),
-        target_template: target_spec.target_template.to_string(),
+        label: target_spec.label.clone(),
+        target_template: target_spec.target_template.clone(),
         target_path: target_path_str,
         source_path: Some(source_path_str),
         connector_type: target_spec.connector_type,
@@ -393,14 +390,14 @@ fn list_with_home_and_mcp_url(
         source: err,
     })?;
 
-    let (source_state, source_short) = match &source_bytes {
-        Some(bytes) => {
-            let full = sha256_hex(bytes);
-            let short = short_hash(&full);
-            (AgentSourceState::Present, Some(short))
-        }
-        None => (AgentSourceState::Missing, None),
-    };
+    let (source_state, source_short) =
+        source_bytes
+            .as_ref()
+            .map_or((AgentSourceState::Missing, None), |bytes| {
+                let full = sha256_hex(bytes);
+                let short = short_hash(&full);
+                (AgentSourceState::Present, Some(short))
+            });
 
     let mut connectors = Vec::with_capacity(AGENT_CONNECTORS.len());
     for spec in AGENT_CONNECTORS {
@@ -539,7 +536,7 @@ fn sync_with_home_and_mcp_url(
         inspect_connector_with_mcp_url(spec, home_override, bb_root, mcp_remote_url)?;
     if !events_by_target.is_empty() {
         let mut aggregated: Vec<AgentConnectorSyncEvent> = Vec::new();
-        for target in connector.targets.iter_mut() {
+        for target in &mut connector.targets {
             if let Some(events) = events_by_target.remove(&target.target_path) {
                 aggregated.extend(events.iter().cloned());
                 target.events = events;
@@ -586,7 +583,7 @@ fn disconnect_with_home(
             Err(err) if err.kind() == io::ErrorKind::NotFound => {}
             Err(source) => {
                 return Err(InboxError::Io {
-                    path: target_path.clone(),
+                    path: target_path,
                     source,
                 });
             }
@@ -600,8 +597,7 @@ fn same_path(a: &Path, b: &Path) -> bool {
     fs::canonicalize(a)
         .ok()
         .zip(fs::canonicalize(b).ok())
-        .map(|(a, b)| a == b)
-        .unwrap_or(false)
+        .is_some_and(|(a, b)| a == b)
 }
 
 #[cfg(test)]

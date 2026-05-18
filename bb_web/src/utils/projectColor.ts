@@ -28,6 +28,5 @@ export function projectColor(projectName: string) {
 }
 
 export function projectBadgeTextColor(projectName: string) {
-  const seed = projectName.trim().toLowerCase()
-  return seed === 'blackboard' ? 'var(--bb-project-blackboard-fg)' : '#ffffff'
+  return 'var(--bb-project-blackboard-fg)'
 }

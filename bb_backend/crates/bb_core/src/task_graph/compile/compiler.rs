@@ -1,7 +1,7 @@
-//! Graph compile layer for the TaskGraph execution kernel.
+//! Graph compile layer for the `TaskGraph` execution kernel.
 //!
 //! This module is intentionally about executable graph structure only. It
-//! mirrors LangGraph's compile direction: raw graph definitions are lowered
+//! mirrors `LangGraph`'s compile direction: raw graph definitions are lowered
 //! into a Pregel-style IR of processes, channels, triggers, and writers.
 //! It does not define business agent roles, prompt sources, or Agent Profile
 //! behavior.
@@ -122,7 +122,7 @@ pub enum CompiledChannelKind {
 #[serde(tag = "class", rename_all = "snake_case")]
 pub enum CompiledChannelClass {
     EphemeralValue {
-        /// LangGraph's EphemeralValue guard. `branch:to:*` uses false in StateGraph.
+        /// `LangGraph`'s `EphemeralValue` guard. `branch:to:*` uses false in `StateGraph`.
         guard: bool,
     },
     LastValue,
@@ -146,12 +146,13 @@ pub enum CompiledReducer {
 }
 
 impl CompiledGraph {
+    #[must_use]
     pub fn node(&self, id: &str) -> Option<&TaskGraphNode> {
         self.nodes.get(id).map(|compiled| &compiled.node)
     }
 
     pub fn exec_in_degree(&self, id: &str) -> usize {
-        self.exec_incoming.get(id).map(Vec::len).unwrap_or(0)
+        self.exec_incoming.get(id).map_or(0, Vec::len)
     }
 }
 
@@ -314,6 +315,10 @@ fn compile_processes(
             triggers.push(START_CHANNEL.to_string());
             read_channels.push(START_CHANNEL.to_string());
         }
+        if node.node_type == NodeType::DataValue && !has_exec_incoming(exec_incoming, &node.id) {
+            triggers.push(START_CHANNEL.to_string());
+            read_channels.push(START_CHANNEL.to_string());
+        }
 
         for edge in data_edges.iter().filter(|edge| edge.to == node.id) {
             read_channels.push(data_channel(&edge.from, &edge.to));
@@ -334,10 +339,12 @@ fn compile_processes(
         let has_runtime_io = matches!(
             node.node_type,
             NodeType::Llm
+                | NodeType::LlmCoordinator
                 | NodeType::Plan
                 | NodeType::LlmMutation
                 | NodeType::Shell
                 | NodeType::SubGraph
+                | NodeType::SystemWriteOutput
         );
         processes.insert(
             node.id.clone(),
@@ -353,8 +360,8 @@ fn compile_processes(
                 triggers,
                 read_channels,
                 writers: Vec::with_capacity(
-                    exec_outgoing.get(&node.id).map(Vec::len).unwrap_or(0)
-                        + exec_incoming.get(&node.id).map(Vec::len).unwrap_or(0),
+                    exec_outgoing.get(&node.id).map_or(0, Vec::len)
+                        + exec_incoming.get(&node.id).map_or(0, Vec::len),
                 ),
             },
         );
@@ -463,12 +470,14 @@ fn attach_exec_writers_and_triggers(
             }
         } else if !incoming.is_empty() {
             let channel = branch_channel(target);
-            channels.entry(channel.clone()).or_insert(CompiledChannel {
-                name: channel.clone(),
-                kind: CompiledChannelKind::Ephemeral,
-                class: CompiledChannelClass::EphemeralValue { guard: false },
-                required_senders: Vec::new(),
-            });
+            channels
+                .entry(channel.clone())
+                .or_insert_with(|| CompiledChannel {
+                    name: channel.clone(),
+                    kind: CompiledChannelKind::Ephemeral,
+                    class: CompiledChannelClass::EphemeralValue { guard: false },
+                    required_senders: Vec::new(),
+                });
             if let Some(process) = processes.get_mut(target) {
                 process.triggers.push(channel.clone());
                 process.read_channels.push(channel.clone());
@@ -502,6 +511,12 @@ fn has_branch_source(edges: &[CompiledEdge], node_types: &BTreeMap<String, NodeT
         .any(|edge| node_types.get(&edge.from) == Some(&NodeType::Branch))
 }
 
+fn has_exec_incoming(exec_incoming: &BTreeMap<String, Vec<CompiledEdge>>, node_id: &str) -> bool {
+    exec_incoming
+        .get(node_id)
+        .is_some_and(|edges| !edges.is_empty())
+}
+
 fn attach_loop_return_channels(
     processes: &mut BTreeMap<String, CompiledProcess>,
     channels: &mut BTreeMap<String, CompiledChannel>,
@@ -516,12 +531,14 @@ fn attach_loop_return_channels(
         };
 
         let channel = branch_channel(&node.id);
-        channels.entry(channel.clone()).or_insert(CompiledChannel {
-            name: channel.clone(),
-            kind: CompiledChannelKind::Ephemeral,
-            class: CompiledChannelClass::EphemeralValue { guard: false },
-            required_senders: Vec::new(),
-        });
+        channels
+            .entry(channel.clone())
+            .or_insert_with(|| CompiledChannel {
+                name: channel.clone(),
+                kind: CompiledChannelKind::Ephemeral,
+                class: CompiledChannelClass::EphemeralValue { guard: false },
+                required_senders: Vec::new(),
+            });
 
         if let Some(loop_process) = processes.get_mut(&node.id) {
             loop_process.triggers.push(channel.clone());
@@ -717,17 +734,18 @@ fn dedupe_sorted(values: &mut Vec<String>) {
     values.dedup();
 }
 
-fn is_false(value: &bool) -> bool {
+const fn is_false(value: &bool) -> bool {
     !*value
 }
 
-fn default_channel_class() -> CompiledChannelClass {
+const fn default_channel_class() -> CompiledChannelClass {
     CompiledChannelClass::EphemeralValue { guard: true }
 }
 
 /// Compile a graph for execution, applying Blackboard's backward-compatible
 /// graph upgrade first. This keeps older saved graphs and direct test fixtures
 /// runnable while still producing a strict compiled execution snapshot.
+#[allow(clippy::too_long_first_doc_paragraph)]
 pub fn compile_graph_for_execution(
     graph: &TaskGraphDefinition,
 ) -> Result<CompiledGraph, TaskGraphError> {

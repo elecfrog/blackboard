@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Archive, ExternalLink, GitFork, Menu, Plus, Trash2, X } from 'lucide-vue-next'
+import { BbSectionHeader } from '@/components/common'
 import TicketStructuredDocument from '@/components/TicketStructuredDocument.vue'
 import UnifiedPopupSelect from '@/components/UnifiedPopupSelect.vue'
 import type { ProjectAgentProfile } from '@/data/agents'
@@ -23,6 +24,7 @@ const props = defineProps<{
   assigneeSaving?: boolean
   statusSaving?: boolean
   attachmentsSaving?: boolean
+  specSaving?: boolean
   deprecating?: boolean
 }>()
 
@@ -31,6 +33,7 @@ const emit = defineEmits<{
   assigneeChange: [value: string]
   statusChange: [value: string]
   attachmentsChange: [value: TicketAttachment[]]
+  specChange: [value: BlackboardTicket['spec']]
   deprecate: []
 }>()
 
@@ -173,6 +176,10 @@ function onStatusChange(next: string) {
 function onAssigneeChange(next: string) {
   if (next === currentAssignee.value) return
   emit('assigneeChange', next)
+}
+
+function onSpecChange(spec: BlackboardTicket['spec']) {
+  emit('specChange', spec)
 }
 
 function cloneAttachment(attachment: TicketAttachment): TicketAttachment {
@@ -351,12 +358,7 @@ function openAttachment(attachment: TicketAttachment) {
       </section>
 
       <section v-if="relatedTickets.length > 0" class="ticket-detail-section ticket-detail-links">
-        <header class="ticket-detail-section-head">
-          <div class="ticket-detail-section-title">
-            <h3>{{ t('dependencies') }}</h3>
-            <span class="ticket-detail-section-count">{{ relatedTickets.length }}</span>
-          </div>
-        </header>
+        <BbSectionHeader :title="t('dependencies')" :count="relatedTickets.length" />
         <button
           v-for="item in relatedTickets"
           :key="item.id"
@@ -374,19 +376,19 @@ function openAttachment(attachment: TicketAttachment) {
             :ticket="documentTicket"
             :loading="detailLoading"
             :error="detailError"
+            :spec-saving="specSaving"
+            @spec-change="onSpecChange"
           />
 
           <section class="ticket-detail-section ticket-detail-attachments">
-            <div class="ticket-detail-section-head">
-              <div class="ticket-detail-section-title">
-                <h3>{{ t('attachments') }}</h3>
-                <span class="ticket-detail-section-count">{{ attachmentDrafts.length }}</span>
-              </div>
+            <BbSectionHeader :title="t('attachments')" :count="attachmentDrafts.length" as="div">
+              <template #actions>
               <button class="ticket-detail-small-action" type="button" @click="addAttachment">
                 <Plus class="bb-top-action-svg" aria-hidden="true" />
                 {{ t('add') }}
               </button>
-            </div>
+              </template>
+            </BbSectionHeader>
 
             <div v-if="attachmentDrafts.length > 0" class="ticket-attachment-list">
               <div

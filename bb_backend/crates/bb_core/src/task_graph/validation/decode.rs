@@ -60,6 +60,7 @@ pub fn decode_graph_value_at(
     decode_value(value, normalized_path(path_prefix))
 }
 
+#[must_use]
 pub fn prefix_validation_errors(
     path_prefix: &str,
     errors: Vec<TaskGraphValidationError>,
@@ -141,6 +142,8 @@ fn validate_run_policy(value: &Value, path: &str, errors: &mut Vec<TaskGraphVali
     optional_u64(object, path, "max_concurrent_runs", errors);
     optional_bool(object, path, "queue_enabled", errors);
     optional_u64(object, path, "max_queue_wait_ms", errors);
+    optional_bool(object, path, "queue_timeout_retry_enabled", errors);
+    optional_u64(object, path, "max_queue_timeout_retries", errors);
 }
 
 fn validate_inputs(value: &Value, path: &str, errors: &mut Vec<TaskGraphValidationError>) {
@@ -184,12 +187,14 @@ fn validate_nodes(value: &Value, path: &str, errors: &mut Vec<TaskGraphValidatio
                 "start",
                 "end",
                 "llm",
+                "llm_coordinator",
                 "plan",
                 "human_gate",
                 "branch",
                 "loop",
                 "shell",
                 "input_var",
+                "data_value",
                 "sub_graph",
                 "sub_pipeline",
                 "llm_mutation",
@@ -197,6 +202,7 @@ fn validate_nodes(value: &Value, path: &str, errors: &mut Vec<TaskGraphValidatio
                 "kb_plan",
                 "manifest_merge",
                 "schema_validate",
+                "system_write_output",
             ],
             errors,
         );
@@ -276,9 +282,8 @@ fn expect_object<'a>(
     label: &str,
     errors: &mut Vec<TaskGraphValidationError>,
 ) -> Option<&'a Map<String, Value>> {
-    match value.as_object() {
-        Some(object) => Some(object),
-        None => {
+    value.as_object().map_or_else(
+        || {
             errors.push(TaskGraphValidationError {
                 path: path_for_message(path),
                 code: "invalid_type".to_string(),
@@ -288,8 +293,9 @@ fn expect_object<'a>(
                 ),
             });
             None
-        }
-    }
+        },
+        Some,
+    )
 }
 
 fn expect_array<'a>(
@@ -298,17 +304,17 @@ fn expect_array<'a>(
     label: &str,
     errors: &mut Vec<TaskGraphValidationError>,
 ) -> Option<&'a Vec<Value>> {
-    match value.as_array() {
-        Some(array) => Some(array),
-        None => {
+    value.as_array().map_or_else(
+        || {
             errors.push(TaskGraphValidationError {
                 path: path_for_message(path),
                 code: "invalid_type".to_string(),
                 message: format!("Expected {label} to be an array, got {}", value_kind(value)),
             });
             None
-        }
-    }
+        },
+        Some,
+    )
 }
 
 fn require_string(
@@ -466,7 +472,7 @@ fn invalid_field_type(
     });
 }
 
-fn value_kind(value: &Value) -> &'static str {
+const fn value_kind(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
         Value::Bool(_) => "boolean",

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "title": "Codex handoff: nightly graph 机器本地日期 rerun 通过",
+  "time": "2026-05-23T17:04:41Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "nightly-auto-code-optimization-machine-local-date-rerun",
+  "done": [
+    "按用户要求把 nightly report 日期从固定/UTC 改为机器本地时间基准：新增 `scripts/resolve_local_report_date.py`，并让 graph v10 使用 `report_date` 写入 project wiki 路径。",
+    "同步加固 `scripts/collect_daily_context.py`，日报上下文的 `generated_at/report_date/timezone` 也来自 `datetime.now().astimezone()`。",
+    "修复 `scripts/task_graph_agent_write_scope_audit.py` 的误报：Pi policy 已经拦截的失败 edit 事件会把错误写在 `tool_result.output`，audit 现在会读取该字段并跳过被正确拦截的写入。",
+    "重新跑通 `system/nightly-auto-code-optimization`：父 run `run-20260523-163957-eb1e55a0` succeeded，质量子图 `run-20260523-164601-90abb36d` succeeded，报告写入 `wiki/nightly/nightly-report-2026-05-24.md`。"
+  ],
+  "validation": [
+    "`mcp__bb__.list_projects`: 通过，确认 project `blackboard` 可见。",
+    "`python -m py_compile scripts/resolve_local_report_date.py scripts/collect_daily_context.py scripts/task_graph_agent_write_scope_audit.py`: 通过。",
+    "`scripts/task_graph_agent_write_scope_audit.py` 对失败 run `run-20260523-162221-32d25881` 复验：`ok=true`, `violation_count=0`。",
+    "v10 rerun 验证：`resolve-report-date` 输出 `source=machine-local-time`, `report_date=2026-05-24`, `utc_offset=+08:00`；`collect-daily-context` 输出 `generated_at=2026-05-24T01:01:37+08:00`。",
+    "质量子图验证：`frontend-write-scope-audit` exit 0 / violation_count 0；`npm run build --prefix bb_web` exit 0；`cargo fmt` exit 0；`cargo clippy --all-targets` exit 0。",
+    "`git diff --check` 针对本轮改动文件通过，仅提示 Git 下次触碰会做 LF/CRLF 转换。"
+  ],
+  "next_step": [
+    "可把 MiniMax pending 时间作为产品化观测指标纳入日报：本轮多个 agent session 有 2-8 分钟 pending，但最终可恢复。",
+    "`cargo clippy` 仍有 1 个建议性 warning：`bb_daemon/src/codex_client.rs` 可选改成 `if let`，不阻塞本轮生产转换。"
+  ],
+  "related_locations": [
+    ".bb_template/task_graphs/system/nightly-auto-code-optimization.json",
+    "scripts/resolve_local_report_date.py",
+    "scripts/collect_daily_context.py",
+    "scripts/task_graph_agent_write_scope_audit.py",
+    ".bb_template/projects/blackboard/wiki/nightly/nightly-report-2026-05-24.md",
+    ".bb_template/runtime/task_graph_runs/blackboard/run-20260523-163957-eb1e55a0",
+    ".bb_template/runtime/task_graph_runs/blackboard/run-20260523-164601-90abb36d"
+  ],
+  "related_tickets": [
+    "000081"
+  ],
+  "attachments": [
+    {
+      "kind": "wiki",
+      "target": "nightly/nightly-report-2026-05-24.md",
+      "label": "Nightly report 2026-05-24",
+      "description": "机器本地日期生成的 nightly 总报告"
+    }
+  ],
+  "extra": {}
+}

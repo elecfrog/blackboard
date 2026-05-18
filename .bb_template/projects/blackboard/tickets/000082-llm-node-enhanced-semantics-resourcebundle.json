@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "id": "000082",
+  "lane": "bbt",
+  "title": "LLM 节点统一升级：ResourceBundle / Tool Policy / Output Contract",
+  "summary": "TaskGraph 只保留一个 LLM 节点类型，不新增 AgentNode 作为独立产品概念。LLM 节点在未配置 ResourceBundle、tool_policy、output_contract、tool lifecycle 时保持原有裸 LLM 语义；一旦接入这些能力，同一个 LLM 节点升级为结构化上下文、受控工具、结构化产出和可观测执行的增强 LLM。现有使用 `preset=agent_node`、`harness.kind=agent_node` 或其它 AgentNode 叫法的 graph/config/UI 需要重构为新的 LLM 节点语义；不保留 AgentNode 前向兼容命名。",
+  "stories": [
+    {
+      "id": "83db3745-2f12-420d-9c8f-222393f085d1",
+      "given": "一个 TaskGraph LLM 节点只配置 prompt、runtime、model 和基础 output。",
+      "when": "该节点运行。",
+      "then": "它保持原有裸 LLM 行为：渲染 prompt，调用模型，产出文本或 JSON artifact，不要求 ResourceBundle、tool lifecycle 或额外输出契约。"
+    },
+    {
+      "id": "057353e8-1b48-4fe0-9635-0b45d9d46539",
+      "given": "一个 LLM 节点配置了 ResourceBundle 输入。",
+      "when": "该节点运行。",
+      "then": "运行时把 ResourceBundle 作为结构化上下文传入同一个 LLM 节点；系统不把该节点改名或显示为 AgentNode，也不把 ResourceBundle 粗暴拼成不透明大 prompt。"
+    },
+    {
+      "id": "55d4e584-51cd-4405-8bdc-4b50e7cfc3d3",
+      "given": "一个 LLM 节点配置了 tool_policy。",
+      "when": "该节点运行并尝试使用 read、grep、edit、bash、mcp 等工具。",
+      "then": "运行时按 tool_policy 进行强约束；允许工具、写入根、bash 白黑名单、MCP allow/deny 都由 LLM 节点配置表达，而不是由 AgentNode 特例表达。"
+    },
+    {
+      "id": "c22cc355-bc13-4837-a5c7-7e46f0d4954c",
+      "given": "一个 LLM 节点配置了 output_contract。",
+      "when": "该节点完成模型或工具执行。",
+      "then": "系统按 output_contract 解释和校验节点输出，包括 artifact_type、required、schema 或修复策略；旧的 output 字段应迁移或等价映射到 output_contract。"
+    },
+    {
+      "id": "4e9f8f2c-26b0-4e9a-b5df-7c4687d03329",
+      "given": "动态 scout fanout、Coordinator 或其它 graph mutation 需要生成执行型模型节点。",
+      "when": "系统确定性生成这些动态节点。",
+      "then": "生成的节点类型仍为 `llm`，并通过 ResourceBundle、tool_policy、output_contract 等增强字段表达能力；不得继续生成 `preset=agent_node` 或 `harness.kind=agent_node`。"
+    },
+    {
+      "id": "d45192bf-51d1-42c2-ab16-22c72d4c678c",
+      "given": "用户在 TaskGraph editor 中拖入或编辑 LLM 节点。",
+      "when": "节点未配置增强能力。",
+      "then": "UI 展示为简单 LLM 节点；当用户开启 ResourceBundle、Tools/Permission、Output Contract 或 Lifecycle 区域时，同一个 LLM 节点自然升级为增强形态，而不是切换成新的 AgentNode 节点。"
+    },
+    {
+      "id": "d5f36129-8b1e-4cf8-b913-95a19de3c5ff",
+      "given": "系统中存在旧 graph 使用 AgentNode 命名或 harness 约定。",
+      "when": "执行本 ticket 的迁移。",
+      "then": "这些 graph 被一次性重构为新的 LLM config 结构；系统不为了 AgentNode 命名做长期前向兼容。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "config_migration_breakage",
+      "description": "一次性移除 AgentNode 命名可能导致现有 graph、动态 scout 或前端表单读取旧字段失败。",
+      "mitigation": "先实现 graph migration 和 fixture 校验，覆盖 system/project graph；真实跑 `task-coordinator-l2-resource-bundle`、`nightly-auto-code-optimization`、`inbox-batch-cleanup`。",
+      "status": "open"
+    },
+    {
+      "id": "llm_config_bloat",
+      "description": "LLM 节点统一承载 ResourceBundle、tool_policy、output_contract 和 lifecycle 后，配置可能变得臃肿。",
+      "mitigation": "前端用折叠区和 preset/defaults 管理复杂度；后端 schema 保持字段分组清晰。",
+      "status": "open"
+    },
+    {
+      "id": "semantic_ambiguity",
+      "description": "如果裸 LLM 和增强 LLM 的边界不清，用户可能不理解何时只是模型调用、何时会使用工具和结构化资源。",
+      "mitigation": "UI 明确显示 ResourceBundle、Tools、Output Contract、Lifecycle 是否启用；节点标题仍是 LLM，但能力 badges 清晰展示。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-22",
+      "summary": "后端 LLM config 已正式增加 `resource_bundle`、`output_contract`、`lifecycle` 字段，`tool_policy` 继续作为同一 LLM 节点字段使用；旧 `harness` 字段从类型中移除。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "LLM 校验现在拒绝 legacy `config.harness` 和 `preset=agent_node`，并校验 `resource_bundle.input`、`output_contract`、`lifecycle` 的基础形态。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "动态 scout fanout 生成的节点保持 `type=llm`，通过 `generated.resource_bundle` / `generated.output_contract` / `generated.lifecycle` 注入增强能力，不再生成 `preset=agent_node` 或 `harness.kind=agent_node`；生成节点也会显式带 ResourceBundle data pin。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "前端 TaskGraph editor 删除独立 AgentNode palette 项；LLM 节点根据 `resource_bundle/tool_policy/output_contract/lifecycle` 显示增强能力 meta，并在 LLM 表单中提供 Enhanced LLM contract 区域。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "系统 graph fixture 已迁移：`rust-vue-code-review`、`code-review-scout-fix`、`inbox-batch-cleanup`、`research-internal`、`research-external`、`research-iteration-draft` 不再使用 AgentNode/harness 命名。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 验证通过：`cargo fmt --manifest-path bb_backend/Cargo.toml --all`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core scout_fanout -- --nocapture`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core task_graph::tests::tests::test_validate_system_graph_fixture -- --nocapture`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 验证通过：`cargo check --manifest-path bb_backend/Cargo.toml -p bb_cli`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 验证通过：`npm run build --prefix bb_web`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 验证通过：`git diff --check`，仅有既有 CRLF warning。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 验证通过：`rg AgentNode|agent_node|harness.kind|task_graph_agent_resource_bundle|resource_bundle_input` 在系统/project graph 与前端源码范围无命中。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 真实运行 `rust-vue-code-review`：run `run-20260522-101052-a1a40ff3` succeeded，superstep=5，graph revision=0，报告写入 `C:/Dev/blackboard/.bb_template/runtime/nightly/internal/reviews/code-review-082-llm-upgrade-smoke.md`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 本轮 review 静态检查全部通过：`git diff --check`、`cargo fmt --check --all`、`cargo clippy --all-targets`、`vue-tsc && vite build`；`vue_lint` 因无 lint script skipped。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: Review 结论为 `needs_changes`：2 个 medium（动态生成节点 retry 未透传；resource_bundle.input 未校验与 inputs 绑定）、3 个 low（空 resource_bundle input 静默跳过 pin、前端清空 input 后状态不一致、pin 构造重复调用/可变对象风险）。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23 收口：ResourceBundle 已升级为一等产品契约，新增统一 schema/version/builder registry：`.bb_template/schemas/resource-bundle.schema.json`、`.bb_template/schemas/resource-bundle-builders.json`、`scripts/resource_bundle_contract.py`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23 收口：现有 inbox cleanup、rust/vue code review、code review fix 三个 ResourceBundle builder 已统一注入 `schema_version=1`、`resource_bundle_version=1.0`、`kind`、`builder`、`task/data_sources/contracts` 契约字段。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23 边界：UI 配置体验与 Tool Lifecycle 事件展示按用户要求留到下一轮，不纳入本轮 000082 收口范围。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`python -m py_compile scripts/resource_bundle_contract.py scripts/collect_inbox_resource_bundle.py scripts/collect_code_review_resource_bundle.py scripts/collect_code_review_fix_resource_bundle.py`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`python scripts/resource_bundle_contract.py` 输出 registry JSON。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：三个 ResourceBundle builder smoke，分别确认 inbox.cleanup.v1、code_review.rust_vue.v1、code_review.scout_fix.v1 契约字段。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-codex-resource-bundle-daemon-tools-000082-000084-cleanup.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-resource-bundle-daemon-tools-000082-000084-cleanup.json",
+        "Title: ResourceBundle 契约与 daemon-backed inbox archive 收口\nTime: 2026-05-23T08:56:12Z\nSource: codex\nProject: blackboard\nTopic: resource-bundle-daemon-tools-000082-000084-cleanup\nDone:\n- 补齐 ResourceBundle 一等契约：新增 schema/version/builder registry，并让 inbox cleanup、rust/vue code review、code review fix 三个 builder 统一注入契约字段。\n- 补齐 daemon-backed typed inbox 工具：新增 core `archive_note`、MCP `archive_inbox_note`，bbpm/dev-all profile 可用，普通 agent profile 不暴露 delete/archive。\n- 000082 和 000084 已通过 Blackboard MCP 结构化工具更新为 done；UI 和 Tool Lifecycle 按用户要求留到下一轮。\nValidation:\n- cargo fmt --manifest-path bb_backend/Cargo.toml --all\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core archives_inbox_note -- --nocapture\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon archive_inbox_note -- --nocapture\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon daemon_only_delete_inbox_note_returns_standard_content_result -- --nocapture\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon all_listed_tools_return_standard_content_results -- --nocapture\n- cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon -p bb_server -p bb_cli\n- python ResourceBundle builder sm...",
+        "cleanup reason: note 的 title/document.related_tickets 显式写明 '000082' 和 '000084'，document.done 内容与 000082 (ResourceBundle/ToolPolicy/OutputContract) 和 000084 (MCP/Daemon Agent 工具架构) 直接对应。"
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "kind": "ticket",
+      "target": "000078",
+      "label": "LLM Coordinator / ResourceBundle 试验基础"
+    },
+    {
+      "kind": "ticket",
+      "target": "000080",
+      "label": "Tool Lifecycle 事件契约"
+    },
+    {
+      "kind": "ticket",
+      "target": "000081",
+      "label": "Day0 夜间无人值守验收"
+    }
+  ],
+  "status": "done",
+  "created_at": "2026-05-22",
+  "updated_at": "2026-05-23",
+  "extra": {}
+}

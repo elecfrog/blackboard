@@ -88,6 +88,36 @@
       "at": "2026-05-18",
       "summary": "Record: 验证：python3 scripts/check_ticket_ids.py --project blackboard: passed；qmd embed: passed；git diff --check: passed。",
       "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "2026-05-18：新增 scripts/audit_tickets.py，接入脚本级 ticket 审计并输出 JSON 报告。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "2026-05-18：重做 system/task-ticket-audit 为 audit -> repair -> validate -> re-audit 闭环。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "2026-05-18：补齐 shell node 模板渲染，支持 {{env.project}}、{{env.root}}、{{env.scripts_dir}}。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "2026-05-18：把 schemas 目录纳入 dev/desktop seed 流程。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "2026-05-18：完成 ticket audit schema repair loop，handoff 写入 2026-05-18-codex-ticket-audit-schema-repair-loop.md。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-18",
+      "summary": "Record: 来源：2026-05-18-codex-ticket-audit-schema-repair-loop.md",
+      "evidence": []
     }
   ],
   "attachments": [],

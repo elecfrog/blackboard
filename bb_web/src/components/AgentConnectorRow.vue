@@ -5,6 +5,7 @@
 
 import { computed, ref } from 'vue'
 import { ChevronDown } from 'lucide-vue-next'
+import { BbInfoGrid, BbInfoItem } from '@/components/common'
 import { t } from '@/i18n'
 import type { AgentProfile } from '@/data/agents'
 import type {
@@ -47,6 +48,11 @@ function stateMetaFor(state: AgentConnectorState) {
     default:
       return { label: t('connectorUnknown'), color: '#9ca3af', tone: 'grey' as const }
   }
+}
+
+function targetLabel(label: string) {
+  if (label.startsWith('Agent: ')) return t('agentConnectorAgentPrefix') + label.slice(7)
+  return label
 }
 
 const stateMeta = computed(() => stateMetaFor(props.connector.state))
@@ -125,12 +131,13 @@ const connectLabel = computed(() => {
 })
 
 const disconnectLabel = computed(() => (isBusy.value ? t('connectorBusy') : t('connectorDisconnect')))
+const lockedToolIds = new Set(['opencode', 'pi'])
 const toolActionLabel = computed(() => {
   if (isToolBusy.value) return t('connectorBusy')
   const tool = props.tool
   if (!tool) return t('agentToolInstall')
-  if (tool.status === 'version_mismatch' && tool.id === 'opencode') return t('agentToolLockOpenCode')
-  if (tool.status === 'installed' && tool.id === 'opencode') return t('agentToolLocked')
+  if (tool.status === 'version_mismatch' && lockedToolIds.has(tool.id)) return t('agentToolLockOpenCode')
+  if (tool.status === 'installed' && lockedToolIds.has(tool.id)) return t('agentToolLocked')
   if (tool.status === 'installed') return t('agentToolUpdate')
   if (tool.status === 'external_install') return t('agentToolRepair')
   return t('agentToolInstall')
@@ -138,7 +145,7 @@ const toolActionLabel = computed(() => {
 const canInstallTool = computed(() => {
   if (!props.tool || isToolBusy.value || anyToolBusy.value || anyBusy.value) return false
   if (props.tool.status === 'npm_missing') return false
-  if (props.tool.status === 'installed' && props.tool.id === 'opencode') return false
+  if (props.tool.status === 'installed' && lockedToolIds.has(props.tool.id)) return false
   return true
 })
 const managedAgents = computed(() =>
@@ -201,24 +208,25 @@ const selectedAgentTarget = computed(() => targetForAgent(selectedAgent.value))
 
 const tooltip = computed(() => {
   const lines = connectorTargets.value.flatMap((target) => {
-    const targetLines = [`${target.label}：${target.target_path}`]
+    const label = targetLabel(target.label)
+    const targetLines = [`${label}：${target.target_path}`]
     if (target.source_path) {
-      targetLines.push(`${target.label} ${t('connectorSource')}: ${target.source_path}`)
+      targetLines.push(`${label} ${t('connectorSource')}: ${target.source_path}`)
     }
     if (target.source_sha256_short) {
-      targetLines.push(`${target.label} ${t('connectorSourceSha256')}: ${target.source_sha256_short}`)
+      targetLines.push(`${label} ${t('connectorSourceSha256')}: ${target.source_sha256_short}`)
     }
     if (target.target_sha256_short) {
-      targetLines.push(`${target.label} ${t('connectorTargetSha256')}: ${target.target_sha256_short}`)
+      targetLines.push(`${label} ${t('connectorTargetSha256')}: ${target.target_sha256_short}`)
     }
     if (target.target_mtime) {
-      targetLines.push(`${target.label} ${t('connectorMtime')}: ${target.target_mtime}`)
+      targetLines.push(`${label} ${t('connectorMtime')}: ${target.target_mtime}`)
     }
     if (target.is_symlink) {
-      targetLines.push(`${target.label} ${t('connectorTargetIsSymlink')}`)
+      targetLines.push(`${label} ${t('connectorTargetIsSymlink')}`)
     }
     if (target.error) {
-      targetLines.push(`${target.label} ${t('connectorError')}: ${target.error}`)
+      targetLines.push(`${label} ${t('connectorError')}: ${target.error}`)
     }
     return targetLines
   })
@@ -257,7 +265,7 @@ function onDisconnect() {
   if (
     !window.confirm(
       `${t('connectorConfirmDelete')}\n${connectorTargets.value
-        .map((target) => `${target.label}: ${target.target_path}`)
+        .map((target) => `${targetLabel(target.label)}: ${target.target_path}`)
         .join('\n')}\n\n${t('connectorDeleteOnlyTargets')}`,
     )
   ) {
@@ -303,9 +311,9 @@ function onInstallTool() {
               class="target-state-dot"
               :style="{ background: stateMetaFor(target.state).color }"
               :data-tone="stateMetaFor(target.state).tone"
-              :title="`${target.label}: ${stateMetaFor(target.state).label}`"
+              :title="`${targetLabel(target.label)}: ${stateMetaFor(target.state).label}`"
             />
-            <span class="target-label">{{ target.label }}</span>
+            <span class="target-label">{{ targetLabel(target.label) }}</span>
             <code>{{ target.target_path }}</code>
             <span class="target-state-text">{{ stateMetaFor(target.state).label }}</span>
             <span v-if="target.error" class="target-error">{{ target.error }}</span>
@@ -388,32 +396,20 @@ function onInstallTool() {
             <button type="button" class="btn btn-ghost" @click="handleCopyPath">{{ t('connectorCopiedPath') }}</button>
           </div>
 
-          <dl class="target-meta-grid">
-            <div>
-              <dt>{{ t('connectorMetaKind') }}</dt>
-              <dd>{{ selectedAgent.kind }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('connectorMetaRuntime') }}</dt>
-              <dd>{{ selectedAgent.runtime ?? connector.id }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('connectorMetaAssignable') }}</dt>
-              <dd>{{ selectedAgent.assignable ? t('connectorMetaYes') : t('connectorMetaNo') }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('connectorMetaRoles') }}</dt>
-              <dd>{{ selectedAgent.roles?.join(' / ') || '-' }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('connectorMetaDefinition') }}</dt>
-              <dd>{{ selectedAgentTarget ? stateLabelForTarget(selectedAgentTarget) : 'metadata' }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('connectorMetaStatus') }}</dt>
-              <dd>{{ selectedAgent.status }}</dd>
-            </div>
-          </dl>
+          <BbInfoGrid class="target-meta-grid" columns="repeat(2, minmax(0, 1fr))">
+            <BbInfoItem :label="t('connectorMetaKind')" :value="selectedAgent.kind" />
+            <BbInfoItem :label="t('connectorMetaRuntime')" :value="selectedAgent.runtime ?? connector.id" />
+            <BbInfoItem
+              :label="t('connectorMetaAssignable')"
+              :value="selectedAgent.assignable ? t('connectorMetaYes') : t('connectorMetaNo')"
+            />
+            <BbInfoItem :label="t('connectorMetaRoles')" :value="selectedAgent.roles?.join(' / ') || '-'" />
+            <BbInfoItem
+              :label="t('connectorMetaDefinition')"
+              :value="selectedAgentTarget ? stateLabelForTarget(selectedAgentTarget) : 'metadata'"
+            />
+            <BbInfoItem :label="t('connectorMetaStatus')" :value="selectedAgent.status" />
+          </BbInfoGrid>
 
           <div class="target-path-preview">
             <span>{{ selectedAgent.source_path ? t('connectorSource') : t('connectorRegistry') }}</span>
@@ -491,9 +487,7 @@ function onInstallTool() {
 .connector-id {
   font-size: 12px;
   color: var(--bb-text-muted);
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
+  font-family: var(--bb-font-mono);
 }
 
 .state-label {
@@ -541,9 +535,7 @@ function onInstallTool() {
   border: 0;
   background: transparent;
   color: var(--bb-text-muted);
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
+  font-family: var(--bb-font-mono);
   font-size: 12px;
   text-align: left;
   cursor: pointer;
@@ -590,6 +582,7 @@ function onInstallTool() {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--bb-text);
+  font-family: var(--bb-font-mono);
 }
 
 .target-error {
@@ -664,9 +657,7 @@ function onInstallTool() {
   padding: 8px 10px;
   gap: 2px;
   display: grid;
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
+  font-family: var(--bb-font-mono);
   font-size: 12px;
   color: var(--bb-text);
   text-align: left;
@@ -699,6 +690,7 @@ function onInstallTool() {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--bb-text-muted);
+  font-family: var(--bb-font-mono);
 }
 
 .target-preview {
@@ -725,33 +717,12 @@ function onInstallTool() {
 .target-preview p {
   margin: 0;
   color: var(--bb-text-muted);
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
+  font-family: var(--bb-font-mono);
 }
 
 .target-meta-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
   margin: 12px 0;
-}
-
-.target-meta-grid div {
-  min-width: 0;
-}
-
-.target-meta-grid dt {
-  color: var(--bb-text-muted);
-  font-size: 11px;
-}
-
-.target-meta-grid dd {
-  margin: 2px 0 0;
-  color: var(--bb-text-strong);
-  font-size: 12px;
-  font-weight: 650;
-  overflow-wrap: anywhere;
+  --bb-info-grid-gap: 8px;
 }
 
 .target-path-preview {
@@ -771,6 +742,7 @@ function onInstallTool() {
   background: var(--bb-surface);
   border: 1px solid var(--bb-hairline);
   color: var(--bb-text);
+  font-family: var(--bb-font-mono);
   font-size: 11px;
   overflow-wrap: anywhere;
 }
@@ -836,9 +808,7 @@ function onInstallTool() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
+  font-family: var(--bb-font-mono);
 }
 
 .tool-status-detail code {

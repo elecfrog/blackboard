@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "title": "TaskGraph LLM 统一工具层初版落地",
+  "time": "2026-05-24T08:35:41Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "taskgraph-unified-tool-layer-runtime-renderers",
+  "done": [
+    "新增 `task_graph::tool_layer` 模块，将工具能力从 LLM resolver 中抽出：节点声明 toolkits，tool_layer 解析为 provider-neutral `ToolInjectionPlan`。",
+    "定义 `ToolTransportKind` 与 `ToolEndpointSpec`，统一表示 MCP / CLI / REST / Shell 四类工具入口；当前 concrete toolkit 仍是 `browser_use`，但 plan 已具备多 transport 承载形态。",
+    "将 Codex / Pi / OpenCode / CodeBuddy 的 MCP 配置渲染迁移到 tool_layer：Codex 输出 `--config mcp_servers.*`，Pi 输出 `.pi/mcp.json` 形态，OpenCode/CodeBuddy 保持各自 provider-specific 格式。",
+    "LLM resolver 改为只合并 opts/profile/node/toolkit 的 skills 与 MCP，再调用 `render_runtime_tool_config`；不再在 `nodes/llm.rs` 内直接维护 provider config 细节。",
+    "保留 `nodes::llm::*` builder re-export，避免已有测试和调用点断裂；同时在 `task_graph::mod` 公开新的 tool_layer 类型和 renderer。",
+    "前端 LLM 节点 Toolkits 文案更新为统一工具层语义，Browser Use 仍可在节点级按需开启。"
+  ],
+  "validation": [
+    "cargo fmt --all: 通过。",
+    "cargo test -p bb_core task_graph::tool_layer: 通过，6/6。",
+    "cargo test -p bb_core task_graph::nodes::llm::tests: 通过，17/17。",
+    "cargo check -p bb_core: 通过。",
+    "cargo check -p bb_daemon: 通过。",
+    "npm run build --prefix bb_web: 通过。",
+    "git diff --check（本次相关文件）: 通过，仅 CRLF warning。"
+  ],
+  "next_step": [
+    "下一步可以把 `bb_project_read` / `bb_inbox_admin` / `safe_code_edit` 等工具包加入 registry，每个 toolkit 声明工具、权限和 runtime renderer，而不是继续让 graph 手填 MCP/CLI 细节。",
+    "如果要让 Pi 完全 per-node 隔离 MCP，需要 Pi 支持显式 MCP config path，或 BB 给 Pi 每个 AgentSession 分配独立 execution root。"
+  ],
+  "related_locations": [
+    "bb_backend/crates/bb_core/src/task_graph/tool_layer.rs",
+    "bb_backend/crates/bb_core/src/task_graph/nodes/llm.rs",
+    "bb_backend/crates/bb_core/src/task_graph/mod.rs",
+    "bb_backend/crates/bb_core/src/task_graph/definition/types.rs",
+    "bb_backend/crates/bb_core/src/task_graph/validation/config.rs",
+    "bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue",
+    "bb_web/src/components/task-graph/taskGraphNodeVisuals.ts",
+    "bb_web/src/components/TaskGraphEditorPanel.vue",
+    "bb_web/src/i18n.ts"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

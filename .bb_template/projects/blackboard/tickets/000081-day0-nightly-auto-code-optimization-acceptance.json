@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "id": "000081",
+  "lane": "bbq",
+  "title": "Day0 夜间无人值守代码优化验收",
+  "summary": "Day0 验收票：承接夜间无人值守代码优化、bbpm inbox 清理与 ticket audit 的运行结果，以及无法归属到单一产品 ticket 的过程 handoff。",
+  "stories": [
+    {
+      "id": "da2f7fa3-2693-44e6-8549-c8d565a78159",
+      "given": "nightly-auto-code-optimization 已完成代码优化阶段",
+      "when": "进入维护阶段",
+      "then": "bbpm-maintain 清理 inbox 并执行 ticket audit"
+    },
+    {
+      "id": "db5a0e5f-ec5b-4b53-aecf-fde4d4a10b96",
+      "given": "inbox 存在无法归属到单一产品 ticket 的过程 handoff",
+      "when": "Day0 收口",
+      "then": "过程记录沉淀到本验收票，inbox 可清空"
+    }
+  ],
+  "risks": [
+    {
+      "id": "orphan_process_notes",
+      "description": "过程 handoff 没有汇总承接票时会长期留在 inbox。",
+      "mitigation": "本票作为 Day0 汇总承接点。",
+      "status": "mitigated"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-22",
+      "summary": "bbpm-maintain run run-20260522-072316-3bb88a35 succeeded; ticket audit passed; remaining retained inbox notes are Day0 process handoffs.",
+      "evidence": [
+        "run-20260522-072316-3bb88a35",
+        "inbox retained before manual drain: 10 markdown notes",
+        "ticket audit: passed"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "沉淀并准备清理剩余 Day0 过程 handoff：2026-05-21-codex-settings-runtime-connectors-frontend-rework.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "沉淀并准备清理剩余 Day0 过程 handoff：2026-05-21-codex-task-graph-template-three-graph-cleanup.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "沉淀并准备清理剩余 Day0 过程 handoff：2026-05-21-i18n-agent-frontend.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "沉淀并准备清理剩余 Day0 过程 handoff：2026-05-21-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "沉淀并准备清理剩余 Day0 过程 handoff：2026-05-22-codex-day0-pi-tool-policy-full-run.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "沉淀并准备清理剩余 Day0 过程 handoff：2026-05-22-codex-nightly-auto-code-optimization-final-output-contract.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "沉淀并准备清理剩余 Day0 过程 handoff：2026-05-22-codex-nightly-auto-code-optimization-run-监控与最终报告收束.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "沉淀并准备清理剩余 Day0 过程 handoff：2026-05-22-codex-nightly-auto-code-optimization-接入-bbpm-深度维护.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "沉淀并准备清理剩余 Day0 过程 handoff：2026-05-22-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff-3.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "沉淀并准备清理剩余 Day0 过程 handoff：2026-05-22-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff.md",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 这些 note 已经不再作为 inbox 待办存在；其事实被 000081 Day0 验收票承接，用于完成 Day0 inbox 清空。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Day0 收口完成：inbox markdown note 已清空，`.bb_template/projects/blackboard/__inbox__.json` 已重建为 `notes: []`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Day0 收口完成：ticket index 已重建，当前 ticket counter 为 000081，ticket 总数 77。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Day0 收口完成：ticket audit 通过，json_ticket_count=77，legacy_markdown_count=0，invalid_json_count=0，finding_count=0。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 为了保持 inbox 清空，本次最终交接记录写入 000081，不再创建新的 inbox handoff note。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-codex-minimax-cleaner-graph-review.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-minimax-cleaner-graph-review.json",
+        "Title: MiniMax 后台清道夫 graph 审阅建议\nTime: 2026-05-23T10:46:16Z\nSource: codex\nProject: blackboard\nTopic: minimax-cleaner-graph-review\nDone:\n- 审阅了 .bb_template/task_graphs/system 下 MiniMax/Pi 相关系统图，重点看 nightly-auto-code-optimization、bbpm-maintain、inbox-batch-cleanup、task-ticket-audit、code-monitor-check-fix、rust-vue-code-review、code-review-scout-fix。\n- 确认当前 MiniMax 已用于夜间总控报告、inbox 高置信归并、code review/scout fix、前后端健康汇总、research/KB 构建等后台批处理节点。\n- 判断 repo/inbox/ticket 日报能力应作为 read-only daily brief 节点加入夜间链路，优先挂在 bbpm-maintain 之后、nightly-overall-report 之前，避免塞进 inbox-batch-cleanup 的清理循环。\nValidation:\n- mcp__bb__.list_projects: 通过，确认 blackboard project 可见。\n- 本轮为架构/图谱审阅，未修改本地文件，未运行构建。\nNext step:\n- 若产品确认，新增一个 collect_daily_context shell 节点和 minimax daily-brief LLM 节点，输出结构化 repo/inbox/ticket morning brief 给 nightly-overall-report 使用。\nRelated locations:\n- .bb_template/task_graphs/system/nightly-auto-code-optimization.json\n- .bb_template/task_graphs/system/bbpm-maintain.json\n- .bb_template/task_graphs/system/inbox-batch-cleanup.json\n- .bb_template/task_graphs/system/task-ticket-audit.json\n- scripts/collect_nightly_final_facts.py\n- scripts/collect_inbox_resource_bundle.py",
+        "cleanup reason: note 的 topic 是 minimax-cleaner-graph-review，done 内容是审阅 system graph 下 MiniMax 相关节点，确认日报能力应加入夜间链路；related_tickets 为空但 topic 和 done 语义明确指向 000081 夜间无人值守验收票。"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-codex-minimax-daily-brief-graph-implementation.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-minimax-daily-brief-graph-implementation.json",
+        "Title: MiniMax repo/inbox/ticket 日报节点已接入夜间 graph\nTime: 2026-05-23T10:52:45Z\nSource: codex\nProject: blackboard\nTopic: minimax-daily-brief-graph-implementation\nDone:\n- 新增 scripts/collect_daily_context.py，确定性采集 repo git 状态、inbox 剩余 note 概览、ticket 状态分布/最近开放票/陈旧开放票、以及当前 TaskGraph run 的关键 node outputs。\n- 将 .bb_template/task_graphs/system/nightly-auto-code-optimization.json 升级到 version 8，在 bbpm-maintain 后新增 collect-daily-context shell 节点和 daily-brief MiniMax/Pi LLM 节点。\n- 调整夜间主链路为 code review -> scout fix -> code quality -> bbpm-maintain -> collect-daily-context -> daily-brief -> collect-final-facts -> nightly-overall-report -> system-write-summary。\n- 扩展 scripts/collect_nightly_final_facts.py，把 daily-brief 和 collect-daily-context 输出纳入最终 facts，供夜间总报告使用。\nValidation:\n- python scripts/collect_daily_context.py --repo-root . --workspace-root .bb_template --project blackboard --max-items 5: 通过。\n- python -m json.tool .bb_template/task_graphs/system/nightly-auto-code-optimization.json: 通过。\n- python -m py_compile scripts/collect_daily_context.py scripts/collect_nightly_final_facts.py: 通过。\n- 自定义边引用检查: 通过，nightly-auto-code-optimization version=8，node_count=11，edge_count=10，missing_edge_refs=[]。\n- g...",
+        "cleanup reason: note 的 document.related_tickets 显式写明 '000081'，topic 是 minimax-daily-brief-graph-implementation，done 内容已将日报节点接入 system/nightly-auto-code-optimization graph。"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-codex-nightly-graph-run-watch-cwd-regression.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-nightly-graph-run-watch-cwd-regression.json",
+        "Title: Nightly graph 试跑失败定位：shell cwd 按 .bb_template 解析\nTime: 2026-05-23T11:20:02Z\nSource: codex\nProject: blackboard\nTopic: nightly-graph-run-watch-cwd-regression\nDone:\n- 按用户要求试跑 system/nightly-auto-code-optimization。第一轮 run-20260523-110241-b26a2412 失败在 code-review 子图，原因是 bb-pm agent model 仍为旧 minimax-cn-coding-plan/MiniMax-M2.7-highspeed；pi --list-models 显示当前可用 minimax-cn/MiniMax-M2.7-highspeed。\n- 修正 .bb_template/agents/agents.toml 的 bb-pm model 后重跑，第二轮 run-20260523-110356-5b96eec0 进入 code-quality-check-fix 子图 run-20260523-110827-f0f63c58。\n- 第二轮 code-review 与 review-scout-fix 均成功；code-monitor-check-fix 的 clippy-scan/clippy-fix/frontend-i18n/frontend-theme/frontend-write-scope-audit 均完成，失败点是 rust-format-fix。\n- 读取 rust-format-fix.log：shell node starting command=cargo args=[\"fmt\"] 后立即 [invalid_cwd] 系统找不到指定的文件。shell_node.rs prepare_shell 将 cwd 相对 workspace_root 解析；当前 workspace_root 为 .bb_template，导致 cwd=bb_backend 被解析成 .bb_template/bb_backend，不存在。\nValidation:\n- cargo run --manifest-path bb_backend/Cargo.toml -p bb_cli -- --root .bb_template daemon --graph system/nightly-auto-code-optimization --project blackboard --once --node-timeout-seconds 900 --run-timeout-seconds 3600: 第一轮失败，模...",
+        "cleanup reason: note 的 document.related_tickets 显式写明 '000081'，done 内容是 nightly graph 试跑失败定位，定位到 shell cwd 解析问题，属于夜间无人值守运行中的过程 handoff。"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff.json`.",
+      "evidence": [
+        "inbox/2026-05-23-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff.json",
+        "Title: 代码监控检查和修复 graph handoff\nTime: 2026-05-23T11:59:44Z\nSource: task-graph-code-monitor-check-fix\nProject: blackboard\nTopic: code-monitor-check-fix-pi-mcp-handoff\nDone:\n- 前端 i18n 检查：识别 9 处硬编码文本（按钮字符、分页符号、面包屑分隔符），制定 12 个新增 i18n key 和 7 个 Vue 文件修改计划\n- 前端暗色模式修复：在 styles.css 添加 workflow/connector 状态颜色、graph node/edge 颜色等 CSS 变量覆盖\n- 后端 Rust clippy 扫描：清除约 614 处警告，自动修复 uninlined_format_args/redundant_clone/needless_collect 等 78 处问题\n- 后端代码格式化：cargo fmt 执行通过，0 格式化错误，代码风格符合 rustfmt 规范\nValidation:\n- 前端构建验证：npm run build 成功（15.12s），0 errors，0 warnings，产物统计 CSS ~700KB、JS ~3.3MB\n- 后端 clippy 验证：cargo clippy --all-targets --all-features 通过，0 warnings，0 errors，0 exit code\n- 前端仍有待修复：9 处 i18n 硬编码（AgentWorkbench.vue、AgentListPanel.vue 等 7 个文件）和 7 个 Vue 文件硬编码颜色需迁移到 CSS 变量\n- 前端写入限制：pi 工具 write_roots 限制导致无法自动应用修复，需人工介入\nNext step:\n- 应用前端 i18n 修复计划：在 i18n.ts 新增 12 个 key，修改 7 个 Vue 文件替换硬编码文本\n- 迁移 Vue 文件硬编码颜色：AgentConnectorRow.vue、GraphCanvas.vue、LaneManager.vue、TicketDependencyGraph.vue 等改用 CSS 变量\n- 长期建议：在 Code Review 流程中加入硬编码检测规则（颜色/文本），避免后续累积\nRelated locations:\n- .bb_template/task_graphs/system/code-monitor-check-fix.json\n- scripts/task_graph_code_monitor_verify.py",
+        "cleanup reason: note 的 source 是 task-graph-code-monitor-check-fix，done 内容是前端 i18n 检查、暗色模式修复、Rust clippy 扫描和格式化，属于 nightly graph code-monitor-check-fix 子图的 handoff，语义归属 000081 夜间无人值守验收。"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-codex-nightly-graph-runtime-cwd-rerun.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-nightly-graph-runtime-cwd-rerun.json",
+        "Title: 修复 nightly graph shell cwd 回归并重跑成功\nTime: 2026-05-23T20:03:30+08:00\nSource: Codex\nProject: blackboard\nTopic: nightly-graph-runtime-cwd-rerun\nDone:\n- 定位 `rust-format-fix` 失败原因：CLI 以 `.bb_template` 为 workspace root 时，shell node 将 `cwd: bb_backend` 解析到 `.bb_template/bb_backend`，导致 `invalid_cwd`。\n- 修复 `shell_node` cwd 解析：禁止绝对/父级/盘符/rootdir 组件；当 workspace root 是 `.bb_template` 且 workspace 内 cwd 不存在时，允许回退到仓库根目录下同名相对路径，并保留 repo-root containment 校验。\n- 补充 runtime 回归测试：`.bb_template` workspace 下 `cwd: bb_backend` 可解析到 repo parent；`.bb_template` 下 `cwd: ..` 仍失败。\n- 处理第二个运行失败点：`frontend-theme` MiniMax 节点越界编辑 Vue component；将该节点 tool_policy 写入根从 `bb_web/src` 收窄到 `bb_web/src/styles.css`，并让 write-scope audit 识别 Blackboard policy-blocked edit。\n- 显式使用独立 `CARGO_TARGET_DIR=.bb_template/runtime/cargo-target/codex-daemon` 构建并运行 `bb_daemon`，避免覆盖正在运行的默认 `bb-daemon.exe`。\n- 重跑 nightly graph：父 run `run-20260523-114434-1d0926f8` succeeded；关键子图 `code-quality-check-fix` 为 `run-20260523-114845-c289d756`，所有节点 succeeded；最终报告写入 `.bb_template/wiki/nightly/nightly-report-2026-05-22.md`。\nValidation:\n- `cargo fmt --all --check`（bb_backend）：通过。\n- `cargo test -p bb_core shell_node_cwd --lib`：通过。\n- `cargo test -p ...",
+        "cleanup reason: document.related_tickets 显式包含 '000081'，title 为 '修复 nightly graph shell cwd 回归并重跑成功'，属于 Day0 夜间无人值守代码优化验收范围。"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff.json`.",
+      "evidence": [
+        "inbox/2026-05-23-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff.json",
+        "Title: 代码监控检查和修复 graph handoff\nTime: 2026-05-23T14:30:42Z\nSource: task-graph-code-monitor-check-fix\nProject: blackboard\nTopic: code-monitor-check-fix-pi-mcp-handoff\nDone:\n- 前端i18n: 扫描51+ Vue组件覆盖率98%，发现BbDialog.vue硬编码\n- 前端暗色模式: 修复styles.css中.aw-remove-btn:hover暗色模式\n- 前端语法检查: 发现AgentWorkbench.vue约第280行多余右花括号\n- 后端Clippy: 修复bb_core/runtime.rs权限安全警告设0o644\n- 后端格式化: cargo fmt通过\nValidation:\n- 前端构建通过: npm run build 退出码0，78个chunk，主CSS 448KB\n- 后端Clippy通过: cargo clippy --all-targets 0警告0错误\n- 后端编译通过: cargo check --all-targets Finished dev profile\nNext step:\n- [高优先级] AgentWorkbench.vue第280行模板语法错误，多余右花括号，需手动修复\n- [中优先级] BbDialog.vue第9行硬编码closeLabel，后续迭代改为t('close')\nRelated locations:\n- .bb_template/task_graphs/system/code-monitor-check-fix.json\n- scripts/task_graph_code_monitor_verify.py",
+        "cleanup reason: note_8 是 task-graph-code-monitor-check-fix graph 的 handoff，done 包含前端 i18n/暗色模式修复、后端 Clippy/权限修复等无人值守代码检查和修复结果，时间 2026-05-23T14:30:42Z 与 000081 updated_at 2026-05-23 一致，topic 'code-monitor-check-fix-pi-mcp-handoff' 明确是 BBPM inbox 清理与 ticket audit 运行结果的交付物。"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-codex-nightly-graph-second-rerun-pi-mcp-race.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-nightly-graph-second-rerun-pi-mcp-race.json",
+        "Title: 第二轮 nightly rerun：修复 Pi mcp.json 并发竞态后成功\nTime: 2026-05-23T22:34:45+08:00\nSource: Codex\nProject: blackboard\nTopic: nightly-graph-second-rerun-pi-mcp-race\nDone:\n- 按用户要求再跑一轮 nightly graph，启动方式继续使用 Git Bash + 独立 `CARGO_TARGET_DIR=.bb_template/runtime/cargo-target/codex-daemon` 的 `bb_daemon`，避免覆盖正在运行的默认后端。\n- 首个复测 run `run-20260523-135224-7308b129` 失败于 `code-quality-check-fix` 子图：三个 Pi/MiniMax 节点并发启动时同时写 `.bb_template/.pi/mcp.json`，Windows rename 命中 `AccessDenied`，节点 `dispatch_failed`。\n- 修复 runtime：`write_pi_mcp_config` 在目标 `mcp.json` 内容已经一致时跳过写入；若 atomic write 因 `PermissionDenied` 失败，则重读目标文件，确认内容一致时视为成功，避免并发 Pi session 互相踩文件锁。\n- 补回归测试 `pi_llm_node_skips_rewriting_identical_mcp_config`：预置相同内容的只读 `.pi/mcp.json`，Pi LLM node 仍应成功。\n- 重新 build 独立 target 后再次运行 `run-20260523-140645-b297fc93`，最终 succeeded。`code-quality-check-fix` 子图 `run-20260523-142512-e5115332` 全节点 succeeded：并发 Pi 节点无 `mcp.json` access denied，`rust-format-fix`、`frontend-write-scope-audit`、compile verify 均通过。\n- 观察到 `review-code` 第一 attempt 出现 MiniMax thinking 重复并 timeout，runtime retry 进入 attempt 2/3 后成功；本轮没有因此改 graph。\nValidation:\n- `cargo fmt --all --check`（bb_backend）：通过。\n- `cargo test -p bb_core pi_llm_node_skips_re...",
+        "cleanup reason: document.related_tickets 明确标注 ['000081']；内容为修复 Pi mcp.json 并发竞态的 nightly graph rerun，属于 Day0 验收票 000081 覆盖的无人值守代码优化验收范围。"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-codex-nightly-prod-rerun-20260523.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-nightly-prod-rerun-20260523.json",
+        "Title: Codex handoff: nightly graph production rerun succeeded, report path bug observed\nTime: 2026-05-23T15:40:45Z\nSource: codex\nProject: blackboard\nTopic: nightly-prod-rerun-20260523\nDone:\n- 用 Git Bash 启动并盯完一轮 system/nightly-auto-code-optimization，parent run=run-20260523-152301-68ebe9d8，最终 status=succeeded。\n- 子图结果：code-review=run-20260523-152301-72b0d760 succeeded；review-scout-fix=run-20260523-152532-5f07eb40 succeeded；code-quality-check-fix=run-20260523-152637-fabb7c38 succeeded；inbox-ticket-maintain=run-20260523-153609-7c97a668 succeeded。\n- 质量验证：rust-format-fix cwd=C:\\Dev\\blackboard\\bb_backend exit_code=0；rust clippy verify exit_code=0；frontend build exit_code=0；frontend write-scope audit violation_count=0。\n- 本轮未中途修改图或代码；按用户要求先跑完。观察到 nightly report 新报告写到 .bb_template/wiki/nightly/nightly-report-2026-05-22.md，而 project wiki 下 .bb_template/projects/blackboard/wiki/nightly/nightly-report-2026-05-22.md 仍是旧文件。\n- 观察到 daily-brief-output.md 实际生成，但 collect-final-facts 中 daily_brief={exists:false,path:null}，最终总报告没有纳入 daily brief。\n- 观察到 clippy-scan 扫描节点曾通过 touch Rust 文件触发全量 clippy；最终成功，但只读扫描策略需要下轮收紧。\nValidation:\n- 命令：CARGO_TARGET_DIR=.bb_template/runtime/cargo-target/codex-daemon cargo...",
+        "cleanup reason: note 文档内 related_tickets 显式包含 000081，topic 为 nightly-prod-rerun-20260523，属于 Day0 夜间无人值守代码优化验收票范畴"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff-1.json`.",
+      "evidence": [
+        "inbox/2026-05-23-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff-1.json",
+        "Title: 代码监控检查和修复 graph handoff\nTime: 2026-05-23T16:06:38Z\nSource: task-graph-code-monitor-check-fix\nProject: blackboard\nTopic: code-monitor-check-fix-pi-mcp-handoff\nDone:\n- 前端 i18n 检查：扫描 60+ Vue 组件，发现 AgentConnectorRow.vue 中 2 处硬编码文本（分隔符和 fallback 文本），覆盖率 98%\n- 前端暗色模式检查：styles.css 覆盖完整，主要区域已适配；多个 .vue 文件存在硬编码颜色值\n- 前端编译验证：npm build 通过，退出码 0，耗时 13.59s，生成 69 个 chunk，无错误或警告\n- 后端 Rust Clippy 检查修复：扫描 556 个警告，自动修复 2 处，手动修复 26 处，3 处合理使用 #[allow] 保留\n- 后端 Rust 编译验证：所有 crate (bb_core/bb_daemon/bb_schema/bb_cli) 编译通过，cargo fmt 通过，剩余警告 0\nValidation:\n- 前端构建：✅ 通过 (退出码 0，耗时 13.59s，69 个 chunk)\n- 前端 i18n：⚠️ 98% 覆盖，AgentConnectorRow.vue 2 处硬编码待修复\n- 前端暗色模式：⚠️ styles.css 完整，.vue 文件硬编码颜色有优化空间\n- 后端 Rust 编译：✅ 所有 crate 通过，clippy 剩余警告 0\n- 后端格式化：✅ cargo fmt 通过\nNext step:\n- 在 i18n.ts 添加 connectorMetaUnavailable 键，修复 AgentConnectorRow.vue 中 2 处硬编码文本\n- 后续优化：将 .vue 文件硬编码颜色提取为主题响应式变量\nRelated locations:\n- .bb_template/task_graphs/system/code-monitor-check-fix.json\n- scripts/task_graph_code_monitor_verify.py\n- bb_web/src/components/AgentConnectorRow.vue\n- bb_web/src/i18n.ts\n- bb_backend/crates/bb_core\n- bb_backend/crates/bb_daemon",
+        "cleanup reason: topic 为 code-monitor-check-fix-pi-mcp-handoff，属于 bbpm inbox 清理与 ticket audit 的运行结果 handoff，与 000081 验收票描述一致"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff.json`.",
+      "evidence": [
+        "inbox/2026-05-23-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff.json",
+        "Title: 代码监控检查和修复 graph handoff\nTime: 2026-05-23T15:36:07Z\nSource: task-graph-code-monitor-check-fix\nProject: blackboard\nTopic: code-monitor-check-fix-pi-mcp-handoff\nDone:\n- 前端 i18n 国际化检查通过：所有 Vue 组件正确使用 t() 函数，无硬编码用户可见文本\n- 前端明暗模式检查通过：styles.css 中 CSS 变量系统完整覆盖 graph、lane、sticky、agent 等组件\n- 前端构建验证通过：npm run build 成功（13.39s），无错误或警告\n- 后端 Rust clippy 检查通过：5 个 crate 无 lint 警告，编译检查 clean\n- 后端 cargo fmt 格式化检查通过：所有代码符合 rustfmt 规范\nValidation:\n- 前端 bb_web npm build: 退出码 0，构建产物完整（主入口 4.05kB，样式 448.32kB）\n- 后端 cargo clippy --all-targets: 退出码 0，issue_count: 0，无警告\n- 后端 RUSTFLAGS=\"-D warnings\" cargo check: 通过，无编译警告\n- 后端 cargo fmt --check: 退出码 0，格式一致\nRelated locations:\n- .bb_template/task_graphs/system/code-monitor-check-fix.json\n- scripts/task_graph_code_monitor_verify.py",
+        "cleanup reason: topic 为 code-monitor-check-fix-pi-mcp-handoff，与 note_18 同源 handoff，属于 000081 验收票覆盖范围"
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "kind": "wiki",
+      "target": "nightly/nightly-report-2026-05-22.md",
+      "label": "Day0 Nightly Report"
+    }
+  ],
+  "status": "review",
+  "created_at": "2026-05-22",
+  "updated_at": "2026-05-23",
+  "extra": {}
+}

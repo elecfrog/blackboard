@@ -144,7 +144,7 @@ Workspace headers are orientation surfaces first and action surfaces second. The
 - **Chrome background:** Main-column sticky bands (`bb-workspace-topbar`, `bb-workspace-head`, and the project `bb-nav` bar) share `var(--bb-workbench-chrome-bg)` so they read as one shell—not pure `var(--bb-surface)` on canvas.
 
 - The sticky topbar owns global controls such as locale, theme, lane management, and whole-project refresh. Do not duplicate those controls inside a workspace header unless the local action has a visibly narrower scope.
-- Workspace header actions should be few, specific, and aligned to the shared `bb-top-action-button` grammar. A primary creation action is acceptable; repeated global refresh is usually noise.
+- Workspace header actions should be few, specific, and aligned to shared primitives such as `BbActionGroup` and `BbButton`. A primary creation action is acceptable; repeated global refresh is usually noise.
 - Keep the title/subtitle block and action slot as separate layout areas. Typography selectors for header copy must target the title block, not every descendant `span` or `p`.
 - Treat button label spans as part of the control, not as header copy. If an action slot needs status text, give that text its own class and box model.
 - When a header button appears misaligned, check parent selector leakage before nudging icon positions. A broad selector can make the local button wrong while the same primitive is correct in the global topbar.
@@ -160,9 +160,17 @@ Content workspace pages use a two-part structure: a compact header above a busin
 - Markdown-first readers should let the document title occupy the reader's top line. Hide decorative heading anchors when they disrupt alignment, and keep the first document title aligned with adjacent body columns.
 - Inbox full view is the current pilot for this pattern: compact workspace header with count in the right slot, then a business body with a note list on the left and Markdown reader on the right.
 
-### Cards And Rows
+### Items, Cards, And Rows
 
+- Items are single-line navigation or selection entries, not content cards.
+- Item content is title-only. An item may include one fixed affordance such as a chevron, checkbox, icon, or selected mark, but it should not carry a second text channel.
+- Do not place metadata, timestamps, source labels, excerpts, descriptions, badges, actions, or multi-line summaries inside an item. If that information is required, the component is a card, table row, or detail panel.
+- Item height follows compact row grammar, usually 32-36px. Titles use the normal UI font, one-line ellipsis, and no monospace unless the title itself is an ID or path.
+- In list/detail layouts, the left pane should use title-only items for selection. The detail pane, reader header, card, or table owns source, time, excerpts, attachments, actions, and structured content.
+- Use the shared `BbObjectItem` / `bb-object-list` grammar for left-pane object selection before adding local item CSS. Local pages may provide icons or one fixed affordance, but not a second text channel.
+- If a left-pane object needs delete, run, favorite, or move controls, keep those controls as adjacent row actions. The selectable item inside that row remains title-only.
 - Cards represent real objects: tickets, agents, connectors, notes, graph nodes.
+- Cards may contain multiple fields, status, metadata, body snippets, and actions, but they still need one clear object boundary.
 - Section containers are light surfaces with hairline borders, not decorative cards.
 - Use subtle hover states and focus outlines. Avoid heavy shadows.
 - Do not use card nesting as a default way to create hierarchy. For operational pages, use rows, bands, split panes, and restrained bordered surfaces.
@@ -198,6 +206,22 @@ Dense editor rows are the default grammar for structured configuration data. The
 
 The recurring failure mode in dense workbench UI is not a missing color token; it is unclear ownership. Parent containers, row components, and field controls must not all try to solve layout at once.
 
+- Shared UI primitives live in `src/components/common` and are the first stop for recurring chrome. Use `BbButton`, `BbField`, `BbDialog`, `BbStatusPill`, `BbEmptyState`, `BbInlineAlert`, and `BbObjectItem` before adding page-local button, form, modal, status, empty, alert, or item CSS.
+- Text-like actions use `BbInlineAction`; do not keep page-local link buttons such as `view all`, `open`, `load`, or `analytics` styled through feature-specific classes.
+- Dense editor add/remove controls use `BbButton` with `size="mini"` or `size="sm"`. Page-local CSS may place the button in a grid cell, but it must not redefine the button skin, hover state, icon size, or disabled state.
+- Boolean setting rows use `BbCheckboxField`. Do not create local `*-checkbox-row` classes for routine checkboxes; local components may only control placement around the shared checkbox field.
+- Reference chips use `BbRefChip`. This includes read-only references such as `{{inputs.intent}}` and clickable binding shortcuts. Do not restyle reference chips in each Task Graph form.
+- Binary or small option switches use `BbSegmentedControl`. Do not build local segmented buttons with ad hoc active classes.
+- Summary toggles that expose a compact title plus secondary count/state use `BbSummaryChip`. This includes canvas-adjacent configuration toggles such as graph inputs/settings; do not duplicate active chip skins in editor and preview panels.
+- Dense configuration rows use `BbDenseRow` plus `bb-dense-cell`, `bb-dense-cell-label`, and `bb-dense-control`. Business components may declare columns and grid areas, but row chrome, label typography, and control sizing stay in the shared primitive grammar.
+- Label/value metadata uses `BbInfoGrid` and `BbInfoItem`. Use `cards` for compact fact cells and `rows` for diagnostics/popovers/document metadata; tune columns, density, mono text, and truncation through props or CSS variables on the parent. Do not restyle `dt/dd` cells locally for routine metadata. BDD story bodies such as Given/When/Then may keep a domain-specific structure because they are content, not metadata.
+- Reusable section headers use `BbSectionHeader`. This covers title/count/action rows inside tickets, inbox JSON documents, and agent workbench sections. Business components may provide the action buttons, but title typography, count pill, divider, and action alignment belong to the shared primitive.
+- Search/action/count toolbars use `BbToolbar`. Use `variant="bar"` for sticky workspace topbars and `variant="inline"` for action groups inside workspace headers. Business components may supply search inputs, filters, or buttons, but toolbar spacing, wrapping, sticky chrome, and action alignment stay in the primitive.
+- Repeated button clusters use `BbActionGroup`; icon-only commands use `BbIconCommand` or `BbButton icon-only`. Business components may choose the action order and disabled state, but they must not redefine button skin, hover, focus, gap, or icon sizing through page-local classes.
+- Primitive styling is centralized in `src/styles.css` under the shared `bb-*` grammar. Legacy selectors may be mapped there during migration, but they are compatibility shims. When a primitive needs a visual change, update the primitive/component-level grammar once instead of editing each business component.
+- Business components own placement and product-specific structure only: grid, section order, object data, and domain interactions. They should not redefine border radius, button height, hover color, status pill color, field padding, dialog chrome, or empty-state typography for standard controls.
+- Scoped CSS must not broadly target `button`, `input`, `select`, `textarea`, or status/empty descendants when a shared primitive is present. If an old selector still needs to coexist during migration, exclude shared primitives explicitly, for example `button:not(.bb-button)`.
+- Prefer CSS variables on the parent to tune density or width of shared primitives. Do not fork a new local class because one page wants a 30px button or a narrower dialog.
 - A parent component owns placement: which bands appear, their order, and how they sit beside the canvas or shell. It does not own the internal row grammar of a child component.
 - A field-heavy child component owns its own rows, cells, controls, action buttons, and overflow behavior. Keep these styles scoped to the child root.
 - Avoid broad selectors such as `.panel input`, `.node-card select`, or `.editor textarea` when the panel contains reusable child components. These selectors easily leak height, padding, and overflow assumptions into a component that already has a tighter grammar.
@@ -222,6 +246,7 @@ These issues have appeared repeatedly in Task Graph, Wiki, Markdown, and Board s
 - Half-width form panels look tidy at first, then fail as soon as each side contains multi-field rows. Stack dense configuration bands unless both panels are genuinely sparse.
 - Page-level CSS fixes make one screenshot pass but create side effects in child components. Prefer moving the box model into the component that owns the repeated pattern.
 - DOM inspection can confirm structure, but it cannot confirm spatial quality. Use the actual running page when judging canvas overlays, inspector width, row density, and overflow.
+- An item that grows a timestamp, excerpt, badge stack, secondary line, or inline action bar is usually a card disguised as an item. Rename it or simplify it before polishing CSS.
 - Helper duplication is easy to miss in large components. If a formatter, slugifier, parser, or type-color map has to be kept "the same as" another file, it should usually be shared.
 - Large files should be split along product responsibilities: catalog, editor, run inputs, binding list, renderer helpers, and domain transforms. Do not split only by line count.
 - Refactors in active workbench surfaces should be small and closed: one boundary, one build, one handoff. This keeps side effects visible while multiple agents are editing nearby files.
@@ -235,6 +260,7 @@ The Task Graph editor is a production work surface: configuration, canvas manipu
 - For graph-level inputs, one pipeline input is one full row. The canonical order is ID, label, type, default value, reference, trailing action.
 - For node bindings such as `prompt_vars` and `input_bindings`, one binding is one row. The canonical order is key, value, trailing action, then optional wrapped reference chips.
 - Use the shared dense components for these patterns. The editor, detail preview, and node inspector should not each reinvent input rows or binding rows.
+- LLM toolkit selectors use `BbSectionHeader` for the section title and one `BbDenseRow` per toolkit option. Keep the checkbox as the primary control and the description as muted row support text; do not restyle toolkit rows as local cards.
 - Catalog sidebars should keep one card density across list, preview, and detail routes. Route-specific classes may own height, scrolling, or embedded-panel behavior, but not a different card size unless the product intentionally changes the information hierarchy.
 - Catalog cards separate identity, state, and actions. Put editable/readonly state near the title, not in the action row. Actions that operate on the selected graph belong in the preview header beside Run; left catalog cards should stay light and avoid rows of repeated icon-only controls.
 - Repeated catalog run affordances should be compact status squares aligned with the leading object icon. Use icon state for idle/running/succeeded/failed and keep verbose run labels in tooltips or the selected preview action area.

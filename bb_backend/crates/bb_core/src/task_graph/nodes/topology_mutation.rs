@@ -6,9 +6,10 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::task_graph::definition::types::{
-    EdgeKind, NodePin, PinCategory, PinDirection, PinValueType, TaskGraphEdge, TaskGraphError,
-    TaskGraphNode,
+    EdgeKind, NodePin, NodeType, PinCategory, PinDirection, PinValueType, TaskGraphEdge,
+    TaskGraphError, TaskGraphNode,
 };
+use crate::task_graph::nodes::runtime;
 use crate::task_graph::nodes::{eval, kb_staging};
 use crate::task_graph::pregel::outcome::NodeOutcome;
 use crate::task_graph::pregel::runner::RunnerOptions;
@@ -23,10 +24,14 @@ const DEFAULT_AGENT: &str = "native";
 
 #[derive(Debug, Clone, Deserialize)]
 struct LlmMutationConfig {
+    #[serde(default = "default_mutation_mode")]
     mode: LlmMutationMode,
     #[serde(default)]
     inputs: Option<Value>,
+    #[serde(default)]
     target_node_id: String,
+    #[serde(default)]
+    patch_target_source_ids: bool,
     #[serde(default)]
     generated: GeneratedNodeConfig,
 }
@@ -34,6 +39,7 @@ struct LlmMutationConfig {
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum LlmMutationMode {
+    Fanout,
     ScoutFanout,
     WriterFanout,
 }
@@ -48,8 +54,20 @@ struct GeneratedNodeConfig {
     model: Option<String>,
     #[serde(default)]
     variant: Option<String>,
+    #[serde(default)]
+    skills: Vec<String>,
+    #[serde(default)]
+    resource_bundle: Option<Value>,
+    #[serde(default)]
+    output_contract: Option<Value>,
+    #[serde(default)]
+    lifecycle: Option<Value>,
     #[serde(default = "default_generated_artifact_type")]
     output_artifact_type: String,
+    #[serde(default)]
+    prompt_template: Option<String>,
+    #[serde(default)]
+    inputs: Option<Value>,
 }
 
 impl Default for GeneratedNodeConfig {
@@ -59,7 +77,13 @@ impl Default for GeneratedNodeConfig {
             agent: default_generated_agent(),
             model: None,
             variant: None,
+            skills: Vec::new(),
+            resource_bundle: None,
+            output_contract: None,
+            lifecycle: None,
             output_artifact_type: default_generated_artifact_type(),
+            prompt_template: None,
+            inputs: None,
         }
     }
 }
@@ -67,17 +91,21 @@ impl Default for GeneratedNodeConfig {
 #[derive(Debug, Clone)]
 struct FanoutItem {
     id: String,
+    title: Option<String>,
     scope: Option<String>,
     goal: Option<String>,
+    scope_hints: Vec<String>,
+    paths: Vec<String>,
+    expected_output: Option<String>,
     page_ids: Vec<String>,
     target_paths: Vec<String>,
 }
 
-pub(crate) fn execute_llm_mutation_node(
+pub fn execute_llm_mutation_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
     run: &TaskGraphRun,
-    _edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
+    edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
 ) -> Result<NodeOutcome, TaskGraphError> {
     let ws = &opts.workspace_root;
     let project = &opts.project;
@@ -90,7 +118,7 @@ pub(crate) fn execute_llm_mutation_node(
         project,
         run_id,
         &node.id,
-        &format!("[{}] llm_mutation node starting", start_time),
+        &format!("[{start_time}] llm_mutation node starting"),
     )?;
     run_state::update_node_state(
         ws,
@@ -131,7 +159,21 @@ pub(crate) fn execute_llm_mutation_node(
     );
     let source_node_id = node.id.clone();
 
-    let plan = match mutation_plan_input(&inputs, &opts.workspace_root) {
+    let target_node_id = match mutation_target_node_id(node, &config, edge_map) {
+        Ok(target) => target,
+        Err(message) => {
+            return failed_outcome(
+                node,
+                start_time,
+                started.elapsed().as_millis() as u64,
+                "invalid_mutation_target",
+                message,
+            );
+        }
+    };
+    let direct_edge_id = direct_target_edge_id(edge_map, &node.id, &target_node_id);
+
+    let plan = match plan_from_inputs_or_llm(opts, node, run, edge_map, &config, &inputs) {
         Ok(plan) => plan,
         Err(message) => {
             return failed_outcome(
@@ -156,12 +198,22 @@ pub(crate) fn execute_llm_mutation_node(
             );
         }
     };
-    let requests = build_fanout_mutations(node, &config, &source_node_id, &items);
+    let requests = build_fanout_mutations(
+        node,
+        &config,
+        &source_node_id,
+        &target_node_id,
+        direct_edge_id.as_deref(),
+        &items,
+        &plan,
+    );
     let artifact_value = json!({
         "artifact_type": "topology_mutation",
         "mode": mode_name(config.mode),
         "source_node_id": source_node_id,
-        "target_node_id": config.target_node_id,
+        "target_node_id": target_node_id,
+        "merge_goal": string_field(&plan, "merge_goal"),
+        "doc_target": string_field(&plan, "doc_target"),
         "generated_node_count": items.len(),
         "request_count": requests.len(),
         "requests": requests,
@@ -215,14 +267,114 @@ pub(crate) fn execute_llm_mutation_node(
     })
 }
 
+fn mutation_target_node_id(
+    node: &TaskGraphNode,
+    config: &LlmMutationConfig,
+    edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
+) -> Result<String, String> {
+    if !config.target_node_id.trim().is_empty() {
+        return Ok(config.target_node_id.trim().to_string());
+    }
+    let outgoing = edge_map
+        .get(&node.id)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|edge| edge.kind == EdgeKind::Exec)
+        .collect::<Vec<_>>();
+    match outgoing.as_slice() {
+        [edge] => Ok(edge.to.clone()),
+        [] => Err(
+            "llm_mutation requires target_node_id or exactly one outgoing exec edge".to_string(),
+        ),
+        _ => Err(
+            "llm_mutation has multiple outgoing exec edges; set target_node_id explicitly"
+                .to_string(),
+        ),
+    }
+}
+
+fn direct_target_edge_id(
+    edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
+    node_id: &str,
+    target_node_id: &str,
+) -> Option<String> {
+    edge_map
+        .get(node_id)?
+        .iter()
+        .find(|edge| edge.kind == EdgeKind::Exec && edge.to == target_node_id)
+        .map(|edge| edge.id.clone())
+}
+
+fn plan_from_inputs_or_llm(
+    opts: &RunnerOptions,
+    node: &TaskGraphNode,
+    run: &TaskGraphRun,
+    edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
+    config: &LlmMutationConfig,
+    inputs: &eval::NodeInputs,
+) -> Result<Value, String> {
+    if has_mutation_plan_input(inputs) {
+        return mutation_plan_input(inputs, &opts.workspace_root);
+    }
+    if matches!(config.mode, LlmMutationMode::Fanout) {
+        return mutation_plan_from_llm(opts, node, run, edge_map);
+    }
+    mutation_plan_input(inputs, &opts.workspace_root)
+}
+
+fn has_mutation_plan_input(inputs: &eval::NodeInputs) -> bool {
+    inputs.contains_key("plan_input")
+        || inputs.contains_key("plan")
+        || inputs.contains_key("scouts")
+}
+
+fn mutation_plan_from_llm(
+    opts: &RunnerOptions,
+    node: &TaskGraphNode,
+    run: &TaskGraphRun,
+    edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
+) -> Result<Value, String> {
+    let mut llm_node = node.clone();
+    llm_node.node_type = NodeType::Llm;
+    let mut config = node.config.clone();
+    if let Some(object) = config.as_object_mut() {
+        object
+            .entry("output".to_string())
+            .or_insert_with(|| json!({ "artifact_type": "json", "required": true }));
+    }
+    llm_node.config = config;
+    let outcome = runtime::execute_llm_node(opts, &llm_node, run, edge_map)
+        .map_err(|source| format!("failed to run mutation LLM plan: {source}"))?;
+    if outcome.status != NodeRunStatus::Succeeded {
+        let message = outcome
+            .node_state
+            .error
+            .as_ref()
+            .map(|error| error.message.clone())
+            .or(outcome.node_state.log_tail)
+            .unwrap_or_else(|| "mutation LLM plan failed".to_string());
+        return Err(message);
+    }
+    outcome
+        .output
+        .map(|value| unwrap_plan_data(&value))
+        .ok_or_else(|| "mutation LLM produced no plan output".to_string())
+}
+
 fn mutation_plan_input(
     inputs: &eval::NodeInputs,
     workspace_root: &std::path::Path,
 ) -> Result<Value, String> {
+    if let Some(scouts) = inputs.get("scouts") {
+        return Ok(json!({ "scouts": scouts.clone() }));
+    }
     let plan = inputs
         .get("plan_input")
         .or_else(|| inputs.get("plan"))
-        .ok_or_else(|| "llm_mutation inputs.plan_input or inputs.plan is required".to_string())?;
+        .ok_or_else(|| {
+            "llm_mutation inputs.plan_input, inputs.plan, or inputs.scouts is required".to_string()
+        })?;
     normalize_plan_input(plan, workspace_root)
 }
 
@@ -274,8 +426,12 @@ fn fanout_items(mode: &LlmMutationMode, plan: &Value) -> Result<Vec<FanoutItem>,
         }
         parsed.push(FanoutItem {
             id,
+            title: string_field(item, "title"),
             scope: string_field(item, "scope"),
             goal: string_field(item, "goal"),
+            scope_hints: string_array(item, "scope_hints"),
+            paths: string_array(item, "paths"),
+            expected_output: string_field(item, "expected_output"),
             page_ids: string_array(item, "page_ids"),
             target_paths: string_array(item, "target_paths"),
         });
@@ -285,6 +441,7 @@ fn fanout_items(mode: &LlmMutationMode, plan: &Value) -> Result<Vec<FanoutItem>,
 
 fn fanout_values(mode: LlmMutationMode, plan: &Value) -> Result<Vec<Value>, String> {
     let array_key = match mode {
+        LlmMutationMode::Fanout => "scouts",
         LlmMutationMode::ScoutFanout => "scouts",
         LlmMutationMode::WriterFanout => "writers",
     };
@@ -293,6 +450,7 @@ fn fanout_values(mode: LlmMutationMode, plan: &Value) -> Result<Vec<Value>, Stri
     }
 
     let nested_key = match mode {
+        LlmMutationMode::Fanout => "scout_plan",
         LlmMutationMode::ScoutFanout => "scout_plan",
         LlmMutationMode::WriterFanout => "writer_plan",
     };
@@ -314,9 +472,25 @@ fn build_fanout_mutations(
     node: &TaskGraphNode,
     config: &LlmMutationConfig,
     source_node_id: &str,
+    target_node_id: &str,
+    direct_edge_id: Option<&str>,
     items: &[FanoutItem],
+    plan: &Value,
 ) -> Vec<GraphMutationRequest> {
-    let mut requests = Vec::with_capacity(items.len() * 3);
+    let mut requests = Vec::with_capacity(items.len() * 3 + 2);
+    if let Some(edge_id) = direct_edge_id {
+        requests.push(GraphMutationRequest {
+            id: format!("remove-direct-edge-{edge_id}"),
+            source_task_id: String::new(),
+            source_node_id: node.id.clone(),
+            op: GraphMutationOp::RemoveEdge {
+                edge_id: edge_id.to_string(),
+            },
+            reason: Some(format!(
+                "Consume direct continuation edge `{edge_id}` before fanout"
+            )),
+        });
+    }
     for item in items {
         requests.push(GraphMutationRequest {
             id: format!("node-{}", item.id),
@@ -348,22 +522,34 @@ fn build_fanout_mutations(
             )),
         });
         requests.push(GraphMutationRequest {
-            id: format!("edge-{}-to-{}", item.id, config.target_node_id),
+            id: format!("edge-{}-to-{}", item.id, target_node_id),
             source_task_id: String::new(),
             source_node_id: node.id.clone(),
             op: GraphMutationOp::AddEdge {
                 edge: exec_edge(
-                    format!("edge-{}-to-{}", item.id, config.target_node_id),
+                    format!("edge-{}-to-{}", item.id, target_node_id),
                     item.id.clone(),
-                    config.target_node_id.clone(),
+                    target_node_id.to_string(),
                 ),
             },
             reason: Some(format!(
                 "Route dynamic node `{}` into `{}`",
-                item.id, config.target_node_id
+                item.id, target_node_id
             )),
         });
     }
+    requests.push(GraphMutationRequest {
+        id: format!("patch-{target_node_id}-scout-inputs"),
+        source_task_id: String::new(),
+        source_node_id: node.id.clone(),
+        op: GraphMutationOp::PatchNodeConfig {
+            node_id: target_node_id.to_string(),
+            patch: summary_input_patch(node, config, items, plan),
+        },
+        reason: Some(format!(
+            "Inject dynamic scout output bindings into `{target_node_id}`"
+        )),
+    });
     requests
 }
 
@@ -377,7 +563,19 @@ fn generated_node(config: &LlmMutationConfig, item: &FanoutItem) -> TaskGraphNod
     if let Some(variant) = &config.generated.variant {
         node_config.insert("variant".to_string(), json!(variant));
     }
-    node_config.insert("inputs".to_string(), generated_inputs(config.mode));
+    if !config.generated.skills.is_empty() {
+        node_config.insert("skills".to_string(), json!(config.generated.skills));
+    }
+    if let Some(resource_bundle) = &config.generated.resource_bundle {
+        node_config.insert("resource_bundle".to_string(), resource_bundle.clone());
+    }
+    if let Some(output_contract) = &config.generated.output_contract {
+        node_config.insert("output_contract".to_string(), output_contract.clone());
+    }
+    if let Some(lifecycle) = &config.generated.lifecycle {
+        node_config.insert("lifecycle".to_string(), lifecycle.clone());
+    }
+    node_config.insert("inputs".to_string(), generated_inputs(config, item));
     node_config.insert(
         "output".to_string(),
         json!({
@@ -389,9 +587,30 @@ fn generated_node(config: &LlmMutationConfig, item: &FanoutItem) -> TaskGraphNod
         "prompt".to_string(),
         json!({
             "mode": "inline",
-            "template": generated_prompt(config.mode, item),
+            "template": generated_prompt(config, item),
         }),
     );
+
+    let mut pins = vec![exec_pin("exec_in", PinDirection::In, true)];
+    if let Some(resource_bundle_input) = generated_resource_bundle_input(config) {
+        pins.push(NodePin {
+            id: resource_bundle_input,
+            label: "Resource Bundle".to_string(),
+            direction: PinDirection::In,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Json),
+            required: false,
+        });
+    }
+    pins.push(exec_pin("exec_out", PinDirection::Out, false));
+    pins.push(NodePin {
+        id: "output".to_string(),
+        label: "Output".to_string(),
+        direction: PinDirection::Out,
+        category: PinCategory::Data,
+        value_type: Some(pin_value_type(&config.generated.output_artifact_type)),
+        required: false,
+    });
 
     TaskGraphNode {
         id: item.id.clone(),
@@ -400,23 +619,72 @@ fn generated_node(config: &LlmMutationConfig, item: &FanoutItem) -> TaskGraphNod
         description: item.scope.clone(),
         position: None,
         config: Value::Object(node_config),
-        pins: vec![
-            exec_pin("exec_in", PinDirection::In, true),
-            exec_pin("exec_out", PinDirection::Out, false),
-            NodePin {
-                id: "output".to_string(),
-                label: "Output".to_string(),
-                direction: PinDirection::Out,
-                category: PinCategory::Data,
-                value_type: Some(pin_value_type(&config.generated.output_artifact_type)),
-                required: false,
-            },
-        ],
+        pins,
     }
 }
 
-fn generated_prompt(mode: LlmMutationMode, item: &FanoutItem) -> String {
-    match mode {
+fn generated_resource_bundle_input(config: &LlmMutationConfig) -> Option<String> {
+    config
+        .generated
+        .resource_bundle
+        .as_ref()
+        .and_then(|resource_bundle| resource_bundle.get("input"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn summary_input_patch(
+    node: &TaskGraphNode,
+    config: &LlmMutationConfig,
+    items: &[FanoutItem],
+    plan: &Value,
+) -> Value {
+    let scout_outputs = items
+        .iter()
+        .map(|item| {
+            (
+                item.id.clone(),
+                json!(format!("{{{{nodes.{}.output}}}}", item.id)),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
+    let mut patch = json!({
+        "inputs": {
+            "mutation": format!("{{{{nodes.{}.output}}}}", node.id),
+            "scout_outputs": Value::Object(scout_outputs),
+            "merge_goal": string_field(plan, "merge_goal").unwrap_or_default(),
+            "doc_target": string_field(plan, "doc_target").unwrap_or_default(),
+        }
+    });
+
+    if config.patch_target_source_ids {
+        patch["source"] = json!({
+            "kind": "node_outputs_by_ids",
+            "ids": items.iter().map(|item| item.id.clone()).collect::<Vec<_>>(),
+        });
+    }
+
+    patch
+}
+
+fn generated_prompt(config: &LlmMutationConfig, item: &FanoutItem) -> String {
+    if let Some(template) = config
+        .generated
+        .prompt_template
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return render_generated_prompt_template(template, item);
+    }
+
+    match config.mode {
+        LlmMutationMode::Fanout => render_generated_prompt_template(
+            "你是一个动态 scout LLM。\n\nScout id: {{item.id}}\nGoal: {{item.goal}}\nScope hints: {{item.scope_hints}}\nExpected output: {{item.expected_output}}\n\n输出 markdown findings，包含关键事实、证据位置、风险和未覆盖范围。",
+            item,
+        ),
         LlmMutationMode::ScoutFanout => format!(
             "你是 KB Wiki Workflow 的动态 scout 节点。只输出 JSON，不要 Markdown。\n\nIntake: {{{{inputs.intake}}}}\nExisting Truth: {{{{inputs.truth}}}}\nmodule_root={{{{inputs.module_root}}}}\nkb_output_dir={{{{inputs.kb_output_dir}}}}\nstaging_dir={{{{inputs.staging_dir}}}}\n\nscope: {}\ngoal: {}\n\n任务：按 goal 扫描源码、已有文档和相关约束，返回结构化 findings。每条发现必须尽量包含 source anchors。你不需要写 .staging 文件，merge-scans 会把你的 output 落盘到 staging_dir/scans。输出 JSON schema: {{\"findings\":[{{\"title\":string,\"summary\":string,\"source_anchors\":string[]}}],\"risks\":string[],\"coverage_notes\":string[]}}。",
             item.scope.as_deref().unwrap_or("unspecified"),
@@ -431,8 +699,34 @@ fn generated_prompt(mode: LlmMutationMode, item: &FanoutItem) -> String {
     }
 }
 
-fn generated_inputs(mode: LlmMutationMode) -> Value {
-    match mode {
+fn render_generated_prompt_template(template: &str, item: &FanoutItem) -> String {
+    template
+        .replace("{{item.id}}", &item.id)
+        .replace("{{item.title}}", item.title.as_deref().unwrap_or_default())
+        .replace("{{item.scope}}", item.scope.as_deref().unwrap_or_default())
+        .replace("{{item.goal}}", item.goal.as_deref().unwrap_or_default())
+        .replace(
+            "{{item.scope_hints}}",
+            &serde_json::to_string(&item.scope_hints).unwrap_or_else(|_| "[]".to_string()),
+        )
+        .replace(
+            "{{item.paths}}",
+            &serde_json::to_string(&item.paths).unwrap_or_else(|_| "[]".to_string()),
+        )
+        .replace(
+            "{{item.expected_output}}",
+            item.expected_output.as_deref().unwrap_or_default(),
+        )
+}
+
+fn generated_inputs(config: &LlmMutationConfig, item: &FanoutItem) -> Value {
+    if let Some(inputs) = &config.generated.inputs {
+        return inputs.clone();
+    }
+    match config.mode {
+        LlmMutationMode::Fanout => json!({
+            "item_id": item.id.clone(),
+        }),
         LlmMutationMode::ScoutFanout => json!({
             "intake": "{{nodes.intake-validate.output}}",
             "truth": "{{nodes.scan-existing-truth.output}}",
@@ -490,6 +784,7 @@ fn pin_value_type(artifact_type: &str) -> PinValueType {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn node_state(
     node: &TaskGraphNode,
     status: NodeRunStatus,
@@ -587,24 +882,26 @@ fn title_from_id(id: &str) -> String {
         .filter(|part| !part.is_empty())
         .map(|part| {
             let mut chars = part.chars();
-            match chars.next() {
-                Some(first) => {
-                    let mut title = first.to_uppercase().to_string();
-                    title.push_str(chars.as_str());
-                    title
-                }
-                None => String::new(),
-            }
+            chars.next().map_or_else(String::new, |first| {
+                let mut title = first.to_uppercase().to_string();
+                title.push_str(chars.as_str());
+                title
+            })
         })
         .collect::<Vec<_>>()
         .join(" ")
 }
 
-fn mode_name(mode: LlmMutationMode) -> &'static str {
+const fn mode_name(mode: LlmMutationMode) -> &'static str {
     match mode {
+        LlmMutationMode::Fanout => "fanout",
         LlmMutationMode::ScoutFanout => "scout_fanout",
         LlmMutationMode::WriterFanout => "writer_fanout",
     }
+}
+
+const fn default_mutation_mode() -> LlmMutationMode {
+    LlmMutationMode::Fanout
 }
 
 fn default_generated_runtime() -> String {
@@ -641,12 +938,25 @@ mod tests {
             mode: LlmMutationMode::ScoutFanout,
             inputs: None,
             target_node_id: "merge-scans".to_string(),
+            patch_target_source_ids: true,
             generated: GeneratedNodeConfig {
                 runtime: "opencode".to_string(),
                 agent: "native".to_string(),
                 model: Some("minimax-cn-coding-plan/MiniMax-M2.7-highspeed".to_string()),
                 variant: Some("high".to_string()),
+                skills: Vec::new(),
+                resource_bundle: Some(json!({
+                    "input": "resource_bundle",
+                    "required": true,
+                })),
+                output_contract: Some(json!({
+                    "artifact_type": "json",
+                    "required": true,
+                })),
+                lifecycle: None,
                 output_artifact_type: "json".to_string(),
+                prompt_template: None,
+                inputs: None,
             },
         };
         let node = TaskGraphNode {
@@ -661,9 +971,10 @@ mod tests {
 
         let plan = mutation_plan_input(&inputs, std::path::Path::new(".")).unwrap();
         let items = fanout_items(&config.mode, &plan).unwrap();
-        let requests = build_fanout_mutations(&node, &config, &node.id, &items);
+        let requests =
+            build_fanout_mutations(&node, &config, &node.id, "merge-scans", None, &items, &plan);
 
-        assert_eq!(requests.len(), 3);
+        assert_eq!(requests.len(), 4);
         match &requests[0].op {
             GraphMutationOp::AddNode { node } => {
                 assert_eq!(node.id, "scout-structure");
@@ -672,6 +983,10 @@ mod tests {
                     "minimax-cn-coding-plan/MiniMax-M2.7-highspeed"
                 );
                 assert_eq!(node.config["variant"], "high");
+                assert!(node.config.get("preset").is_none());
+                assert!(node.config.get("harness").is_none());
+                assert_eq!(node.config["resource_bundle"]["input"], "resource_bundle");
+                assert_eq!(node.config["output_contract"]["artifact_type"], "json");
             }
             other => panic!("expected add_node, got {other:?}"),
         }
@@ -688,6 +1003,18 @@ mod tests {
                 assert_eq!(edge.to, "merge-scans");
             }
             other => panic!("expected add_edge, got {other:?}"),
+        }
+        match &requests[3].op {
+            GraphMutationOp::PatchNodeConfig { node_id, patch } => {
+                assert_eq!(node_id, "merge-scans");
+                assert_eq!(
+                    patch["inputs"]["scout_outputs"]["scout-structure"],
+                    "{{nodes.scout-structure.output}}"
+                );
+                assert_eq!(patch["source"]["kind"], "node_outputs_by_ids");
+                assert_eq!(patch["source"]["ids"], json!(["scout-structure"]));
+            }
+            other => panic!("expected patch_node_config, got {other:?}"),
         }
     }
 
@@ -713,12 +1040,17 @@ mod tests {
             mode: LlmMutationMode::WriterFanout,
             inputs: None,
             target_node_id: "repair-loop".to_string(),
+            patch_target_source_ids: false,
             generated: GeneratedNodeConfig::default(),
         };
         let item = FanoutItem {
             id: "writer-overview".to_string(),
+            title: None,
             scope: None,
             goal: Some("write overview".to_string()),
+            scope_hints: vec![],
+            paths: vec![],
+            expected_output: None,
             page_ids: vec!["overview".to_string()],
             target_paths: vec!["overview.md".to_string()],
         };
@@ -770,5 +1102,80 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].id, "writer-overview");
+    }
+
+    #[test]
+    fn generic_fanout_removes_direct_edge_and_patches_summary_inputs() {
+        let config = LlmMutationConfig {
+            mode: LlmMutationMode::Fanout,
+            inputs: None,
+            target_node_id: "summary".to_string(),
+            patch_target_source_ids: false,
+            generated: GeneratedNodeConfig {
+                runtime: "opencode".to_string(),
+                agent: "native".to_string(),
+                model: None,
+                variant: None,
+                skills: Vec::new(),
+                resource_bundle: None,
+                output_contract: None,
+                lifecycle: None,
+                output_artifact_type: "markdown".to_string(),
+                prompt_template: Some("Goal: {{item.goal}}".to_string()),
+                inputs: None,
+            },
+        };
+        let node = TaskGraphNode {
+            id: "mutation".to_string(),
+            node_type: NodeType::LlmMutation,
+            label: "Mutation".to_string(),
+            description: None,
+            position: None,
+            config: json!({}),
+            pins: vec![],
+        };
+        let plan = json!({
+            "scouts": [
+                { "id": "editor", "goal": "scan editor", "scope_hints": ["editor"] }
+            ],
+            "merge_goal": "merge findings",
+            "doc_target": "wiki/terrain.md"
+        });
+        let items = fanout_items(&config.mode, &plan).unwrap();
+        let requests = build_fanout_mutations(
+            &node,
+            &config,
+            &node.id,
+            "summary",
+            Some("mutation-summary"),
+            &items,
+            &plan,
+        );
+
+        assert_eq!(requests.len(), 5);
+        assert!(matches!(
+            requests[0].op,
+            GraphMutationOp::RemoveEdge { ref edge_id } if edge_id == "mutation-summary"
+        ));
+        match &requests[1].op {
+            GraphMutationOp::AddNode { node } => {
+                assert_eq!(node.id, "editor");
+                assert_eq!(node.config["output"]["artifact_type"], "markdown");
+                assert_eq!(node.config["prompt"]["template"], "Goal: scan editor");
+            }
+            other => panic!("expected add_node, got {other:?}"),
+        }
+        match &requests[4].op {
+            GraphMutationOp::PatchNodeConfig { node_id, patch } => {
+                assert_eq!(node_id, "summary");
+                assert_eq!(patch["inputs"]["merge_goal"], "merge findings");
+                assert_eq!(patch["inputs"]["doc_target"], "wiki/terrain.md");
+                assert_eq!(
+                    patch["inputs"]["scout_outputs"]["editor"],
+                    "{{nodes.editor.output}}"
+                );
+            }
+            other => panic!("expected patch_node_config, got {other:?}"),
+        }
     }
 }

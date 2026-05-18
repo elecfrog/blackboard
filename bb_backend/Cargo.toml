@@ -1,5 +1,11 @@
 [workspace]
-members = ["crates/bb_core", "crates/bb_cli", "crates/bb_schema"]
+members = [
+    "crates/bb_core",
+    "crates/bb_cli",
+    "crates/bb_daemon",
+    "crates/bb_schema",
+    "crates/bb_server",
+]
 resolver = "2"
 
 [workspace.package]

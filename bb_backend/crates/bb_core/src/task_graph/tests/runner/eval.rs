@@ -89,6 +89,41 @@ fn branch_equals_condition() {
 }
 
 #[test]
+fn branch_reads_single_data_pin_input() {
+    let config = BranchConfig {
+        mode: "first_match".to_string(),
+        input_ref: Some("$.nodes.legacy.output".to_string()),
+        rules: vec![
+            BranchRule {
+                id: "complex".to_string(),
+                label: "Complex".to_string(),
+                when: json!({ "path": "$.route", "op": "equals", "value": "complex" }),
+            },
+            BranchRule {
+                id: "simple".to_string(),
+                label: "Simple".to_string(),
+                when: json!({ "op": "always" }),
+            },
+        ],
+        default_rule_id: "simple".to_string(),
+    };
+
+    let mut context = empty_context();
+    context
+        .node_outputs
+        .insert("legacy".to_string(), json!({ "route": "simple" }));
+    context.input = json!({
+        "__data": {
+            "intent": {
+                "output": { "route": "complex" }
+            }
+        }
+    });
+
+    assert_eq!(evaluate_branch(&config, &context), "complex");
+}
+
+#[test]
 fn branch_fallback_to_default() {
     let config = BranchConfig {
         mode: "first_match".to_string(),

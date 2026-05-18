@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Plus, Trash2 } from 'lucide-vue-next'
+import { BbButton, BbDenseRow, BbField } from '@/components/common'
 import { t } from '@/i18n'
 import { type TaskGraphInputParam, type TaskGraphNode } from '@/data/taskGraphs'
 
@@ -118,33 +119,101 @@ function removeBranchRule(index: number) {
 
 <template>
   <div class="task-graph-branch-form">
-    <label>
-      <span>input_ref</span>
+    <BbField :label="t('taskGraphBranchInputRef')">
       <input :value="configString(node, 'input_ref')" @input="emit('update-config', { input_ref: inputValue($event) })" />
-    </label>
-    <label>
-      <span>default_rule_id</span>
+    </BbField>
+    <BbField :label="t('taskGraphBranchDefaultRuleId')">
       <select :value="configString(node, 'default_rule_id')" @change="emit('update-config', { default_rule_id: inputValue($event) })">
         <option v-for="rule in getBranchRules(node)" :key="rule.id" :value="rule.id">{{ rule.id }}</option>
       </select>
-    </label>
+    </BbField>
     <div class="task-graph-rule-list">
-      <div v-for="(rule, index) in getBranchRules(node)" :key="`${rule.id}-${index}`" class="task-graph-rule-row">
-        <input :value="rule.id" @input="updateBranchRule(index, { id: kebab(inputValue($event), `rule-${index + 1}`) })" />
-        <input :value="rule.label" @input="updateBranchRule(index, { label: inputValue($event) })" />
-        <select :value="rule.when.op" @change="updateBranchRule(index, { when: { op: inputValue($event) } })">
+      <div class="task-graph-rule-head" aria-hidden="true">
+        <span>{{ t('taskGraphBranchRuleId') }}</span>
+        <span>{{ t('taskGraphBranchRuleLabel') }}</span>
+        <span>{{ t('taskGraphBranchRuleOp') }}</span>
+        <span>{{ t('taskGraphBranchRulePath') }}</span>
+        <span>{{ t('taskGraphBranchRuleValue') }}</span>
+      </div>
+      <BbDenseRow v-for="(rule, index) in getBranchRules(node)" :key="`${rule.id}-${index}`" class="task-graph-rule-row">
+        <input class="bb-dense-control" :value="rule.id" :aria-label="t('taskGraphBranchRuleId')" @input="updateBranchRule(index, { id: kebab(inputValue($event), `rule-${index + 1}`) })" />
+        <input class="bb-dense-control" :value="rule.label" :aria-label="t('taskGraphBranchRuleLabel')" @input="updateBranchRule(index, { label: inputValue($event) })" />
+        <select class="bb-dense-control" :value="rule.when.op" @change="updateBranchRule(index, { when: { op: inputValue($event) } })">
           <option v-for="op in branchOps" :key="op" :value="op">{{ op }}</option>
         </select>
-        <input :value="rule.when.path ?? ''" placeholder="$.path" @input="updateBranchRule(index, { when: { path: inputValue($event) } })" />
-        <input :value="rule.when.value ?? ''" placeholder="value" @input="updateBranchRule(index, { when: { value: inputValue($event) } })" />
-        <button type="button" @click="removeBranchRule(index)">
+        <input class="bb-dense-control" :value="rule.when.path ?? ''" :aria-label="t('taskGraphBranchRulePath')" :placeholder="t('taskGraphBranchPathPlaceholder')" @input="updateBranchRule(index, { when: { path: inputValue($event) } })" />
+        <input class="bb-dense-control" :value="rule.when.value ?? ''" :aria-label="t('taskGraphBranchRuleValue')" :placeholder="t('taskGraphBranchRuleValue')" @input="updateBranchRule(index, { when: { value: inputValue($event) } })" />
+        <BbButton
+          class="task-graph-rule-remove"
+          size="mini"
+          variant="danger"
+          icon-only
+          :aria-label="t('taskGraphBindingRemove')"
+          @click="removeBranchRule(index)"
+        >
           <Trash2 aria-hidden="true" />
-        </button>
-      </div>
-      <button type="button" class="task-graph-inline-add" @click="addBranchRule">
-        <Plus aria-hidden="true" />
+        </BbButton>
+      </BbDenseRow>
+      <BbButton class="task-graph-rule-add" size="sm" variant="secondary" @click="addBranchRule">
+        <template #leading>
+          <Plus aria-hidden="true" />
+        </template>
         {{ t('taskGraphRuleAdd') }}
-      </button>
+      </BbButton>
     </div>
   </div>
 </template>
+
+<style scoped>
+.task-graph-branch-form {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.task-graph-rule-head span {
+  color: var(--bb-text-muted);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.task-graph-rule-list {
+  --task-graph-rule-columns: minmax(84px, 0.9fr) minmax(92px, 1fr) minmax(88px, 0.9fr) minmax(92px, 1fr) minmax(92px, 1fr) 30px;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.task-graph-rule-head {
+  display: grid;
+  grid-template-columns: var(--task-graph-rule-columns);
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.task-graph-rule-row {
+  --bb-dense-row-columns: var(--task-graph-rule-columns);
+  --bb-dense-row-border: var(--bb-border-warm-medium);
+  --bb-dense-row-bg: var(--bb-surface-soft);
+  --bb-dense-control-height: 32px;
+}
+
+.task-graph-rule-remove {
+  --bb-icon-button-size: 30px;
+}
+
+.task-graph-rule-add {
+  justify-self: start;
+}
+
+@media (max-width: 720px) {
+  .task-graph-rule-head {
+    display: none;
+  }
+
+  .task-graph-rule-row {
+    --bb-dense-row-columns: minmax(0, 1fr) 30px;
+  }
+}
+</style>

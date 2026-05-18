@@ -1,6 +1,6 @@
-//! Pregel-style graph execution engine for TaskGraph.
+//! Pregel-style graph execution engine for `TaskGraph`.
 //!
-//! This module mirrors LangGraph's execution facts in Blackboard terms:
+//! This module mirrors `LangGraph`'s execution facts in Blackboard terms:
 //! compiled processes subscribe to channels, tasks are prepared from channel
 //! versions, writes are applied at a superstep barrier, and checkpoints carry
 //! `channel_values`, `channel_versions`, and `versions_seen`.

@@ -49,7 +49,7 @@ impl Blackboard {
         let content_type = safe_path
             .extension()
             .and_then(|e| e.to_str())
-            .map(|e| e.to_ascii_lowercase())
+            .map(str::to_ascii_lowercase)
             .unwrap_or_default();
 
         Ok(WikiContentResponse {

@@ -28,10 +28,11 @@ use frontmatter::{
     split_ticket_frontmatter,
 };
 use render::{append_ticket_body_sections, render_ticket, TicketRenderInput};
+pub(crate) use spec::validate_ticket_attachments;
 use spec::{
     normalize_ticket_spec, parse_ticket_json_document, parse_ticket_spec_field,
     render_ticket_json_document, render_ticket_spec_body, serialize_ticket_json_document,
-    serialize_ticket_spec, validate_ticket_attachments, TICKET_SPEC_FRONTMATTER_KEY,
+    serialize_ticket_spec, TICKET_SPEC_FRONTMATTER_KEY,
 };
 
 pub const TICKET_STATUSES: [&str; 6] = [
@@ -43,10 +44,12 @@ pub const TICKET_STATUSES: [&str; 6] = [
     "archived",
 ];
 
-pub fn default_ticket_status() -> &'static str {
+#[must_use]
+pub const fn default_ticket_status() -> &'static str {
     "todo"
 }
 
+#[must_use]
 pub fn is_open_ticket_status(status: &str) -> bool {
     matches!(status, "todo" | "in_progress" | "blocked" | "review")
 }
@@ -96,12 +99,7 @@ impl TicketIdLock {
                 Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
                     thread::sleep(Duration::from_millis(100));
                 }
-                Err(source) => {
-                    return Err(InboxError::Io {
-                        path: path.clone(),
-                        source,
-                    })
-                }
+                Err(source) => return Err(InboxError::Io { path, source }),
             }
         }
         Err(InboxError::TicketIdLockTimeout(path))
@@ -209,7 +207,7 @@ impl Blackboard {
         Ok(TicketWriteResult {
             ticket: TicketWriteTicket {
                 id,
-                lane: lane.clone(),
+                lane,
                 title: title.to_string(),
                 status: workflow_status.to_string(),
                 created_at: date.clone(),
@@ -437,7 +435,7 @@ impl Blackboard {
         entry: &TicketEntry,
         path: &Path,
         original: &str,
-        patch: TicketFrontmatterPatch,
+        frontmatter_patch: TicketFrontmatterPatch,
     ) -> Result<TicketWriteResult, InboxError> {
         let mut document =
             parse_ticket_json_document(original).map_err(InboxError::InvalidInput)?;
@@ -448,27 +446,27 @@ impl Blackboard {
             )));
         }
 
-        if let Some(title) = patch.title {
+        if let Some(title) = frontmatter_patch.title {
             document.title = validate_required_string("title", &title)?.to_string();
         }
-        if let Some(status) = patch.status {
+        if let Some(status) = frontmatter_patch.status {
             document.status = validate_ticket_status(&status)?.to_string();
         }
-        if let Some(new_lane) = patch.lane {
+        if let Some(new_lane) = frontmatter_patch.lane {
             let meta = self.read_project_meta()?;
             let entry = validate_ticket_lane(&new_lane, &meta.lanes)?;
             document.lane = entry.id.clone();
         }
-        if let Some(spec) = patch.spec {
+        if let Some(spec) = frontmatter_patch.spec {
             let spec = normalize_ticket_spec(spec)?;
             document.set_spec(spec);
         }
-        if let Some(attachments) = patch.attachments {
+        if let Some(attachments) = frontmatter_patch.attachments {
             validate_ticket_attachments(&attachments)?;
             document.attachments = attachments;
             document.extra.remove("attachments");
         }
-        for (key, value) in patch.extra {
+        for (key, value) in frontmatter_patch.extra {
             reject_extra_frontmatter_key(&key)?;
             validate_required_string("extra key", &key)?;
             if key == "assignee" {
@@ -480,7 +478,7 @@ impl Blackboard {
             }
             document.extra.insert(key, value);
         }
-        for key in patch.remove {
+        for key in frontmatter_patch.remove {
             reject_core_frontmatter_key(&key)?;
             if key == "attachments" {
                 document.attachments.clear();

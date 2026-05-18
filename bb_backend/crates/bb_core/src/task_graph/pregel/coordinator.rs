@@ -1,7 +1,7 @@
 //! Graph Coordinator — 控制平面单线程调度器。
 //!
 //! 负责 graph run 的完整生命周期：
-//! 1. 从磁盘加载 RunState 到内存
+//! 1. 从磁盘加载 `RunState` 到内存
 //! 2. 主循环：Plan → Dispatch → Reduce → Persist
 //! 3. 终止条件：Completed / Failed / Paused / Cancelled
 //!
@@ -18,11 +18,13 @@ use super::outcome::{
     ExecutionMode, NodeOutcome, ReadyNode, ReduceAction, SideEffect, SuperstepPlan,
 };
 use super::runner::{RunOutcome, RunnerOptions};
+use crate::agent_session::{self, AgentEvent, AgentEventType};
 use crate::task_graph::compile::compiler::{
     compile_graph_for_execution, CompiledGraph, CompiledProcessMode,
 };
 use crate::task_graph::definition::types::{
-    TaskGraphDefinition, TaskGraphEdge, TaskGraphError, TaskGraphNode, TaskGraphValidationError,
+    NodeType, TaskGraphDefinition, TaskGraphEdge, TaskGraphError, TaskGraphNode,
+    TaskGraphValidationError,
 };
 use crate::task_graph::pregel::{
     checkpoint_config, checkpoint_metadata, initial_checkpoint as initial_pregel_checkpoint,
@@ -30,14 +32,20 @@ use crate::task_graph::pregel::{
     PregelPreparedStep, DEFAULT_CHECKPOINT_NAMESPACE,
 };
 use crate::task_graph::run_state::{
-    self, NodeRunStatus, PausedAction, PendingTaskEffect, PendingWrite, RunPaused, RunStatus,
-    SuperstepCheckpoint, SuperstepStatus, TaskGraphRun, TaskGraphRunNode,
+    self, ArtifactContentType, NodeRunStatus, PausedAction, PendingTaskEffect, PendingWrite,
+    RunPaused, RunStatus, SuperstepCheckpoint, SuperstepStatus, TaskGraphRun, TaskGraphRunNode,
+    ToolLifecycleArtifact, ToolLifecycleError, ToolLifecycleEventInput, ToolLifecycleEventKind,
+    ToolLifecycleStatus,
 };
 use crate::task_graph::topology::{
     apply_mutation_requests, conflict_validation_error, graph_mutations_from_output,
     migrate_checkpoint_channels, GraphMutationBatch, GraphMutationBatchResult,
     GraphMutationConflict, GraphMutationRequest, GraphRevision,
 };
+
+const TOOL_UPDATE_THROTTLE_EVERY: usize = 5;
+const TOOL_EVENT_INLINE_PREVIEW_CHARS: usize = 512;
+const TOOL_EVENT_ARTIFACT_THRESHOLD_CHARS: usize = 2048;
 
 // ─── Graph Coordinator ──────────────────────────────────────────────────────
 
@@ -63,7 +71,7 @@ pub(super) struct GraphCoordinator<'a> {
 }
 
 impl<'a> GraphCoordinator<'a> {
-    /// 从磁盘加载 RunState 并创建 Coordinator。
+    /// 从磁盘加载 `RunState` 并创建 Coordinator。
     pub fn load(opts: &'a RunnerOptions) -> Result<Self, TaskGraphError> {
         let ws = &opts.workspace_root;
         let project = &opts.project;
@@ -169,9 +177,15 @@ impl<'a> GraphCoordinator<'a> {
             // Run 级别超时检测
             if self.run_start.elapsed() >= self.opts.run_timeout {
                 let msg = format!("Run timeout: exceeded {:?} limit", self.opts.run_timeout);
-                run_state::update_run_status(ws, project, run_id, RunStatus::Failed)?;
+                let node_id = self.run.active_nodes.first().cloned().unwrap_or_default();
+                self.fail_run(
+                    self.run.current_superstep,
+                    Some(node_id.clone()),
+                    "run_timeout",
+                    msg.clone(),
+                )?;
                 return Ok(RunOutcome::Failed {
-                    node_id: self.run.active_nodes.first().cloned().unwrap_or_default(),
+                    node_id,
                     message: msg,
                 });
             }
@@ -197,7 +211,7 @@ impl<'a> GraphCoordinator<'a> {
                             .to_string()
                     }
                 };
-                run_state::update_run_status(ws, project, run_id, RunStatus::Failed)?;
+                self.fail_run(superstep, None, "no_runnable_tasks", message.clone())?;
                 return Ok(RunOutcome::Failed {
                     node_id: "unknown".to_string(),
                     message,
@@ -235,13 +249,37 @@ impl<'a> GraphCoordinator<'a> {
             let outcomes = if plan.ready_nodes.is_empty() {
                 Vec::new()
             } else {
-                executor::execute_ready_nodes(
+                match executor::execute_ready_nodes(
                     self.opts,
                     &plan.ready_nodes,
                     &self.run,
                     &borrowed_edge_map,
                     &borrowed_node_map,
-                )?
+                ) {
+                    Ok(outcomes) => outcomes,
+                    Err(error) => {
+                        let message = error.to_string();
+                        let node_id = self
+                            .run
+                            .active_nodes
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| "unknown".to_string());
+                        self.record_failed_tool_events_for_ready_nodes(
+                            superstep,
+                            &plan.ready_nodes,
+                            "dispatch_failed",
+                            &message,
+                        )?;
+                        self.fail_run(
+                            superstep,
+                            Some(node_id.clone()),
+                            "dispatch_failed",
+                            message.clone(),
+                        )?;
+                        return Ok(RunOutcome::Failed { node_id, message });
+                    }
+                }
             };
             self.record_node_finished_events(superstep, &outcomes)?;
 
@@ -301,7 +339,7 @@ impl<'a> GraphCoordinator<'a> {
                         RunStatus::Succeeded => Ok(RunOutcome::Succeeded),
                         _ => Ok(RunOutcome::Failed {
                             node_id: end_node_id,
-                            message: format!("Run ended with result: {}", result),
+                            message: format!("Run ended with result: {result}"),
                         }),
                     };
                 }
@@ -357,15 +395,13 @@ impl<'a> GraphCoordinator<'a> {
             .tasks
             .iter()
             .map(|task| {
-                let execution_mode = self
-                    .compiled
-                    .processes
-                    .get(&task.node_id)
-                    .map(|process| match process.mode {
+                let execution_mode = self.compiled.processes.get(&task.node_id).map_or(
+                    ExecutionMode::Inline,
+                    |process| match process.mode {
                         CompiledProcessMode::Inline => ExecutionMode::Inline,
                         CompiledProcessMode::RuntimeAdapter => ExecutionMode::Dispatch,
-                    })
-                    .unwrap_or(ExecutionMode::Inline);
+                    },
+                );
                 ReadyNode {
                     node_id: task.node_id.clone(),
                     execution_mode,
@@ -395,8 +431,7 @@ impl<'a> GraphCoordinator<'a> {
         let node_id = plan
             .ready_nodes
             .first()
-            .map(|node| node.node_id.clone())
-            .unwrap_or_else(|| "__interrupt__".to_string());
+            .map_or_else(|| "__interrupt__".to_string(), |node| node.node_id.clone());
         self.run.status = RunStatus::Paused;
         self.run.paused = Some(RunPaused {
             node_id: node_id.clone(),
@@ -438,9 +473,9 @@ impl<'a> GraphCoordinator<'a> {
 
     // ─── Reducer ─────────────────────────────────────────────────────────────
 
-    /// 归并一批 NodeOutcome 到内存 RunState。
+    /// 归并一批 `NodeOutcome` 到内存 `RunState`。
     ///
-    /// 返回 ReduceAction 描述下一步应该做什么。
+    /// 返回 `ReduceAction` 描述下一步应该做什么。
     fn reduce(
         &mut self,
         outcomes: Vec<NodeOutcome>,
@@ -451,6 +486,7 @@ impl<'a> GraphCoordinator<'a> {
         let mut completion_node_id: Option<String> = None;
         let mut had_pause = false;
         let mut pause_node_id: Option<String> = None;
+        let mut failure: Option<(String, String)> = None;
 
         for outcome in outcomes {
             let task = plan
@@ -570,17 +606,19 @@ impl<'a> GraphCoordinator<'a> {
             }
 
             if outcome.status == NodeRunStatus::Failed {
-                let msg = outcome
-                    .node_state
-                    .error
-                    .as_ref()
-                    .map(|e| e.message.clone())
-                    .unwrap_or_else(|| "Node execution failed".to_string());
-                return Ok(ReduceAction::Failed {
-                    node_id: outcome.node_id.clone(),
-                    message: msg,
-                });
+                if failure.is_none() {
+                    let msg = outcome.node_state.error.as_ref().map_or_else(
+                        || "Node execution failed".to_string(),
+                        |e| e.message.clone(),
+                    );
+                    failure = Some((outcome.node_id.clone(), msg));
+                }
+                continue;
             }
+        }
+
+        if let Some((node_id, message)) = failure {
+            return Ok(ReduceAction::Failed { node_id, message });
         }
 
         // 处理 completion
@@ -699,10 +737,11 @@ impl<'a> GraphCoordinator<'a> {
                 .run
                 .pregel_checkpoint
                 .as_ref()
-                .map(|checkpoint| checkpoint.graph_revision)
-                .unwrap_or(self.run.current_graph_revision),
+                .map_or(self.run.current_graph_revision, |checkpoint| {
+                    checkpoint.graph_revision
+                }),
             graph_revision_after: pregel_checkpoint.graph_revision,
-            mutation_batch_id: mutation_batch_id.clone(),
+            mutation_batch_id,
             ready_nodes: plan
                 .ready_nodes
                 .iter()
@@ -729,7 +768,7 @@ impl<'a> GraphCoordinator<'a> {
             None,
             format!("{} pending write(s) committed at barrier", pending_writes.len()),
             serde_json::json!({
-                "checkpoint_id": checkpoint.id.clone(),
+                "checkpoint_id": checkpoint.id,
                 "count": pending_writes.len(),
                 "targets": pending_writes.iter().map(|write| write.target.clone()).collect::<Vec<_>>(),
                 "pending_effect_count": self.pending_effects.len(),
@@ -749,7 +788,7 @@ impl<'a> GraphCoordinator<'a> {
             None,
             format!("checkpoint {} saved", checkpoint.id),
             serde_json::json!({
-                "checkpoint_id": checkpoint.id.clone(),
+                "checkpoint_id": checkpoint.id,
                 "status": status,
                 "pregel_checkpoint_id": pregel_checkpoint.id,
                 "graph_revision": pregel_checkpoint.graph_revision,
@@ -761,7 +800,7 @@ impl<'a> GraphCoordinator<'a> {
             None,
             message,
             serde_json::json!({
-                "checkpoint_id": checkpoint.id.clone(),
+                "checkpoint_id": checkpoint.id,
                 "status": status,
                 "active_nodes": self.run.active_nodes.clone(),
                 "graph_revision": pregel_checkpoint.graph_revision,
@@ -921,6 +960,33 @@ impl<'a> GraphCoordinator<'a> {
         )
     }
 
+    fn fail_run(
+        &mut self,
+        superstep: u64,
+        node_id: Option<String>,
+        code: &str,
+        message: impl Into<String>,
+    ) -> Result<(), TaskGraphError> {
+        let message = message.into();
+        self.run = run_state::fail_run_active_nodes(
+            &self.opts.workspace_root,
+            &self.opts.project,
+            &self.opts.run_id,
+            code,
+            message.clone(),
+        )?;
+        self.append_event(
+            superstep,
+            "run_failed",
+            node_id,
+            message,
+            serde_json::json!({
+                "code": code,
+                "active_nodes_finalized": true,
+            }),
+        )
+    }
+
     fn append_event(
         &self,
         superstep: u64,
@@ -958,6 +1024,7 @@ impl<'a> GraphCoordinator<'a> {
                     "task_kind": format!("{:?}", node.task_kind).to_lowercase(),
                 }),
             )?;
+            self.record_tool_started_event(superstep, node)?;
         }
         Ok(())
     }
@@ -968,6 +1035,7 @@ impl<'a> GraphCoordinator<'a> {
         outcomes: &[NodeOutcome],
     ) -> Result<(), TaskGraphError> {
         for outcome in outcomes {
+            self.record_agent_session_tool_events(superstep, outcome)?;
             self.append_event(
                 superstep,
                 "node_finished",
@@ -978,13 +1046,381 @@ impl<'a> GraphCoordinator<'a> {
                 ),
                 serde_json::json!({
                     "status": outcome.status,
-                    "control": outcome.control.iter().map(|item| format!("{:?}", item)).collect::<Vec<_>>(),
+                    "control": outcome.control.iter().map(|item| format!("{item:?}")).collect::<Vec<_>>(),
                     "graph_mutations": outcome.graph_mutations.len(),
                     "has_output": outcome.output.is_some(),
                     "end_result": outcome.end_result.clone(),
                 }),
             )?;
+            self.record_tool_ended_event(superstep, outcome)?;
         }
+        Ok(())
+    }
+
+    fn record_agent_session_tool_events(
+        &self,
+        superstep: u64,
+        outcome: &NodeOutcome,
+    ) -> Result<(), TaskGraphError> {
+        let Some(session_id) = outcome.node_state.agent_session_id.as_deref() else {
+            return Ok(());
+        };
+        let Ok(events) = agent_session::read_events(
+            &self.opts.workspace_root,
+            &self.opts.project,
+            session_id,
+            None,
+        ) else {
+            return Ok(());
+        };
+        let mut update_counts: HashMap<String, usize> = HashMap::new();
+        let mut input_summaries: HashMap<String, serde_json::Value> = HashMap::new();
+
+        for event in events {
+            match event.event_type {
+                AgentEventType::ToolUse => {
+                    let identity = AgentToolIdentity::from_event(&event);
+                    let tool_call_id =
+                        agent_tool_call_id(&self.opts.run_id, superstep, &outcome.node_id, &event);
+                    let input_summary = agent_tool_input_summary(session_id, &event, &identity);
+                    input_summaries.insert(tool_call_id.clone(), input_summary.clone());
+                    run_state::append_tool_lifecycle_event(
+                        &self.opts.workspace_root,
+                        &self.opts.project,
+                        &self.opts.run_id,
+                        ToolLifecycleEventInput {
+                            superstep,
+                            kind: ToolLifecycleEventKind::Start,
+                            node_id: outcome.node_id.clone(),
+                            node_run_id: node_run_id(
+                                &self.opts.run_id,
+                                superstep,
+                                &outcome.node_id,
+                            ),
+                            tool_call_id,
+                            tool_name: identity.tool_name,
+                            tool_kind: identity.tool_kind,
+                            attempt: 1,
+                            status: ToolLifecycleStatus::Running,
+                            started_at: Some(event.timestamp.clone()),
+                            ended_at: None,
+                            duration_ms: None,
+                            input_summary,
+                            output_summary: serde_json::Value::Null,
+                            error: None,
+                            artifacts: Vec::new(),
+                        },
+                    )?;
+                }
+                AgentEventType::ToolResult => {
+                    let identity = AgentToolIdentity::from_event(&event);
+                    let call_id =
+                        agent_tool_call_id(&self.opts.run_id, superstep, &outcome.node_id, &event);
+                    let input_summary = input_summaries.get(&call_id).cloned().unwrap_or_default();
+                    let provider_status =
+                        event.status.as_deref().unwrap_or("completed").to_string();
+                    if is_running_tool_status(&provider_status) {
+                        let count = update_counts.entry(call_id.clone()).or_insert(0);
+                        *count += 1;
+                        if !should_emit_tool_update(*count) {
+                            continue;
+                        }
+                        let (output_summary, artifacts) = self.agent_tool_output_summary(
+                            superstep,
+                            &outcome.node_id,
+                            &call_id,
+                            &event,
+                            "tool update",
+                        )?;
+                        run_state::append_tool_lifecycle_event(
+                            &self.opts.workspace_root,
+                            &self.opts.project,
+                            &self.opts.run_id,
+                            ToolLifecycleEventInput {
+                                superstep,
+                                kind: ToolLifecycleEventKind::Update,
+                                node_id: outcome.node_id.clone(),
+                                node_run_id: node_run_id(
+                                    &self.opts.run_id,
+                                    superstep,
+                                    &outcome.node_id,
+                                ),
+                                tool_call_id: call_id,
+                                tool_name: identity.tool_name,
+                                tool_kind: identity.tool_kind,
+                                attempt: 1,
+                                status: ToolLifecycleStatus::Running,
+                                started_at: None,
+                                ended_at: None,
+                                duration_ms: None,
+                                input_summary: input_summary.clone(),
+                                output_summary,
+                                error: None,
+                                artifacts,
+                            },
+                        )?;
+                    } else {
+                        let lifecycle_status = lifecycle_status_from_agent_status(&provider_status);
+                        let (output_summary, artifacts) = self.agent_tool_output_summary(
+                            superstep,
+                            &outcome.node_id,
+                            &call_id,
+                            &event,
+                            "tool result",
+                        )?;
+                        let error = (lifecycle_status == ToolLifecycleStatus::Failed).then(|| {
+                            ToolLifecycleError {
+                                code: provider_status.clone(),
+                                message: event
+                                    .output
+                                    .as_deref()
+                                    .or(event.content.as_deref())
+                                    .map_or_else(
+                                        || "agent tool failed".to_string(),
+                                        |value| truncate_summary(value, 512),
+                                    ),
+                                category: Some("agent_tool".to_string()),
+                            }
+                        });
+                        run_state::append_tool_lifecycle_event(
+                            &self.opts.workspace_root,
+                            &self.opts.project,
+                            &self.opts.run_id,
+                            ToolLifecycleEventInput {
+                                superstep,
+                                kind: ToolLifecycleEventKind::End,
+                                node_id: outcome.node_id.clone(),
+                                node_run_id: node_run_id(
+                                    &self.opts.run_id,
+                                    superstep,
+                                    &outcome.node_id,
+                                ),
+                                tool_call_id: call_id,
+                                tool_name: identity.tool_name,
+                                tool_kind: identity.tool_kind,
+                                attempt: 1,
+                                status: lifecycle_status,
+                                started_at: None,
+                                ended_at: Some(event.timestamp.clone()),
+                                duration_ms: None,
+                                input_summary: input_summary.clone(),
+                                output_summary,
+                                error,
+                                artifacts,
+                            },
+                        )?;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    fn agent_tool_output_summary(
+        &self,
+        superstep: u64,
+        node_id: &str,
+        tool_call_id: &str,
+        event: &AgentEvent,
+        label: &str,
+    ) -> Result<(serde_json::Value, Vec<ToolLifecycleArtifact>), TaskGraphError> {
+        let output = event
+            .output
+            .as_deref()
+            .or(event.content.as_deref())
+            .unwrap_or_default();
+        let char_count = output.chars().count();
+        let mut artifacts = Vec::new();
+        if char_count > TOOL_EVENT_ARTIFACT_THRESHOLD_CHARS {
+            let artifact_id = format!(
+                "tool-events/{superstep:06}-{}-{}-{}",
+                safe_artifact_segment(node_id),
+                safe_artifact_segment(tool_call_id),
+                event.seq
+            );
+            let artifact = run_state::write_artifact(
+                &self.opts.workspace_root,
+                &self.opts.project,
+                &self.opts.run_id,
+                &artifact_id,
+                output,
+                ArtifactContentType::Text,
+            )?;
+            let content_type = artifact_content_type_name(&artifact.content_type);
+            artifacts.push(ToolLifecycleArtifact {
+                id: Some(artifact.id),
+                path: artifact.path,
+                content_type: Some(content_type),
+                label: Some(label.to_string()),
+            });
+        }
+        Ok((
+            serde_json::json!({
+                "agent_event_seq": event.seq,
+                "provider_status": event.status.clone(),
+                "output_chars": char_count,
+                "output_preview": truncate_summary(output, TOOL_EVENT_INLINE_PREVIEW_CHARS),
+                "output_artifactized": !artifacts.is_empty(),
+            }),
+            artifacts,
+        ))
+    }
+
+    fn record_failed_tool_events_for_ready_nodes(
+        &self,
+        superstep: u64,
+        ready_nodes: &[ReadyNode],
+        code: &str,
+        message: &str,
+    ) -> Result<(), TaskGraphError> {
+        for ready_node in ready_nodes {
+            let Some(node) = self.node_map.get(&ready_node.node_id) else {
+                continue;
+            };
+            let Some(descriptor) = ToolDescriptor::for_node(node) else {
+                continue;
+            };
+            run_state::append_tool_lifecycle_event(
+                &self.opts.workspace_root,
+                &self.opts.project,
+                &self.opts.run_id,
+                ToolLifecycleEventInput {
+                    superstep,
+                    kind: ToolLifecycleEventKind::End,
+                    node_id: ready_node.node_id.clone(),
+                    node_run_id: node_run_id(&self.opts.run_id, superstep, &ready_node.node_id),
+                    tool_call_id: tool_call_id(
+                        &self.opts.run_id,
+                        superstep,
+                        &ready_node.node_id,
+                        1,
+                    ),
+                    tool_name: descriptor.tool_name,
+                    tool_kind: descriptor.tool_kind,
+                    attempt: 1,
+                    status: ToolLifecycleStatus::Failed,
+                    started_at: None,
+                    ended_at: Some(Utc::now().to_rfc3339()),
+                    duration_ms: None,
+                    input_summary: serde_json::Value::Null,
+                    output_summary: serde_json::json!({
+                        "status": "failed",
+                        "failed_before_node_outcome": true,
+                    }),
+                    error: Some(ToolLifecycleError {
+                        code: code.to_string(),
+                        message: truncate_summary(message, 512),
+                        category: Some("dispatch".to_string()),
+                    }),
+                    artifacts: Vec::new(),
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    fn record_tool_started_event(
+        &self,
+        superstep: u64,
+        ready_node: &ReadyNode,
+    ) -> Result<(), TaskGraphError> {
+        let Some(node) = self.node_map.get(&ready_node.node_id) else {
+            return Ok(());
+        };
+        let Some(descriptor) = ToolDescriptor::for_node(node) else {
+            return Ok(());
+        };
+        let input_summary = descriptor.input_summary(ready_node);
+        run_state::append_tool_lifecycle_event(
+            &self.opts.workspace_root,
+            &self.opts.project,
+            &self.opts.run_id,
+            ToolLifecycleEventInput {
+                superstep,
+                kind: ToolLifecycleEventKind::Start,
+                node_id: ready_node.node_id.clone(),
+                node_run_id: node_run_id(&self.opts.run_id, superstep, &ready_node.node_id),
+                tool_call_id: tool_call_id(&self.opts.run_id, superstep, &ready_node.node_id, 1),
+                tool_name: descriptor.tool_name,
+                tool_kind: descriptor.tool_kind,
+                attempt: 1,
+                status: ToolLifecycleStatus::Running,
+                started_at: Some(Utc::now().to_rfc3339()),
+                ended_at: None,
+                duration_ms: None,
+                input_summary,
+                output_summary: serde_json::Value::Null,
+                error: None,
+                artifacts: Vec::new(),
+            },
+        )?;
+        Ok(())
+    }
+
+    fn record_tool_ended_event(
+        &self,
+        superstep: u64,
+        outcome: &NodeOutcome,
+    ) -> Result<(), TaskGraphError> {
+        let Some(node) = self.node_map.get(&outcome.node_id) else {
+            return Ok(());
+        };
+        let Some(descriptor) = ToolDescriptor::for_node(node) else {
+            return Ok(());
+        };
+        let output_artifact = outcome
+            .node_state
+            .output_artifact
+            .as_ref()
+            .map(|artifact| ToolLifecycleArtifact {
+                id: Some(artifact.id.clone()),
+                path: artifact.path.clone(),
+                content_type: Some(artifact_content_type_name(&artifact.content_type)),
+                label: Some("node output".to_string()),
+            })
+            .into_iter()
+            .collect::<Vec<_>>();
+        let error = outcome
+            .node_state
+            .error
+            .as_ref()
+            .map(|error| ToolLifecycleError {
+                code: error.code.clone(),
+                message: truncate_summary(&error.message, 512),
+                category: Some("node".to_string()),
+            });
+        run_state::append_tool_lifecycle_event(
+            &self.opts.workspace_root,
+            &self.opts.project,
+            &self.opts.run_id,
+            ToolLifecycleEventInput {
+                superstep,
+                kind: ToolLifecycleEventKind::End,
+                node_id: outcome.node_id.clone(),
+                node_run_id: node_run_id(&self.opts.run_id, superstep, &outcome.node_id),
+                tool_call_id: tool_call_id(&self.opts.run_id, superstep, &outcome.node_id, 1),
+                tool_name: descriptor.tool_name,
+                tool_kind: descriptor.tool_kind,
+                attempt: 1,
+                status: lifecycle_status_from_node_status(outcome.status),
+                started_at: outcome.node_state.started_at.clone(),
+                ended_at: outcome.node_state.completed_at.clone(),
+                duration_ms: outcome.node_state.duration_ms,
+                input_summary: serde_json::Value::Null,
+                output_summary: serde_json::json!({
+                    "status": outcome.status,
+                    "has_output": outcome.output.is_some(),
+                    "exit_code": outcome.node_state.exit_code,
+                    "child_run_id": outcome.child_run_id.clone(),
+                    "end_result": outcome.end_result.clone(),
+                    "log_tail": outcome.node_state.log_tail.as_deref().map(|value| truncate_summary(value, 512)),
+                }),
+                error,
+                artifacts: output_artifact,
+            },
+        )?;
         Ok(())
     }
 
@@ -1001,7 +1437,7 @@ impl<'a> GraphCoordinator<'a> {
 
     // ─── Helper: borrowed edge/node maps ─────────────────────────────────────
 
-    /// 构建 borrowed edge_map（供 nodes 函数使用）。
+    /// 构建 borrowed `edge_map（供` nodes 函数使用）。
     fn borrow_edge_map(&self) -> HashMap<String, Vec<&TaskGraphEdge>> {
         let mut map: HashMap<String, Vec<&TaskGraphEdge>> = HashMap::new();
         for edges in self.edge_map.values() {
@@ -1012,7 +1448,7 @@ impl<'a> GraphCoordinator<'a> {
         map
     }
 
-    /// 构建 borrowed node_map（供 nodes 函数使用）。
+    /// 构建 borrowed `node_map（供` nodes 函数使用）。
     fn borrow_node_map(&self) -> HashMap<String, &TaskGraphNode> {
         self.node_map.iter().map(|(k, v)| (k.clone(), v)).collect()
     }
@@ -1020,7 +1456,7 @@ impl<'a> GraphCoordinator<'a> {
 
 // ─── Owned map builders ──────────────────────────────────────────────────────
 
-/// Build an owned adjacency map: node_id → outgoing edges (owned).
+/// Build an owned adjacency map: `node_id` → outgoing edges (owned).
 fn build_owned_edge_map(edges: &[TaskGraphEdge]) -> HashMap<String, Vec<TaskGraphEdge>> {
     let mut map: HashMap<String, Vec<TaskGraphEdge>> = HashMap::new();
     for edge in edges {
@@ -1029,7 +1465,7 @@ fn build_owned_edge_map(edges: &[TaskGraphEdge]) -> HashMap<String, Vec<TaskGrap
     map
 }
 
-/// Build an owned node lookup map: node_id → node (owned).
+/// Build an owned node lookup map: `node_id` → node (owned).
 fn build_owned_node_map(nodes: &[TaskGraphNode]) -> HashMap<String, TaskGraphNode> {
     nodes.iter().map(|n| (n.id.clone(), n.clone())).collect()
 }
@@ -1060,6 +1496,339 @@ fn rejected_compile_batch(mut batch: GraphMutationBatch, message: String) -> Gra
         }],
     };
     batch
+}
+
+#[derive(Debug, Clone)]
+struct ToolDescriptor {
+    tool_name: String,
+    tool_kind: String,
+    config_keys: Vec<String>,
+}
+
+impl ToolDescriptor {
+    fn for_node(node: &TaskGraphNode) -> Option<Self> {
+        let (tool_name, tool_kind) = match node.node_type {
+            NodeType::Llm => ("llm_runtime", "agent_runtime"),
+            NodeType::LlmCoordinator => ("llm_coordinator", "agent_runtime"),
+            NodeType::LlmMutation => ("llm_mutation", "agent_runtime"),
+            NodeType::Plan => ("plan_llm", "agent_runtime"),
+            NodeType::IntentExtract => ("intent_extract", "agent_runtime"),
+            NodeType::KbPlan => ("kb_plan", "system_tool"),
+            NodeType::ManifestMerge => ("manifest_merge", "system_tool"),
+            NodeType::SchemaValidate => ("schema_validate", "system_tool"),
+            NodeType::SystemWriteOutput => ("system_write_output", "system_tool"),
+            NodeType::Shell => ("shell_command", "shell"),
+            NodeType::SubGraph => ("sub_graph", "task_graph"),
+            NodeType::Start
+            | NodeType::End
+            | NodeType::HumanGate
+            | NodeType::Branch
+            | NodeType::Loop
+            | NodeType::InputVar
+            | NodeType::DataValue => return None,
+        };
+        Some(Self {
+            tool_name: tool_name.to_string(),
+            tool_kind: tool_kind.to_string(),
+            config_keys: node_config_keys(&node.config),
+        })
+    }
+
+    fn input_summary(&self, ready_node: &ReadyNode) -> serde_json::Value {
+        serde_json::json!({
+            "execution_mode": format!("{:?}", ready_node.execution_mode).to_lowercase(),
+            "task_kind": format!("{:?}", ready_node.task_kind).to_lowercase(),
+            "config_keys": self.config_keys.clone(),
+            "has_task_input": !ready_node.task_input.is_null(),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct AgentToolIdentity {
+    tool_name: String,
+    tool_kind: String,
+    mcp_server: Option<String>,
+    mcp_tool: Option<String>,
+    daemon_backed: bool,
+}
+
+impl AgentToolIdentity {
+    fn from_event(event: &AgentEvent) -> Self {
+        let raw_tool = event
+            .tool
+            .as_deref()
+            .filter(|tool| !tool.trim().is_empty())
+            .unwrap_or("agent_tool");
+        if let Some((server, tool)) = parse_server_prefixed_tool(raw_tool) {
+            let daemon_backed = is_blackboard_mcp_tool(&server, &tool);
+            return Self {
+                tool_name: format!("{server}.{tool}"),
+                tool_kind: "mcp_tool".to_string(),
+                mcp_server: Some(server),
+                mcp_tool: Some(tool),
+                daemon_backed,
+            };
+        }
+
+        if raw_tool == "mcp" || raw_tool.starts_with("mcp.") {
+            let target = event
+                .input
+                .as_ref()
+                .and_then(mcp_target_from_input)
+                .unwrap_or_else(|| raw_tool.trim_start_matches("mcp.").to_string());
+            let (server, tool) = split_mcp_target(&target);
+            let daemon_backed = server
+                .as_deref()
+                .zip(tool.as_deref())
+                .is_some_and(|(server, tool)| is_blackboard_mcp_tool(server, tool));
+            return Self {
+                tool_name: if target.is_empty() {
+                    raw_tool.to_string()
+                } else {
+                    target
+                },
+                tool_kind: "mcp_tool".to_string(),
+                mcp_server: server,
+                mcp_tool: tool,
+                daemon_backed,
+            };
+        }
+
+        let tool_kind = match raw_tool {
+            "bash" | "shell" => "shell",
+            "read" | "grep" | "search" => "file_read",
+            "write" | "edit" | "multi_edit" => "file_write",
+            _ => "agent_tool",
+        };
+        Self {
+            tool_name: raw_tool.to_string(),
+            tool_kind: tool_kind.to_string(),
+            mcp_server: None,
+            mcp_tool: None,
+            daemon_backed: false,
+        }
+    }
+}
+
+fn agent_tool_input_summary(
+    session_id: &str,
+    event: &AgentEvent,
+    identity: &AgentToolIdentity,
+) -> serde_json::Value {
+    let mut summary = serde_json::Map::new();
+    summary.insert(
+        "agent_session_id".to_string(),
+        serde_json::json!(session_id),
+    );
+    summary.insert("agent_event_seq".to_string(), serde_json::json!(event.seq));
+    summary.insert(
+        "provider_status".to_string(),
+        serde_json::json!(event.status.clone()),
+    );
+    if let Some(call_id) = event.call_id.as_deref() {
+        summary.insert("provider_call_id".to_string(), serde_json::json!(call_id));
+    }
+    if let Some(server) = identity.mcp_server.as_deref() {
+        summary.insert("mcp_server".to_string(), serde_json::json!(server));
+    }
+    if let Some(tool) = identity.mcp_tool.as_deref() {
+        summary.insert("mcp_tool".to_string(), serde_json::json!(tool));
+    }
+    if identity.daemon_backed {
+        summary.insert("daemon_backed".to_string(), serde_json::json!(true));
+    }
+
+    match event.input.as_ref() {
+        Some(serde_json::Value::Object(object)) => {
+            summary.insert(
+                "input_keys".to_string(),
+                serde_json::json!(object.keys().cloned().collect::<Vec<_>>()),
+            );
+            for key in [
+                "project", "id", "name", "target", "path", "file", "filename", "tool",
+            ] {
+                if let Some(value) = object.get(key).and_then(serde_json::Value::as_str) {
+                    summary.insert(
+                        key.to_string(),
+                        serde_json::json!(truncate_summary(value, 256)),
+                    );
+                }
+            }
+            if let Some(command) = object.get("command").and_then(serde_json::Value::as_str) {
+                summary.insert(
+                    "command_preview".to_string(),
+                    serde_json::json!(truncate_summary(command, 256)),
+                );
+            }
+        }
+        Some(value) => {
+            summary.insert(
+                "input_preview".to_string(),
+                serde_json::json!(truncate_summary(&value.to_string(), 256)),
+            );
+        }
+        None => {}
+    }
+
+    serde_json::Value::Object(summary)
+}
+
+fn parse_server_prefixed_tool(raw_tool: &str) -> Option<(String, String)> {
+    let rest = raw_tool.strip_prefix("server__")?;
+    let (server, tool) = rest.split_once("__")?;
+    if server.is_empty() || tool.is_empty() {
+        return None;
+    }
+    Some((server.to_string(), tool.to_string()))
+}
+
+fn split_mcp_target(target: &str) -> (Option<String>, Option<String>) {
+    let normalized = target.trim().trim_start_matches("mcp.").replace("__", ".");
+    let mut parts = normalized.split('.').filter(|part| !part.is_empty());
+    let first = parts.next().map(str::to_string);
+    let second = parts.next().map(str::to_string);
+    match (first, second) {
+        (Some(server), Some(tool)) => (Some(server), Some(tool)),
+        (Some(tool), None) => (None, Some(tool)),
+        _ => (None, None),
+    }
+}
+
+fn mcp_target_from_input(input: &serde_json::Value) -> Option<String> {
+    let object = input.as_object()?;
+    ["target", "tool", "name", "mcp_tool", "server_tool"]
+        .iter()
+        .find_map(|key| object.get(*key).and_then(serde_json::Value::as_str))
+        .map(str::to_string)
+}
+
+fn is_blackboard_mcp_tool(server: &str, tool: &str) -> bool {
+    matches!(server, "bb" | "blackboard")
+        && matches!(
+            tool,
+            "list_projects"
+                | "find_work_context"
+                | "list_inbox_notes"
+                | "read_inbox_note"
+                | "archive_inbox_note"
+                | "delete_inbox_note"
+                | "list_tickets"
+                | "read_ticket"
+                | "read_ticket_by_id"
+                | "create_ticket"
+                | "update_ticket"
+                | "deprecate_ticket"
+                | "append_ticket_sections"
+                | "begin_ticket_work"
+                | "complete_handoff"
+                | "board_summary"
+                | "list_lanes"
+                | "upsert_lane"
+                | "archive_lane"
+                | "upsert_project_agent"
+                | "remove_project_agent"
+                | "search_notes"
+                | "search_tickets"
+                | "create_inbox_note"
+        )
+}
+
+fn agent_tool_call_id(run_id: &str, superstep: u64, node_id: &str, event: &AgentEvent) -> String {
+    let provider_call_id = event
+        .call_id
+        .as_deref()
+        .filter(|call_id| !call_id.trim().is_empty())
+        .map_or_else(|| format!("seq-{}", event.seq), str::to_string);
+    format!(
+        "{run_id}:agent-tool:{superstep:06}:{node_id}:{}",
+        safe_artifact_segment(&provider_call_id)
+    )
+}
+
+const fn should_emit_tool_update(count: usize) -> bool {
+    count == 1 || count.is_multiple_of(TOOL_UPDATE_THROTTLE_EVERY)
+}
+
+fn is_running_tool_status(status: &str) -> bool {
+    matches!(status, "running" | "in_progress" | "streaming" | "started")
+}
+
+fn lifecycle_status_from_agent_status(status: &str) -> ToolLifecycleStatus {
+    match status {
+        "completed" | "succeeded" | "success" => ToolLifecycleStatus::Succeeded,
+        "cancelled" | "canceled" => ToolLifecycleStatus::Cancelled,
+        "timeout" | "timed_out" => ToolLifecycleStatus::Timeout,
+        "paused" => ToolLifecycleStatus::Paused,
+        "skipped" => ToolLifecycleStatus::Skipped,
+        "error" | "failed" | "blocked" | "denied" => ToolLifecycleStatus::Failed,
+        // Unknown status defaults to Running to avoid masking real failures as success.
+        // New provider statuses (e.g., "retrying", "queued", "throttled") will be tracked
+        // as in-progress until explicitly mapped.
+        _ => ToolLifecycleStatus::Running,
+    }
+}
+
+fn node_config_keys(config: &serde_json::Value) -> Vec<String> {
+    config
+        .as_object()
+        .map(|object| object.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+fn node_run_id(run_id: &str, superstep: u64, node_id: &str) -> String {
+    format!("{run_id}:node:{superstep:06}:{node_id}")
+}
+
+fn tool_call_id(run_id: &str, superstep: u64, node_id: &str, attempt: u32) -> String {
+    format!("{run_id}:tool:{superstep:06}:{node_id}:{attempt}")
+}
+
+const fn lifecycle_status_from_node_status(status: NodeRunStatus) -> ToolLifecycleStatus {
+    match status {
+        NodeRunStatus::Succeeded => ToolLifecycleStatus::Succeeded,
+        NodeRunStatus::Failed => ToolLifecycleStatus::Failed,
+        NodeRunStatus::Skipped => ToolLifecycleStatus::Skipped,
+        NodeRunStatus::Paused => ToolLifecycleStatus::Paused,
+        NodeRunStatus::Idle | NodeRunStatus::Queued | NodeRunStatus::Running => {
+            ToolLifecycleStatus::Running
+        }
+    }
+}
+
+fn artifact_content_type_name(content_type: &ArtifactContentType) -> String {
+    match content_type {
+        ArtifactContentType::Markdown => "markdown",
+        ArtifactContentType::Json => "json",
+        ArtifactContentType::Text => "text",
+    }
+    .to_string()
+}
+
+fn truncate_summary(value: &str, max_chars: usize) -> String {
+    let trimmed: String = value.chars().take(max_chars).collect();
+    if value.chars().count() > max_chars {
+        format!("{trimmed}...")
+    } else {
+        trimmed
+    }
+}
+
+fn safe_artifact_segment(value: &str) -> String {
+    let mut output = String::new();
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+            output.push(ch);
+        } else {
+            output.push('-');
+        }
+    }
+    let trimmed = output.trim_matches('-');
+    if trimmed.is_empty() {
+        "tool".to_string()
+    } else {
+        trimmed.chars().take(96).collect()
+    }
 }
 
 #[cfg(test)]
@@ -1262,6 +2031,7 @@ mod tests {
             codebuddy_path: "codebuddy".to_string(),
             opencode_path: "opencode".to_string(),
             opencode_config_content: None,
+            pi_path: "pi".to_string(),
             model: None,
             node_timeout: std::time::Duration::from_secs(1),
             run_timeout: std::time::Duration::from_secs(10),

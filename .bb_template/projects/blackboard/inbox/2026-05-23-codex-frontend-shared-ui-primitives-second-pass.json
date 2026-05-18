@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "title": "Frontend UI convergence second pass",
+  "time": "2026-05-23",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "frontend-shared-ui-primitives-second-pass",
+  "done": [
+    "新增 BbInlineAction，用于 view-all / analytics / text-like action 这类文字动作入口。",
+    "迁移 AgentAssignments、AgentMetricsCards 的 aw-view-all / aw-link 到 BbInlineAction。",
+    "迁移 TaskGraphBindingList、TaskGraphInputsPanel、TaskGraphBranchNodeForm、TaskGraphLlmNodeForm、TaskGraphNodeInspector 的行内新增/删除按钮到 BbButton。",
+    "清理 TaskGraphEditorPanel 中已无模板使用的 task-graph-inline-add scoped CSS。",
+    "从 styles.css 移除一批已无组件引用的 aw-field / aw-btn / aw-modal / aw-add-btn / aw-remove-btn / aw-inline-error 旧样式定义，保留 shared compatibility selector 作为过渡层。",
+    "更新 DESIGN.md：明确 text-like actions 用 BbInlineAction，dense editor add/remove controls 用 BbButton。"
+  ],
+  "validation": [
+    "npm run build --prefix bb_web: 通过。",
+    "git diff --check（本轮相关前端文件）: 通过，仅 Windows LF/CRLF warning。",
+    "Browser iab Agents 页面: 无 console error，legacy aw-link/aw-view-all/aw-add/aw-remove/aw-field/aw-modal 计数为 0。",
+    "Browser iab TaskGraph route 抽查: 无 console error，legacy task-graph-inline-add 计数为 0。"
+  ],
+  "next_step": [
+    "下一轮建议继续抽取 BbRefChip / BbSegmentedControl / BbDenseFieldRow，把 variable chip、LLM mode segmented、prompt-var-bind 这类还在局部定义的 dense editor 模式继续收拢。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/common/BbInlineAction.vue",
+    "bb_web/src/components/common/index.ts",
+    "bb_web/src/styles.css",
+    "bb_web/DESIGN.md",
+    "bb_web/src/components/agents/AgentAssignments.vue",
+    "bb_web/src/components/agents/AgentMetricsCards.vue",
+    "bb_web/src/components/task-graph/TaskGraphBindingList.vue",
+    "bb_web/src/components/task-graph/TaskGraphInputsPanel.vue",
+    "bb_web/src/components/task-graph/TaskGraphBranchNodeForm.vue",
+    "bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue",
+    "bb_web/src/components/task-graph/TaskGraphNodeInspector.vue",
+    "bb_web/src/components/TaskGraphEditorPanel.vue"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

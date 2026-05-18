@@ -2,21 +2,21 @@
   "schema_version": 1,
   "id": "task-ticket-audit",
   "scope": "system",
-  "title": "Ticket Schema Audit / Repair",
-  "description": "Ticket 日常巡检：脚本读取 code-generated ticket schema 校验真实 JSON ticket；有问题时把报告交给 LLM 修复，再用同一脚本复验，直到通过或达到最大轮数。",
-  "version": 3,
+  "title": "Ticket Schema Audit / Repair（System Tool）",
+  "description": "Ticket 日常巡检：脚本检查真实 JSON ticket；确定性 repair tool 只做安全 schema 归一化；复验通过才退出。",
+  "version": 5,
   "readonly": true,
   "metadata": {
     "tags": [
-      "task-wrapper",
+      "system-tool",
       "ticket",
       "audit",
       "schema"
     ],
-    "owner": "blackboard",
     "related_tickets": [
       "000075"
     ],
+    "owner": "blackboard",
     "run_policy": {
       "allow_concurrent_runs": false,
       "max_concurrent_runs": 1,
@@ -41,8 +41,8 @@
       "type": "start",
       "label": "Start",
       "position": {
-        "x": 40,
-        "y": 120
+        "x": -32.0,
+        "y": 120.0
       },
       "config": {},
       "pins": [
@@ -61,8 +61,8 @@
       "label": "Ticket Audit Repair Loop",
       "description": "body_exit 的 shell checker 返回 exit_code=2 表示仍有 ticket findings，需要继续让 LLM 修复。",
       "position": {
-        "x": 300,
-        "y": 120
+        "x": 300.0,
+        "y": 120.0
       },
       "config": {
         "body_entry": "ticket-audit-check",
@@ -115,11 +115,10 @@
       "label": "Ticket Schema Check",
       "description": "读取 .bb_template/schemas/ticket.schema.json，对真实 ticket 文件做 schema/business/script 级检查。",
       "position": {
-        "x": 640,
-        "y": 40
+        "x": 640.0,
+        "y": 40.0
       },
       "config": {
-        "command": "python3",
         "args": [
           "{{env.scripts_dir}}/audit_tickets.py",
           "--project",
@@ -129,16 +128,17 @@
           "--run-schema-check",
           "--run-maintenance"
         ],
+        "capture": {
+          "max_bytes": 65536,
+          "strip_ansi": true
+        },
+        "command": "python3",
         "expected_exit_codes": [
           0,
           2
         ],
-        "timeout_ms": 300000,
         "permission": "project_write",
-        "capture": {
-          "max_bytes": 65536,
-          "strip_ansi": true
-        }
+        "timeout_ms": 300000
       },
       "pins": [
         {
@@ -170,8 +170,8 @@
       "type": "branch",
       "label": "Audit Route",
       "position": {
-        "x": 960,
-        "y": 40
+        "x": 960.0,
+        "y": 40.0
       },
       "config": {
         "default_rule_id": "clean",
@@ -224,29 +224,33 @@
     },
     {
       "id": "ticket-audit-repair",
-      "type": "llm",
-      "label": "Ticket Repair",
-      "description": "读取脚本报告，只修报告列出的 ticket，再输出结构化修复摘要。",
+      "type": "shell",
+      "label": "Ticket Safe Repair Tool",
+      "description": "确定性工具：根据 audit report 对报告列出的 JSON ticket 做安全 schema 归一化，不处理 inbox/lane/新建 ticket。",
       "position": {
-        "x": 1260,
-        "y": -60
+        "x": 1280.0,
+        "y": 154.0
       },
       "config": {
-        "runtime": "opencode",
-        "agent": "bb-pm",
-        "model": "minimax-cn-coding-plan/MiniMax-M2.7-highspeed",
-        "inputs": {
-          "audit-summary": "{{nodes.ticket-audit-check.output.stdout_tail}}",
-          "report-path": "{{env.root}}/runtime/ticket-audit/{{env.project}}-latest.json"
+        "command": "python3",
+        "args": [
+          "{{env.scripts_dir}}/repair_tickets_from_audit.py",
+          "--project",
+          "{{env.project}}",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--report-path",
+          "{{env.root}}/runtime/ticket-audit/{{env.project}}-latest.json"
+        ],
+        "capture": {
+          "max_bytes": 65536,
+          "strip_ansi": true
         },
-        "prompt": {
-          "mode": "file",
-          "template": "agents/prompts/ticket-audit.md"
-        },
-        "output": {
-          "artifact_type": "json",
-          "required": true
-        }
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "project_write",
+        "timeout_ms": 300000
       },
       "pins": [
         {
@@ -277,20 +281,125 @@
       "id": "ticket-repair-output-validate",
       "type": "schema_validate",
       "label": "Repair Output Validate",
-      "description": "LLM 修复摘要 contract gate；真实 ticket 正确性仍由后续 shell checker 决定。",
+      "description": "系统 repair tool 输出 contract gate；真实 ticket 正确性仍由后续 shell checker 决定。",
       "position": {
-        "x": 1560,
-        "y": -60
+        "x": 1600.0,
+        "y": 154.0
       },
       "config": {
         "fail_on_invalid": true,
         "inputs": {
-          "value": "{{nodes.ticket-audit-repair.output}}"
+          "value": "{{nodes.ticket-audit-repair.output.stdout_json}}"
         },
-        "schema_name": "ticket_audit_repair_output",
         "schema": {
-          "type": "object",
           "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "fields": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "id": {
+                    "pattern": "^[0-9]{6}$",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "fields",
+                  "reason"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "skipped": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "pattern": "^[0-9]{6}$",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "reason"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "summary": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "ticket_validation": {
+              "additionalProperties": false,
+              "properties": {
+                "audit_status_before": {
+                  "enum": [
+                    "passed",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                "finding_count_before": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "report_path": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "audit_status_before",
+                "finding_count_before",
+                "report_path"
+              ],
+              "type": "object"
+            },
+            "verification": {
+              "additionalProperties": false,
+              "properties": {
+                "audit_report_consumed": {
+                  "enum": [
+                    "passed",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                "repair_attempted": {
+                  "enum": [
+                    "passed",
+                    "failed",
+                    "not_needed"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "audit_report_consumed",
+                "repair_attempted"
+              ],
+              "type": "object"
+            }
+          },
           "required": [
             "summary",
             "changed",
@@ -298,114 +407,9 @@
             "ticket_validation",
             "verification"
           ],
-          "properties": {
-            "summary": {
-              "type": "string",
-              "minLength": 1
-            },
-            "changed": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "id",
-                  "fields",
-                  "reason"
-                ],
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "pattern": "^[0-9]{6}$"
-                  },
-                  "fields": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "reason": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                }
-              }
-            },
-            "skipped": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "id",
-                  "reason"
-                ],
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "pattern": "^[0-9]{6}$"
-                  },
-                  "reason": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                }
-              }
-            },
-            "ticket_validation": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "audit_status_before",
-                "finding_count_before",
-                "report_path"
-              ],
-              "properties": {
-                "audit_status_before": {
-                  "type": "string",
-                  "enum": [
-                    "passed",
-                    "failed"
-                  ]
-                },
-                "finding_count_before": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "report_path": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              }
-            },
-            "verification": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "audit_report_consumed",
-                "repair_attempted"
-              ],
-              "properties": {
-                "audit_report_consumed": {
-                  "type": "string",
-                  "enum": [
-                    "passed",
-                    "failed"
-                  ]
-                },
-                "repair_attempted": {
-                  "type": "string",
-                  "enum": [
-                    "passed",
-                    "failed",
-                    "not_needed"
-                  ]
-                }
-              }
-            }
-          }
-        }
+          "type": "object"
+        },
+        "schema_name": "ticket_audit_repair_output"
       },
       "pins": [
         {
@@ -438,11 +442,10 @@
       "label": "Post Repair Check",
       "description": "LLM 修复后复验；exit_code=0 才允许 loop 退出。",
       "position": {
-        "x": 1880,
-        "y": 40
+        "x": 1906.2563955584349,
+        "y": 40.0
       },
       "config": {
-        "command": "python3",
         "args": [
           "{{env.scripts_dir}}/audit_tickets.py",
           "--project",
@@ -452,16 +455,17 @@
           "--run-schema-check",
           "--run-maintenance"
         ],
+        "capture": {
+          "max_bytes": 65536,
+          "strip_ansi": true
+        },
+        "command": "python3",
         "expected_exit_codes": [
           0,
           2
         ],
-        "timeout_ms": 300000,
         "permission": "project_write",
-        "capture": {
-          "max_bytes": 65536,
-          "strip_ansi": true
-        }
+        "timeout_ms": 300000
       },
       "pins": [
         {
@@ -493,8 +497,8 @@
       "type": "end",
       "label": "Success",
       "position": {
-        "x": 2220,
-        "y": 120
+        "x": 643.2152821895769,
+        "y": 212.76344092462648
       },
       "config": {
         "result": "succeeded"

@@ -11,6 +11,7 @@ use super::model::{PregelCheckpoint, PregelPreparedStep, PregelTask, PregelTaskK
 use super::runtime_channels::{ERROR_CHANNEL, PULL_TRIGGER, PUSH_TRIGGER, TASKS_CHANNEL};
 use super::writes::{channel_is_available, channel_version};
 
+#[must_use]
 pub fn prepare_next_tasks(
     compiled: &CompiledGraph,
     checkpoint: &PregelCheckpoint,
@@ -18,6 +19,7 @@ pub fn prepare_next_tasks(
 ) -> PregelPreparedStep {
     prepare_next_tasks_with_pending_writes(compiled, checkpoint, &[], next_superstep)
 }
+#[must_use]
 pub fn prepare_next_tasks_with_pending_writes(
     compiled: &CompiledGraph,
     checkpoint: &PregelCheckpoint,

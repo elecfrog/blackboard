@@ -8,13 +8,38 @@
           "relative_path": "./blackboard"
         }
       }
+    },
+    "engineh": {
+      "uuid": "7e3fcf99-3080-4adf-a03c-c9c6af41219a",
+      "locations": {
+        "ORNIZHOU-PC0": {
+          "absolute_path": "C:\\Dev\\EngineH\\.bb",
+          "relative_path": ""
+        },
+        "UNKNOWN": {
+          "absolute_path": "C:\\Dev\\EngineH\\.bb",
+          "relative_path": ""
+        }
+      }
     }
   },
   "machines": {
-    "CURRENT": "ORNIZHOU-MC0",
+    "CURRENT": "ORNIZHOU-PC0",
     "ORNIZHOU-MC0": {
       "OS": "MacOS",
       "OS_VERSION": "26.2"
+    },
+    "ORNIZHOU-PC0": {
+      "OS": "Windows",
+      "OS_VERSION": "11"
+    },
+    "UNKNOWN": {
+      "OS": "Windows",
+      "OS_VERSION": "11"
+    },
+    "USER-20251102XC": {
+      "OS": "Windows",
+      "OS_VERSION": "10"
     }
   }
 }

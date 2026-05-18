@@ -31,8 +31,8 @@ PORTABLE_LAUNCHER_TARGET_DIR = SRC_TAURI_DIR / "portable-target"
 PORTABLE_OUTPUT_DIR = SRC_TAURI_DIR / "target" / "release" / "portable"
 PORTABLE_PAYLOAD_MAGIC = b"BBPORTABLE1\n"
 
-SEED_ENTRIES = ["blackboard.json", "agents", "projects", "schemas", "task_graphs", "templates"]
-HOME_TEMPLATE_ENTRIES = ["blackboard.json", "agents", "schemas", "task_graphs", "templates"]
+SEED_ENTRIES = ["blackboard.json", "agents", "projects", "schemas", "task_graphs"]
+HOME_TEMPLATE_ENTRIES = ["blackboard.json", "agents", "schemas", "task_graphs"]
 
 
 def log(message: str) -> None:
@@ -69,8 +69,8 @@ def cargo_binary_path(target_dir: Path, target: str | None, profile: str, binary
     return target_dir / profile / f"{binary}{exe_suffix(host)}"
 
 
-def sidecar_binary_name(target: str) -> str:
-    return f"bb-{target}{exe_suffix(target)}"
+def sidecar_binary_name(binary: str, target: str) -> str:
+    return f"{binary}-{target}{exe_suffix(target)}"
 
 
 def build_web(skip: bool = False) -> None:
@@ -81,11 +81,17 @@ def build_web(skip: bool = False) -> None:
     run([npm_cmd(), "run", "build", "--prefix", str(BB_WEB_DIR)], cwd=REPO_ROOT)
 
 
-def build_sidecar(target: str | None, release: bool, skip: bool = False) -> tuple[str, Path]:
+def build_sidecar_package(
+    package: str,
+    binary: str,
+    target: str | None,
+    release: bool,
+    skip: bool = False,
+) -> tuple[str, Path]:
     resolved_target = target or rust_host_triple()
     output_dir = SRC_TAURI_DIR / "binaries"
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / sidecar_binary_name(resolved_target)
+    output_path = output_dir / sidecar_binary_name(binary, resolved_target)
 
     if not skip:
         cmd = [
@@ -96,7 +102,7 @@ def build_sidecar(target: str | None, release: bool, skip: bool = False) -> tupl
             "--target-dir",
             str(SIDECAR_TARGET_DIR),
             "-p",
-            "bb_cli",
+            package,
         ]
         if target:
             cmd.extend(["--target", target])
@@ -105,13 +111,19 @@ def build_sidecar(target: str | None, release: bool, skip: bool = False) -> tupl
         run(cmd, cwd=REPO_ROOT)
 
     profile = "release" if release else "debug"
-    source_path = cargo_binary_path(SIDECAR_TARGET_DIR, target, profile, "bb")
+    source_path = cargo_binary_path(SIDECAR_TARGET_DIR, target, profile, binary)
     if not source_path.is_file():
         raise FileNotFoundError(f"built sidecar binary is missing: {source_path}")
 
     shutil.copy2(source_path, output_path)
     log(f"Copied sidecar: {output_path}")
     return resolved_target, output_path
+
+
+def build_sidecars(target: str | None, release: bool, skip: bool = False) -> tuple[str, list[Path]]:
+    resolved_target, cli_path = build_sidecar_package("bb_cli", "bb", target, release, skip)
+    _, daemon_path = build_sidecar_package("bb_daemon", "bb-daemon", target, release, skip)
+    return resolved_target, [cli_path, daemon_path]
 
 
 def replace_dir(source: Path, target: Path) -> None:
@@ -150,10 +162,36 @@ def prepare_seed_resource() -> None:
         else:
             shutil.copy2(source, target)
 
+    write_builtin_blackboard_registry(target_root)
+
     runtime_path = target_root / "runtime"
     if runtime_path.exists():
         raise RuntimeError(f"seed resource must not include runtime data: {runtime_path}")
     log(f"Prepared seed resource: {target_root}")
+
+
+def write_builtin_blackboard_registry(target_root: Path) -> None:
+    blackboard_project = target_root / "projects" / "blackboard"
+    if not (blackboard_project / "__project__.json").is_file():
+        raise FileNotFoundError(f"desktop seed is missing builtin blackboard project: {blackboard_project}")
+    registry = {
+        "projects": {
+            "blackboard": {
+                "uuid": "00000000-0000-0000-0000-000000000000",
+                "locations": {
+                    "CURRENT": {
+                        "absolute_path": "",
+                        "relative_path": "./blackboard",
+                    }
+                },
+            }
+        },
+        "machines": {},
+    }
+    (target_root / "projects" / "__projects__.json").write_text(
+        json.dumps(registry, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def prepare_home_template_resource() -> None:
@@ -194,9 +232,9 @@ def prepare_home_template_resource() -> None:
 
 
 def verify_resources(target: str) -> None:
-    expected_sidecar = SRC_TAURI_DIR / "binaries" / sidecar_binary_name(target)
     checks = [
-        expected_sidecar,
+        SRC_TAURI_DIR / "binaries" / sidecar_binary_name("bb", target),
+        SRC_TAURI_DIR / "binaries" / sidecar_binary_name("bb-daemon", target),
         DESKTOP_RESOURCES_DIR / "web" / "index.html",
         DESKTOP_RESOURCES_DIR / "seed" / ".bb" / "blackboard.json",
         DESKTOP_RESOURCES_DIR / "home-template" / ".bb" / "blackboard.json",
@@ -208,6 +246,16 @@ def verify_resources(target: str) -> None:
     runtime_path = DESKTOP_RESOURCES_DIR / "seed" / ".bb" / "runtime"
     if runtime_path.exists():
         raise RuntimeError(f"desktop seed resource unexpectedly contains runtime: {runtime_path}")
+    seed_registry_path = DESKTOP_RESOURCES_DIR / "seed" / ".bb" / "projects" / "__projects__.json"
+    seed_registry = json.loads(seed_registry_path.read_text(encoding="utf-8"))
+    seed_projects = seed_registry.get("projects", {})
+    if sorted(seed_projects.keys()) != ["blackboard"]:
+        raise RuntimeError(f"desktop seed registry must only contain blackboard: {seed_registry_path}")
+    blackboard_location = seed_projects["blackboard"].get("locations", {}).get("CURRENT", {})
+    if blackboard_location.get("absolute_path"):
+        raise RuntimeError(f"desktop seed registry must not contain absolute paths: {seed_registry_path}")
+    if blackboard_location.get("relative_path") != "./blackboard":
+        raise RuntimeError(f"desktop seed registry must register blackboard as ./blackboard: {seed_registry_path}")
     template_root = DESKTOP_RESOURCES_DIR / "home-template" / ".bb"
     if (template_root / "runtime").exists():
         raise RuntimeError(f"desktop home template unexpectedly contains runtime: {template_root / 'runtime'}")
@@ -220,7 +268,7 @@ def verify_resources(target: str) -> None:
 def prepare(args: argparse.Namespace) -> None:
     release = args.release and not args.dev
     build_web(skip=args.skip_web_build)
-    target, _ = build_sidecar(
+    target, _ = build_sidecars(
         target=args.target,
         release=release,
         skip=args.skip_sidecar_build,

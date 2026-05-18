@@ -8,7 +8,7 @@ use super::spec::{
 };
 use super::{validate_ticket_status, REQUIRED_METADATA_FIELDS};
 
-pub(crate) fn ticket_entry_from_content(name: String, content: &str) -> TicketEntry {
+pub fn ticket_entry_from_content(name: String, content: &str) -> TicketEntry {
     if name.ends_with(".json") {
         return json_ticket_entry_from_content(name, content);
     }
@@ -44,7 +44,7 @@ pub(crate) fn ticket_entry_from_content(name: String, content: &str) -> TicketEn
         Some(value) if !frontmatter_has_error => {
             let message = format!("invalid frontmatter id `{value}`");
             if metadata_error.is_none() {
-                metadata_error = Some(message.clone());
+                metadata_error = Some(message);
             } else {
                 metadata_warnings.push(message);
             }
@@ -163,6 +163,6 @@ fn ticket_id_from_name(name: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
-pub(crate) fn is_six_digit_id(value: &str) -> bool {
+pub fn is_six_digit_id(value: &str) -> bool {
     value.len() == 6 && value.chars().all(|ch| ch.is_ascii_digit())
 }

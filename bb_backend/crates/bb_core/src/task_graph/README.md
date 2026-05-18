@@ -143,5 +143,5 @@ API / UI projection
 
 - Pregel kernel：`cargo test -p bb_core task_graph::pregel --lib --manifest-path bb_backend/Cargo.toml`
 - TaskGraph core：`cargo test -p bb_core task_graph --lib --manifest-path bb_backend/Cargo.toml`
-- HTTP/CLI 集成：`cargo test -p bb_cli --manifest-path bb_backend/Cargo.toml`
+- HTTP/MCP/daemon 集成：`cargo test -p bb_daemon --manifest-path bb_backend/Cargo.toml`
 - 如果改了 `bb_web/src`：还要跑 `npm run build --prefix bb_web`

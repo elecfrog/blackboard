@@ -247,7 +247,7 @@ impl Blackboard {
                 status: "passed".to_string(),
                 checks: CONSISTENCY_CHECKS
                     .iter()
-                    .map(|check| check.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect(),
                 errors: vec![],
             },
@@ -255,7 +255,7 @@ impl Blackboard {
                 status: "failed".to_string(),
                 checks: CONSISTENCY_CHECKS
                     .iter()
-                    .map(|check| check.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect(),
                 errors,
             },
@@ -263,7 +263,7 @@ impl Blackboard {
                 status: "error".to_string(),
                 checks: CONSISTENCY_CHECKS
                     .iter()
-                    .map(|check| check.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect(),
                 errors: vec![format!("consistency check failed: {err}")],
             },

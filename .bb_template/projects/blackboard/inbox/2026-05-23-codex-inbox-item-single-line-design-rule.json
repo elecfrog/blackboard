@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "title": "Inbox item 单行设计规范落地",
+  "time": "2026-05-23T00:00:00+08:00",
+  "source": "Codex",
+  "project": "blackboard",
+  "topic": "inbox-item-single-line-design-rule",
+  "done": [
+    "将 Inbox full 模式左侧 item 严格收敛为 single-line title-only：移除 meta、time、excerpt。",
+    "调整 selectable item 样式为 row 规格：透明背景、轻量 active/hover、32px min-height、title 单行 ellipsis。",
+    "保留完整信息在右侧 InboxStructuredDocument detail/card 中展示，区分 item 与 card 职责。"
+  ],
+  "validation": [
+    "npm run build --prefix bb_web：通过。",
+    "浏览器 reload Inbox：通过，console error count = 0。",
+    "浏览器实测：前 6 个 `.bb-inbox-item--selectable` 都只有一个 button 子元素，文本只有 title，高度约 34px。",
+    "git diff --check：通过，仅 CRLF warning。"
+  ],
+  "next_step": [
+    "建议把“Item = single-line title-only；Card = multi-field content”写进前端设计规范，并逐步检查 TaskGraph/Ticket/Inbox 其他列表是否混用了 item/card。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/InboxPanel.vue",
+    "bb_web/src/styles.css"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

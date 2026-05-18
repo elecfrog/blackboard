@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { AgentProfile } from '@/data/agents'
 import { upsertAgent } from '@/data/agents'
+import { BbButton, BbField } from '@/components/common'
 import { t } from '@/i18n'
 
 const props = defineProps<{
@@ -81,17 +82,17 @@ const descriptionLength = computed(() => (editForm.value.description || '').leng
           <div class="aw-profile-fields">
             <template v-if="!editMode">
               <h2 class="aw-profile-name">{{ agent.display_name }}</h2>
-              <p class="aw-profile-desc">{{ agent.description || '—' }}</p>
+              <p class="aw-profile-desc">{{ agent.description || t('runtimeUnset') }}</p>
             </template>
             <template v-else>
-              <label class="aw-field">
-                <span>{{ t('agentProfileName') }} <em>*</em></span>
+              <BbField>
+                <template #label>{{ t('agentProfileName') }} <em>*</em></template>
                 <input v-model="editForm.display_name" type="text" required />
-              </label>
-              <label class="aw-field">
-                <span>{{ t('agentProfileDescription') }} <small>{{ descriptionLength }}/500</small></span>
+              </BbField>
+              <BbField>
+                <template #label>{{ t('agentProfileDescription') }} <small>{{ descriptionLength }}/500</small></template>
                 <textarea v-model="editForm.description" maxlength="500" rows="3" />
-              </label>
+              </BbField>
             </template>
           </div>
         </div>
@@ -102,10 +103,10 @@ const descriptionLength = computed(() => (editForm.value.description || '').leng
           <div v-else class="aw-edit-actions">
             <span v-if="saveStatus === 'saved'" class="aw-save-ok">{{ t('agentProfileSaveOk') }}</span>
             <span v-if="saveStatus === 'error'" class="aw-save-err">{{ t('agentProfileSaveErr') }}</span>
-            <button type="button" class="aw-btn secondary" @click="cancelEdit">{{ t('agentEditCancel') }}</button>
-            <button type="button" class="aw-btn primary" :disabled="saving" @click="saveEdit">
+            <BbButton variant="secondary" @click="cancelEdit">{{ t('agentEditCancel') }}</BbButton>
+            <BbButton variant="primary" :disabled="saving" @click="saveEdit">
               {{ saving ? t('agentEditSaving') : t('agentEditSave') }}
-            </button>
+            </BbButton>
           </div>
         </div>
       </div>

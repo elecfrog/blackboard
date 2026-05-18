@@ -3,19 +3,23 @@ use std::path::Path;
 use super::validate_graph;
 use crate::agents_registry;
 use crate::task_graph::definition::store;
-use crate::task_graph::definition::types::*;
+use crate::task_graph::definition::types::{
+    LlmConfig, LlmRunAs, NodeType, SubGraphConfig, TaskGraphDefinition, TaskGraphNode,
+    TaskGraphScope, TaskGraphValidationError, KNOWN_RUNTIMES,
+};
 
 // ─── Pre-run integrity validation ────────────────────────────────────────────
 
 /// 运行前完整性校验。
 ///
 /// 在创建 run 之前调用，确保图所有运行时依赖都就绪：
-/// 1. graph 结构校验（调用 validate_graph）
-/// 2. llm 节点引用的 prompt_file 必须存在（如有）
-/// 3. sub_graph 节点引用的子图必须可加载
+/// 1. graph 结构校验（调用 `validate_graph`）
+/// 2. llm 节点引用的 `prompt_file` 必须存在（如有）
+/// 3. `sub_graph` 节点引用的子图必须可加载
 /// 4. llm 节点引用的 agent 必须已注册
 ///
 /// 返回空 vec 表示校验通过。
+#[must_use]
 pub fn validate_pre_run(
     def: &TaskGraphDefinition,
     workspace_root: &Path,
@@ -63,7 +67,7 @@ fn validate_llm_runtime(
     match config.run_as {
         LlmRunAs::Llm => validate_inline_llm_runtime(node, idx, workspace_root, &config, errors),
         LlmRunAs::Agent => {
-            validate_agent_llm_runtime(node, idx, workspace_root, &config, project_agents, errors)
+            validate_agent_llm_runtime(node, idx, workspace_root, &config, project_agents, errors);
         }
     }
 }
@@ -77,7 +81,7 @@ fn validate_inline_llm_runtime(
 ) {
     if config.prompt.template.trim().is_empty() {
         errors.push(TaskGraphValidationError {
-            path: format!("nodes[{}].config.prompt.template", idx),
+            path: format!("nodes[{idx}].config.prompt.template"),
             code: "empty_prompt_template".to_string(),
             message: format!("LLM 节点 '{}' 的 prompt template 为空", node.id),
         });
@@ -88,7 +92,7 @@ fn validate_inline_llm_runtime(
         let prompt_path = workspace_root.join(&config.prompt.template);
         if !prompt_path.is_file() {
             errors.push(TaskGraphValidationError {
-                path: format!("nodes[{}].config.prompt.template", idx),
+                path: format!("nodes[{idx}].config.prompt.template"),
                 code: "prompt_file_not_found".to_string(),
                 message: format!(
                     "LLM node '{}' references missing prompt file '{}'",
@@ -117,7 +121,7 @@ fn validate_agent_llm_runtime(
     }
     let Some(profile) = project_agents.iter().find(|agent| agent.id == profile_id) else {
         errors.push(TaskGraphValidationError {
-            path: format!("nodes[{}].config.agent_profile", idx),
+            path: format!("nodes[{idx}].config.agent_profile"),
             code: "agent_profile_not_found".to_string(),
             message: format!(
                 "LLM node '{}' references agent profile '{}' which is not active/assignable for this project",
@@ -129,7 +133,7 @@ fn validate_agent_llm_runtime(
     let runtime = profile.runtime.as_deref().unwrap_or_default().trim();
     if runtime.is_empty() {
         errors.push(TaskGraphValidationError {
-            path: format!("nodes[{}].config.agent_profile", idx),
+            path: format!("nodes[{idx}].config.agent_profile"),
             code: "agent_profile_missing_runtime".to_string(),
             message: format!(
                 "Agent profile '{}' used by node '{}' does not define runtime",
@@ -138,7 +142,7 @@ fn validate_agent_llm_runtime(
         });
     } else if !KNOWN_RUNTIMES.contains(&runtime) {
         errors.push(TaskGraphValidationError {
-            path: format!("nodes[{}].config.agent_profile", idx),
+            path: format!("nodes[{idx}].config.agent_profile"),
             code: "agent_profile_runtime_not_found".to_string(),
             message: format!(
                 "Agent profile '{}' runtime '{}' used by node '{}' is not a known runtime",
@@ -158,7 +162,7 @@ fn validate_agent_llm_runtime(
         .filter(|value| !value.is_empty())
     else {
         errors.push(TaskGraphValidationError {
-            path: format!("nodes[{}].config.agent_profile", idx),
+            path: format!("nodes[{idx}].config.agent_profile"),
             code: "agent_task_prompt_missing".to_string(),
             message: format!(
                 "Agent node '{}' has empty task prompt and profile '{}' does not define instructions_path",
@@ -194,7 +198,7 @@ fn validate_node_prompt_file_if_needed(
     let prompt_path = workspace_root.join(&config.prompt.template);
     if !prompt_path.is_file() {
         errors.push(TaskGraphValidationError {
-            path: format!("nodes[{}].config.prompt.template", idx),
+            path: format!("nodes[{idx}].config.prompt.template"),
             code: "prompt_file_not_found".to_string(),
             message: format!(
                 "LLM node '{}' references missing prompt file '{}'",
@@ -219,25 +223,23 @@ fn validate_profile_default_prompt(
     match prompt_path.canonicalize() {
         Ok(canonical_path) if canonical_path.starts_with(&canonical_root) => {}
         Ok(_) => errors.push(TaskGraphValidationError {
-            path: format!("nodes[{}].config.agent_profile", idx),
+            path: format!("nodes[{idx}].config.agent_profile"),
             code: "agent_profile_prompt_escapes_root".to_string(),
             message: format!(
-                "Agent profile '{}' instructions_path escapes workspace root",
-                profile_id
+                "Agent profile '{profile_id}' instructions_path escapes workspace root"
             ),
         }),
         Err(_) => errors.push(TaskGraphValidationError {
-            path: format!("nodes[{}].config.agent_profile", idx),
+            path: format!("nodes[{idx}].config.agent_profile"),
             code: "agent_profile_prompt_not_found".to_string(),
             message: format!(
-                "Agent profile '{}' instructions_path '{}' does not exist",
-                profile_id, instructions_path
+                "Agent profile '{profile_id}' instructions_path '{instructions_path}' does not exist"
             ),
         }),
     }
 }
 
-/// 校验 sub_graph 节点的运行时依赖：子图可加载。
+/// 校验 `sub_graph` 节点的运行时依赖：子图可加载。
 fn validate_sub_graph_runtime(
     node: &TaskGraphNode,
     idx: usize,
@@ -253,7 +255,7 @@ fn validate_sub_graph_runtime(
 
     if config.graph_id.is_empty() {
         errors.push(TaskGraphValidationError {
-            path: format!("nodes[{}].config.graph_id", idx),
+            path: format!("nodes[{idx}].config.graph_id"),
             code: "empty_graph_id".to_string(),
             message: format!("SubGraph 节点 '{}' 的 graph_id 为空", node.id),
         });
@@ -272,7 +274,7 @@ fn validate_sub_graph_runtime(
 
     if child_graph.is_err() {
         errors.push(TaskGraphValidationError {
-            path: format!("nodes[{}].config.graph_id", idx),
+            path: format!("nodes[{idx}].config.graph_id"),
             code: "sub_graph_not_found".to_string(),
             message: format!(
                 "SubGraph 节点 '{}' 引用的子图 '{}' (scope={:?}) 无法加载",
@@ -289,11 +291,12 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::task_graph::definition::types::{EdgeKind, TaskGraphEdge};
 
-    fn graph_with_agent_node(prompt: serde_json::Value) -> TaskGraphDefinition {
+    fn graph_with_llm_agent_mode(prompt: serde_json::Value) -> TaskGraphDefinition {
         TaskGraphDefinition {
             schema_version: 1,
-            id: "agent-prompt-test".to_string(),
+            id: "llm-agent-prompt-test".to_string(),
             scope: TaskGraphScope::Project,
             title: "Agent prompt test".to_string(),
             description: None,
@@ -382,7 +385,7 @@ runtime = "opencode"
     fn agent_mode_without_node_or_profile_prompt_fails_pre_run() {
         let tmp = TempDir::new().unwrap();
         write_profile_without_prompt(tmp.path());
-        let graph = graph_with_agent_node(serde_json::json!({
+        let graph = graph_with_llm_agent_mode(serde_json::json!({
             "mode": "inline",
             "template": ""
         }));
@@ -398,7 +401,7 @@ runtime = "opencode"
     fn agent_mode_with_inline_task_prompt_does_not_require_profile_default() {
         let tmp = TempDir::new().unwrap();
         write_profile_without_prompt(tmp.path());
-        let graph = graph_with_agent_node(serde_json::json!({
+        let graph = graph_with_llm_agent_mode(serde_json::json!({
             "mode": "inline",
             "template": "audit tickets"
         }));

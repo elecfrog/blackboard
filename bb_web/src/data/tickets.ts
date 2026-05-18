@@ -188,15 +188,20 @@ export interface PatchTicketInput {
   assignee?: string
   depends_on?: string[]
   attachments?: TicketAttachment[]
+  spec?: TicketSpec
 }
 
 // Matches the shape returned by bb-server at
 // GET /api/projects/{project}/inbox/notes.
 export interface InboxNoteEntry {
   name: string
-  size?: number
-  modified_at?: string
-  excerpt?: string
+  size: number
+  modified_at: string
+  excerpt: string
+  title: string
+  time: string
+  source: string
+  topic: string
 }
 
 export interface InboxNotesPayload {
@@ -209,6 +214,23 @@ export interface InboxNotesPayload {
 export interface InboxNote {
   name: string
   content: string
+  document: InboxJsonDocument
+}
+
+export interface InboxJsonDocument {
+  schema_version: number
+  title: string
+  time: string
+  source: string
+  project: string
+  topic: string
+  done: string[]
+  validation: string[]
+  next_step: string[]
+  related_locations: string[]
+  related_tickets: string[]
+  attachments: TicketAttachment[]
+  extra: Record<string, string>
 }
 
 // Mirrors bb_core::BoardSummary returned by the stdio board_summary tool and

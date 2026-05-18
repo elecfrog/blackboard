@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import GraphCanvas, { type GraphCanvasEdge, type GraphCanvasNode } from '@/components/GraphCanvas.vue'
+import { BbActionGroup, BbButton, BbIconCommand, BbInfoGrid, BbInfoItem, BbSummaryChip } from '@/components/common'
 import TaskGraphNodeShape from '@/components/task-graph/TaskGraphNodeShape.vue'
 import TaskGraphRunInputsPanel from '@/components/task-graph/TaskGraphRunInputsPanel.vue'
 import TaskGraphRunHistory from '@/components/task-graph/TaskGraphRunHistory.vue'
@@ -41,7 +42,7 @@ const props = defineProps<{
   activeRunId: string
   runInputValues: Record<string, unknown>
   runHistory: TaskGraphRunSummary[]
-  runHistorySource: 'rest' | 'mock'
+  runHistorySource: 'rest'
   runHistoryLoading: boolean
   schedules: TaskGraphSchedule[]
   schedulesLoading: boolean
@@ -201,50 +202,58 @@ function lastRunLabel() {
           {{ selectedCatalogItem.id }} · {{ t('taskGraphVersion') }} {{ selectedCatalogItem.version }} · {{ lastRunLabel() }}
         </p>
       </div>
-      <div class="task-graph-preview-actions">
+      <BbActionGroup class="task-graph-preview-actions" gap="sm">
         <span v-if="mode === 'edit' && (selectedCatalogItem?.scope === 'project' || project === 'blackboard')" class="task-graph-edit-ready">
           {{ t('taskGraphEditorPending') }}
         </span>
-        <button
+        <BbButton
           v-if="selectedCatalogItem"
-          type="button"
-          class="bb-top-action-button"
+          variant="secondary"
+          size="sm"
           @click="emit('open')"
         >
-          <Eye class="bb-top-action-svg" aria-hidden="true" />
-          <span>{{ t('taskGraphView') }}</span>
-        </button>
-        <button
+          <template #leading>
+            <Eye />
+          </template>
+          {{ t('taskGraphView') }}
+        </BbButton>
+        <BbButton
           v-if="selectedCatalogItem && (selectedCatalogItem.scope === 'project' || project === 'blackboard')"
-          type="button"
-          class="bb-top-action-button"
+          variant="secondary"
+          size="sm"
           :disabled="!!actionBusy"
           @click="emit('edit')"
         >
-          <Pencil class="bb-top-action-svg" aria-hidden="true" />
-          <span>{{ t('taskGraphEdit') }}</span>
-        </button>
-        <button
+          <template #leading>
+            <Pencil />
+          </template>
+          {{ t('taskGraphEdit') }}
+        </BbButton>
+        <BbButton
           v-if="selectedCatalogItem && selectedCatalogItem.scope === 'system'"
-          type="button"
-          class="bb-top-action-button"
+          variant="secondary"
+          size="sm"
           :disabled="!!actionBusy"
           @click="emit('customize')"
         >
-          <GitFork class="bb-top-action-svg" aria-hidden="true" />
-          <span>{{ t('taskGraphCustomize') }}</span>
-        </button>
-        <button
+          <template #leading>
+            <GitFork />
+          </template>
+          {{ t('taskGraphCustomize') }}
+        </BbButton>
+        <BbButton
           v-if="selectedCatalogItem"
-          type="button"
-          class="bb-top-action-button"
+          variant="primary"
+          size="sm"
           :disabled="!!actionBusy"
           @click="emit('run')"
         >
-          <Play class="bb-top-action-svg" aria-hidden="true" />
-          <span>{{ selectedActiveRun ? t('taskGraphOpenRun') : t('taskGraphRun') }}</span>
-        </button>
-      </div>
+          <template #leading>
+            <Play />
+          </template>
+          {{ selectedActiveRun ? t('taskGraphOpenRun') : t('taskGraphRun') }}
+        </BbButton>
+      </BbActionGroup>
     </header>
 
     <div v-if="graphLoading" class="bb-state-panel">{{ t('loading') }}</div>
@@ -256,26 +265,28 @@ function lastRunLabel() {
     </div>
     <div v-else-if="selectedGraph" class="task-graph-preview-body">
       <section v-if="selectedGraph.inputs?.length" class="task-graph-preview-summary-strip">
-        <button
-          type="button"
-          :class="['task-graph-preview-summary-chip', { active: activePreviewPanel === 'inputs' }]"
+        <BbSummaryChip
+          :title="t('taskGraphInputs')"
+          :subtitle="runInputSummary"
+          :active="activePreviewPanel === 'inputs'"
           @click="togglePreviewInputs"
         >
-          <ListChecks aria-hidden="true" />
-          <span>
-            <strong>{{ t('taskGraphInputs') }}</strong>
-            <small>{{ runInputSummary }}</small>
-          </span>
-        </button>
-        <button
+          <template #icon>
+            <ListChecks />
+          </template>
+        </BbSummaryChip>
+        <BbButton
           v-if="activePreviewPanel"
-          type="button"
           class="task-graph-preview-summary-close"
+          variant="secondary"
+          size="sm"
           @click="activePreviewPanel = ''"
         >
-          <X aria-hidden="true" />
-          <span>{{ t('taskGraphEditorCloseConfig') }}</span>
-        </button>
+          <template #leading>
+            <X />
+          </template>
+          {{ t('taskGraphEditorCloseConfig') }}
+        </BbButton>
       </section>
 
       <Transition name="task-graph-preview-panel">
@@ -285,9 +296,15 @@ function lastRunLabel() {
         >
           <header>
             <h4>{{ t('taskGraphInputs') }}</h4>
-            <button type="button" @click="activePreviewPanel = ''">
-              <X aria-hidden="true" />
-            </button>
+            <BbButton
+              icon-only
+              size="mini"
+              variant="ghost"
+              :aria-label="t('taskGraphEditorCloseConfig')"
+              @click="activePreviewPanel = ''"
+            >
+              <X />
+            </BbButton>
           </header>
           <TaskGraphRunInputsPanel
             :inputs="selectedGraph.inputs"
@@ -327,18 +344,24 @@ function lastRunLabel() {
         <section v-if="selectedPreviewNode" class="task-graph-node-popover">
           <header>
             <h4>{{ selectedPreviewNode.label }}</h4>
-            <button type="button" @click="selectedPreviewNodeId = ''">×</button>
+            <BbIconCommand
+              size="mini"
+              variant="ghost"
+              :title="t('taskGraphEditorCloseConfig')"
+              @click="selectedPreviewNodeId = ''"
+            >
+              <X />
+            </BbIconCommand>
           </header>
-          <dl class="task-graph-node-popover-fields">
-            <dt>ID</dt>
-            <dd>{{ selectedPreviewNode.id }}</dd>
-            <dt>{{ t('agentKind') }}</dt>
-            <dd>{{ selectedPreviewNode.type }}</dd>
+          <BbInfoGrid class="task-graph-node-popover-fields" variant="rows">
+            <BbInfoItem label="ID" :value="selectedPreviewNode.id" variant="mono" />
+            <BbInfoItem :label="t('agentKind')" :value="selectedPreviewNode.type" variant="mono" />
             <template v-for="(value, key) in selectedPreviewNode.config" :key="key">
-              <dt>{{ key }}</dt>
-              <dd>{{ typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '') }}</dd>
+              <BbInfoItem :label="String(key)" variant="mono">
+                {{ typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '') }}
+              </BbInfoItem>
             </template>
-          </dl>
+          </BbInfoGrid>
         </section>
       </Transition>
       <TaskGraphRunHistory
@@ -393,10 +416,7 @@ function lastRunLabel() {
 }
 
 .task-graph-preview-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+  min-width: 0;
 }
 
 .task-graph-preview h3 {
@@ -434,76 +454,6 @@ function lastRunLabel() {
   display: none;
 }
 
-.task-graph-preview-summary-chip,
-.task-graph-preview-summary-close,
-.task-graph-preview-config-panel > header button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 0;
-  min-height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--bb-border-warm-medium);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-muted);
-  cursor: pointer;
-  font: inherit;
-}
-
-.task-graph-preview-summary-chip {
-  flex: 0 0 auto;
-  justify-content: start;
-  min-width: 154px;
-}
-
-.task-graph-preview-summary-chip.active {
-  border-color: color-mix(in srgb, var(--bb-accent) 36%, var(--bb-hairline));
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
-}
-
-.task-graph-preview-summary-chip svg,
-.task-graph-preview-summary-close svg,
-.task-graph-preview-config-panel > header button svg {
-  flex: 0 0 auto;
-  width: 15px;
-  height: 15px;
-}
-
-.task-graph-preview-summary-chip > span {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
-  text-align: left;
-}
-
-.task-graph-preview-summary-chip strong,
-.task-graph-preview-summary-close span {
-  overflow: hidden;
-  color: currentColor;
-  font-size: 12px;
-  font-weight: 820;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-graph-preview-summary-chip small {
-  overflow: hidden;
-  color: var(--bb-text-muted);
-  font-size: 10px;
-  font-weight: 760;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-graph-preview-summary-chip.active small {
-  color: color-mix(in srgb, var(--bb-accent) 68%, var(--bb-text-muted));
-}
-
 .task-graph-preview-summary-close {
   margin-left: auto;
 }
@@ -524,7 +474,7 @@ function lastRunLabel() {
   border: 1px solid var(--bb-hairline);
   border-radius: 8px;
   background: color-mix(in srgb, var(--bb-surface) 96%, transparent);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+  box-shadow: var(--bb-md-shadow-soft);
   backdrop-filter: blur(8px);
 }
 
@@ -541,12 +491,6 @@ function lastRunLabel() {
   color: var(--bb-text-strong);
   font-size: 13px;
   font-weight: 820;
-}
-
-.task-graph-preview-config-panel > header button {
-  width: 30px;
-  min-width: 30px;
-  padding: 0;
 }
 
 .task-graph-preview-panel-enter-active,
@@ -636,7 +580,7 @@ function lastRunLabel() {
   border-radius: 8px;
   background: color-mix(in srgb, var(--bb-error) 6%, var(--bb-surface-soft));
   color: var(--bb-text-strong);
-  font-family: var(--bb-font-mono, monospace);
+  font-family: var(--bb-font-mono);
   font-size: 12px;
   line-height: 1.5;
   text-align: left;
@@ -666,44 +610,16 @@ function lastRunLabel() {
   color: var(--bb-text-strong);
 }
 
-.task-graph-node-popover header button {
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--bb-text-muted);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.task-graph-node-popover header button:hover {
-  background: var(--bb-surface-muted);
-  color: var(--bb-text);
-}
-
 .task-graph-node-popover-fields {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  margin: 0;
-  font-size: 12px;
-}
-
-.task-graph-node-popover-fields dt {
-  color: var(--bb-text-muted);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.task-graph-node-popover-fields dd {
-  margin: 0;
-  color: var(--bb-text);
-  word-break: break-all;
-  white-space: pre-wrap;
-  max-height: 120px;
-  overflow-y: auto;
+  --bb-info-row-gap: 4px;
+  --bb-info-row-gap-x: 12px;
+  --bb-info-label-font-size: 12px;
+  --bb-info-label-font-weight: 600;
+  --bb-info-label-white-space: nowrap;
+  --bb-info-value-font-weight: 500;
+  --bb-info-value-max-height: 120px;
+  --bb-info-value-overflow-y: auto;
+  --bb-info-value-white-space: pre-wrap;
 }
 
 .node-popover-enter-active {

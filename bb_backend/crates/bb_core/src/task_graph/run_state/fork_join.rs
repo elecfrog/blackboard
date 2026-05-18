@@ -9,6 +9,7 @@ use super::{read_json, run_dir, run_json_path, write_json};
 
 /// 静态分析 edge 列表，找出所有 exec 入度 > 1 的节点作为 join 点。
 /// 仅考虑 Exec 类型的边。
+#[must_use]
 pub fn detect_join_nodes(edges: &[TaskGraphEdge]) -> HashSet<String> {
     let mut in_degree: HashMap<&str, usize> = HashMap::new();
     for edge in edges {
@@ -48,14 +49,18 @@ pub fn record_branch_completion(
 
 /// 判断 join 点的所有 exec 入边是否都已完成。
 /// `edge_map_incoming` 是以目标节点 ID 为 key 的入边映射。
+#[must_use]
 pub fn is_join_ready(run: &TaskGraphRun, join_node_id: &str, expected_count: usize) -> bool {
-    match run.context.completed_branches.get(join_node_id) {
-        Some(completed) => completed.len() >= expected_count,
-        None => expected_count == 0,
-    }
+    run.context
+        .completed_branches
+        .get(join_node_id)
+        .map_or(expected_count == 0, |completed| {
+            completed.len() >= expected_count
+        })
 }
 
 /// 计算某个节点的 exec 入边数量。
+#[must_use]
 pub fn count_exec_in_edges(edges: &[TaskGraphEdge], node_id: &str) -> usize {
     edges
         .iter()

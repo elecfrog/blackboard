@@ -100,10 +100,9 @@ pub(super) fn read_opencode_json_pipe_to_end(
             continue;
         }
 
-        let log_lines = match serde_json::from_str::<OpenCodeEvent>(line) {
-            Ok(event) => opencode_event_log_lines(&event),
-            Err(_) => vec![strip_ansi_codes(line)],
-        };
+        let log_lines = serde_json::from_str::<OpenCodeEvent>(line)
+            .map(|event| opencode_event_log_lines(&event))
+            .unwrap_or_else(|_| vec![strip_ansi_codes(line)]);
         if log_lines.is_empty() {
             continue;
         }
@@ -275,8 +274,9 @@ fn opencode_event_log_lines(event: &OpenCodeEvent) -> Vec<String> {
                 .unwrap_or_else(|| "unknown opencode error".to_string());
             vec![format!("OpenCode error: {message}")]
         }
-        "step_finish" => {
-            if let Some(tokens) = event.part.tokens.as_ref() {
+        "step_finish" => event.part.tokens.as_ref().map_or_else(
+            || vec!["Step finished".to_string()],
+            |tokens| {
                 let cache = tokens
                     .cache
                     .as_ref()
@@ -286,10 +286,8 @@ fn opencode_event_log_lines(event: &OpenCodeEvent) -> Vec<String> {
                     "Step finished tokens input={} output={}{}",
                     tokens.input, tokens.output, cache
                 )]
-            } else {
-                vec!["Step finished".to_string()]
-            }
-        }
+            },
+        ),
         other => {
             if other.is_empty() {
                 Vec::new()

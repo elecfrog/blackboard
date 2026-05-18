@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TaskGraphInputParam } from '@/data/taskGraphs'
+import { BbDenseRow, BbRefChip } from '@/components/common'
 import { t } from '@/i18n'
 
 defineProps<{
@@ -43,15 +44,19 @@ function inputReference(inputId: string) {
 
 <template>
   <section v-if="inputs.length" :class="['task-graph-run-inputs', `task-graph-run-inputs-${layout ?? 'wide'}`]">
-    <div
+    <BbDenseRow
       v-for="input in inputs"
       :key="input.id"
       class="task-graph-run-input-row"
+      :columns="layout === 'drawer' ? '' : 'minmax(180px, 1fr) minmax(180px, 0.55fr)'"
+      gap="8px"
+      control-height="32px"
     >
-      <label class="task-graph-run-input-control">
-        <span>{{ input.label || input.id }}</span>
+      <label class="task-graph-run-input-control bb-dense-cell">
+        <span class="bb-dense-cell-label">{{ input.label || input.id }}</span>
         <input
           v-if="input.type === 'number'"
+          class="bb-dense-control"
           type="number"
           :min="input.min"
           :max="input.max"
@@ -60,6 +65,7 @@ function inputReference(inputId: string) {
         />
         <select
           v-else-if="input.type === 'boolean'"
+          class="bb-dense-control"
           :value="String(values[input.id] ?? input.default ?? false)"
           @change="emit('update', input.id, coerceInputValue(input, eventValue($event) === 'true'))"
         >
@@ -68,20 +74,22 @@ function inputReference(inputId: string) {
         </select>
         <textarea
           v-else-if="input.type === 'json'"
+          class="bb-dense-control"
           :value="inputDisplayText(input, values)"
           @input="emit('update', input.id, coerceInputValue(input, eventValue($event)))"
         />
         <input
           v-else
+          class="bb-dense-control"
           :value="inputDisplayText(input, values)"
           @input="emit('update', input.id, coerceInputValue(input, eventValue($event)))"
         />
       </label>
-      <div class="task-graph-run-input-reference">
-        <span>{{ t('taskGraphInputReference') }}</span>
-        <small v-text="inputReference(input.id)" />
+      <div class="task-graph-run-input-reference bb-dense-cell">
+        <span class="bb-dense-cell-label">{{ t('taskGraphInputReference') }}</span>
+        <BbRefChip :value="inputReference(input.id)" />
       </div>
-    </div>
+    </BbDenseRow>
   </section>
 </template>
 
@@ -98,18 +106,6 @@ function inputReference(inputId: string) {
   background: var(--bb-surface-soft);
 }
 
-.task-graph-run-input-row {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(180px, 0.55fr);
-  align-items: end;
-  gap: 8px;
-  min-width: 0;
-  padding: 7px;
-  border: 1px solid var(--bb-border-warm);
-  border-radius: 8px;
-  background: var(--bb-surface);
-}
-
 .task-graph-run-inputs-drawer {
   border: 0;
   border-radius: 0;
@@ -117,8 +113,8 @@ function inputReference(inputId: string) {
 }
 
 .task-graph-run-inputs-drawer .task-graph-run-input-row {
-  grid-template-columns: 1fr;
-  padding: 8px;
+  --bb-dense-row-columns: 1fr;
+  --bb-dense-row-padding: 8px;
 }
 
 .task-graph-run-inputs-drawer .task-graph-run-input-reference {
@@ -126,68 +122,18 @@ function inputReference(inputId: string) {
   align-items: center;
 }
 
-.task-graph-run-inputs-drawer .task-graph-run-input-reference > span {
+.task-graph-run-inputs-drawer .task-graph-run-input-reference .bb-dense-cell-label {
   line-height: 1.2;
 }
 
-.task-graph-run-input-control,
-.task-graph-run-input-reference {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.task-graph-run-input-control > span,
-.task-graph-run-input-reference > span {
-  overflow: hidden;
-  color: var(--bb-text-muted);
-  font-size: 10px;
-  font-weight: 760;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-graph-run-inputs input,
-.task-graph-run-inputs select,
-.task-graph-run-inputs textarea {
-  box-sizing: border-box;
+.task-graph-run-input-reference .bb-ref-chip {
   width: 100%;
-  min-width: 0;
   min-height: 32px;
-  padding: 6px 8px;
-  border: 1px solid var(--bb-border-warm-medium-strong);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-strong);
-  font: inherit;
-  font-size: 12px;
-}
-
-.task-graph-run-inputs small {
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-  min-height: 32px;
-  padding: 6px 8px;
-  overflow: hidden;
-  border: 1px solid var(--task-graph-reference-chip-border);
-  border-radius: 8px;
-  background: var(--task-graph-reference-chip-bg);
-  color: var(--task-graph-reference-chip-text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
-  font-weight: 760;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 @media (max-width: 980px) {
   .task-graph-run-input-row {
-    grid-template-columns: 1fr;
+    --bb-dense-row-columns: 1fr;
   }
 }
 </style>

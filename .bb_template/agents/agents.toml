@@ -17,7 +17,7 @@ roles = [
     "ticket-maintenance",
 ]
 description = "Blackboard PM agent: condenses inbox notes into existing tickets and keeps handoffs slim."
-model = "minimax-cn-coding-plan/MiniMax-M2.7-highspeed"
+model = "minimax-cn/MiniMax-M2.7-highspeed"
 instructions_path = "agents/prompts/task-graph-inbox-cleanup.md"
 max_concurrent_tasks = 3
 
@@ -95,6 +95,21 @@ roles = [
     "research",
 ]
 description = "OpenCode runtime agent for backend work, research workflows, and automated pipelines."
+
+[[agents]]
+id = "pi"
+display_name = "Pi"
+kind = "platform_agent"
+runtime = "pi"
+scope = "global"
+status = "active"
+assignable = true
+distribute = false
+roles = [
+    "engineering",
+    "research",
+]
+description = "Pi runtime agent for lightweight terminal coding workflows."
 
 [[agents]]
 id = "owner"

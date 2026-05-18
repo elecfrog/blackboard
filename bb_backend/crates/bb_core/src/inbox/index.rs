@@ -2,6 +2,7 @@ use std::fs;
 
 use chrono::SecondsFormat;
 
+use super::render::{inbox_excerpt, parse_inbox_json_document};
 use crate::{Blackboard, InboxError, InboxIndex, InboxIndexEntry};
 
 impl Blackboard {
@@ -18,7 +19,7 @@ impl Blackboard {
                 source,
             })?;
             let name = entry.file_name().to_string_lossy().to_string();
-            if !name.ends_with(".md") {
+            if !crate::is_valid_note_name(&name) {
                 continue;
             }
             let path = entry.path();
@@ -33,22 +34,20 @@ impl Blackboard {
                 path: path.clone(),
                 source,
             })?;
-            let excerpt = build_inbox_excerpt(&content);
-            let modified_at = meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| {
-                    chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
-                        .map(|dt| dt.to_rfc3339_opts(SecondsFormat::Secs, true))
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default();
+            let Ok(document) = parse_inbox_json_document(&content) else {
+                continue;
+            };
+            let modified_at = modified_at_rfc3339(&meta);
+            let excerpt = inbox_excerpt(&document);
             notes.push(InboxIndexEntry {
                 name,
                 size: meta.len(),
                 modified_at,
                 excerpt,
+                title: document.title,
+                time: document.time,
+                source: document.source,
+                topic: document.topic,
             });
         }
         notes.sort_by(|a, b| a.name.cmp(&b.name));
@@ -103,21 +102,14 @@ impl Blackboard {
     }
 }
 
-fn build_inbox_excerpt(content: &str) -> String {
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        let clean = trimmed
-            .trim_start_matches(['-', '*', ' '])
-            .replace('`', "")
-            .replace("**", "");
-        if clean.chars().count() <= 140 {
-            return clean;
-        }
-        let excerpt: String = clean.chars().take(140).collect();
-        return format!("{excerpt}...");
-    }
-    String::new()
+pub(super) fn modified_at_rfc3339(meta: &fs::Metadata) -> String {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| {
+            chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
+                .map(|dt| dt.to_rfc3339_opts(SecondsFormat::Secs, true))
+                .unwrap_or_default()
+        })
+        .unwrap_or_default()
 }

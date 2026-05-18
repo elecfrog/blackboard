@@ -1,4 +1,4 @@
-//! Runtime command builder and OpenCode JSON output parser.
+//! Runtime command builder and `OpenCode` JSON output parser.
 //!
 //! Handles legacy external LLM runtimes, timeout management, live log streaming,
 //! and structured output capture.
@@ -49,7 +49,7 @@ pub(super) fn run_runtime_command(
     node_id: &str,
 ) -> Result<Output, std::io::Error> {
     let mut cmd = match invocation.runtime.as_str() {
-        "codex" | "codebuddy" => {
+        "codex" | "codebuddy" | "pi" => {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "AgentSession runtimes must execute through AgentSession",
@@ -69,6 +69,7 @@ pub(super) fn run_runtime_command(
             if let Some(ref variant) = invocation.variant {
                 c.arg("--variant").arg(variant);
             }
+            c.current_dir(&opts.workspace_root);
             c.arg("--dir").arg(&opts.workspace_root);
             c.arg("--dangerously-skip-permissions");
             c.arg("--title").arg(format!(
@@ -89,6 +90,9 @@ pub(super) fn run_runtime_command(
     cmd.env("BB_DAEMON_PROJECT", project);
     cmd.env("BB_DAEMON_AGENT", &invocation.agent);
     cmd.env("BB_TASK_GRAPH_RUN", &opts.run_id);
+    cmd.env("BB_WORKSPACE_ROOT", &opts.workspace_root);
+    cmd.env("BB_PROJECT_ROOT", &opts.workspace_root);
+    cmd.env("BB_SCRIPTS_DIR", &opts.scripts_dir);
     if let Some(ref config) = invocation.opencode_config_content {
         cmd.env("OPENCODE_CONFIG_CONTENT", config);
     }
@@ -130,7 +134,7 @@ fn wait_with_timeout(
     let deadline = Instant::now() + timeout;
     loop {
         if observer_run_cancelled(&observer) {
-            let _ = child.kill();
+            let _ = crate::platform::terminate_child_process_tree(&mut child);
             let status = child.wait()?;
             let stdout = join_pipe_reader(stdout_reader)?;
             let stderr = join_pipe_reader(stderr_reader)?;
@@ -151,7 +155,7 @@ fn wait_with_timeout(
             });
         }
         if Instant::now() >= deadline {
-            let _ = child.kill();
+            let _ = crate::platform::terminate_child_process_tree(&mut child);
             let status = child.wait()?;
             let stdout = join_pipe_reader(stdout_reader)?;
             let stderr = join_pipe_reader(stderr_reader)?;
@@ -187,7 +191,7 @@ fn join_pipe_reader(
     reader: Option<thread::JoinHandle<Vec<u8>>>,
 ) -> Result<Vec<u8>, std::io::Error> {
     Ok(reader
-        .map(|handle| handle.join().unwrap_or_default())
+        .map(|handle| handle.join().unwrap_or_else(|_| Vec::new()))
         .unwrap_or_default())
 }
 
@@ -215,7 +219,7 @@ pub(super) fn runtime_failure_message(
 
     let tail = tail_str(&capture.log, 2048);
     if tail.trim().is_empty() {
-        format!("runtime exited with code {:?}", exit_code)
+        format!("runtime exited with code {exit_code:?}")
     } else {
         tail
     }
@@ -275,6 +279,7 @@ pub(super) fn try_parse_json_or_text(s: &str) -> serde_json::Value {
     if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
         return val;
     }
+    let mut graph_candidate = None;
     let mut fallback = None;
     for (start, _) in trimmed.match_indices('{') {
         let mut deserializer = serde_json::Deserializer::from_str(&trimmed[start..]);
@@ -282,10 +287,46 @@ pub(super) fn try_parse_json_or_text(s: &str) -> serde_json::Value {
             if val.get("processed").is_some() || val.get("continue").is_some() {
                 return val;
             }
+            if graph_candidate.is_none() && is_task_graph_like_json(&val) {
+                graph_candidate = Some(val.clone());
+            }
             fallback = Some(val);
         }
     }
-    fallback.unwrap_or_else(|| serde_json::Value::String(s.to_string()))
+    graph_candidate
+        .or(fallback)
+        .unwrap_or_else(|| serde_json::Value::String(s.to_string()))
+}
+
+pub(super) fn output_value_for_llm_config(
+    config: &LlmConfig,
+    parse_source: &str,
+    artifact: &str,
+) -> serde_json::Value {
+    let artifact_type = effective_llm_output_contract(config)
+        .and_then(|o| o.get("artifact_type"))
+        .and_then(|v| v.as_str());
+    match artifact_type {
+        Some("markdown" | "text") => serde_json::Value::String(
+            if artifact.trim().is_empty() {
+                parse_source
+            } else {
+                artifact
+            }
+            .to_string(),
+        ),
+        _ => try_parse_json_or_text(parse_source),
+    }
+}
+
+fn is_task_graph_like_json(value: &serde_json::Value) -> bool {
+    let graph = value
+        .get("subgraph")
+        .or_else(|| value.get("graph"))
+        .unwrap_or(value);
+    graph.get("schema_version").is_some()
+        && graph.get("nodes").is_some()
+        && graph.get("edges").is_some()
 }
 
 pub(super) fn combine_command_output(stdout: &str, stderr: &str) -> String {
@@ -332,9 +373,7 @@ pub(super) fn write_node_artifact(
     content: &str,
     config: &LlmConfig,
 ) -> Result<Option<super::run_state::OutputArtifact>, TaskGraphError> {
-    let artifact_type = config
-        .output
-        .as_ref()
+    let artifact_type = effective_llm_output_contract(config)
         .and_then(|o| o.get("artifact_type"))
         .and_then(|v| v.as_str());
 
@@ -348,7 +387,7 @@ pub(super) fn write_node_artifact(
         _ => ArtifactContentType::Text,
     };
 
-    let artifact_id = format!("{}-output", node_id);
+    let artifact_id = format!("{node_id}-output");
     let artifact =
         run_state::write_artifact(ws, project, run_id, &artifact_id, content, content_type)?;
     Ok(Some(artifact))
@@ -359,9 +398,7 @@ pub(super) fn artifact_content_for_llm_config(
     fallback: &str,
     output_value: &serde_json::Value,
 ) -> String {
-    let artifact_type = config
-        .output
-        .as_ref()
+    let artifact_type = effective_llm_output_contract(config)
         .and_then(|o| o.get("artifact_type"))
         .and_then(|v| v.as_str());
     match artifact_type {
@@ -370,6 +407,10 @@ pub(super) fn artifact_content_for_llm_config(
         }
         _ => fallback.to_string(),
     }
+}
+
+fn effective_llm_output_contract(config: &LlmConfig) -> Option<&serde_json::Value> {
+    config.output_contract.as_ref().or(config.output.as_ref())
 }
 
 pub(super) fn artifact_content_for_type(

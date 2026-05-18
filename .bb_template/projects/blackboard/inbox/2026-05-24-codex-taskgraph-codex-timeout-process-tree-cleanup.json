@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "title": "修复 TaskGraph Codex timeout 后进程树未清理导致长时间卡死",
+  "time": "2026-05-24T07:10:33Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "TaskGraph Codex timeout process-tree cleanup",
+  "done": [
+    "定位第二轮 frontend-ui-convergence-codex 长时间卡住不是文件锁，而是 Windows 下 Codex npm/node wrapper 被 timeout 杀掉后，真实 codex.exe 子进程仍存活并持有 stdout/stderr 管道，runtime join reader 时继续阻塞。",
+    "在 bb_core::platform 增加 terminate_child_process_tree：Windows 使用 taskkill /PID /T /F 清理整棵进程树，失败时回退 child.kill；非 Windows 保持 child.kill。",
+    "将 AgentSession、TaskGraph runtime、shell node runtime、bb_daemon codex_client 的 timeout/cancel/shutdown 路径从裸 child.kill 改为 terminate_child_process_tree。",
+    "重启后端后用临时 system/timeout-smoke-codex 真实图做 5s node timeout 烟测：run-20260524-070838-8d723148 按预期 failed，错误为 agent session timed out，节点总耗时 35128ms 是因为 transient_retry_attempts=3/3；烟测后无遗留 CLI Codex 进程。"
+  ],
+  "validation": [
+    "cargo fmt --manifest-path bb_backend/Cargo.toml --all: 通过",
+    "cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon: 通过",
+    "git diff --check -- backend timeout files: 通过，仅 CRLF 提示",
+    "cargo test --manifest-path bb_backend/Cargo.toml -p bb_core resolve_codex_spawn_command_uses_node_cli_for_npm_shim -- --nocapture: 通过",
+    "GET /api/projects/blackboard/task-graph-runs: active_runs=0"
+  ],
+  "next_step": [
+    "如果继续夜间无人值守，需要基于这版 timeout cleanup 再跑一轮正常时长的 frontend-ui-convergence-codex；当前未提交前端收敛改动和 timeout 修复。"
+  ],
+  "related_locations": [
+    "bb_backend/crates/bb_core/src/platform.rs",
+    "bb_backend/crates/bb_core/src/agent_session/runtime.rs",
+    "bb_backend/crates/bb_core/src/task_graph/runtime/mod.rs",
+    "bb_backend/crates/bb_core/src/task_graph/nodes/runtime/shell_node.rs",
+    "bb_backend/crates/bb_daemon/src/codex_client.rs",
+    ".bb_template/runtime/task_graph_runs/blackboard/run-20260524-070838-8d723148"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

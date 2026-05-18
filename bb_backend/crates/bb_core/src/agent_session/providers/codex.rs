@@ -12,7 +12,7 @@ use super::super::AgentSessionError;
 const TOOL_OUTPUT_LIMIT: usize = 8192;
 
 #[derive(Debug, Clone)]
-pub(crate) struct CodexObserver {
+pub struct CodexObserver {
     pub workspace_root: PathBuf,
     pub project: String,
     pub session_id: String,
@@ -20,7 +20,7 @@ pub(crate) struct CodexObserver {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CodexCapture {
+pub struct CodexCapture {
     pub stdout: Vec<u8>,
     pub text_output: String,
     pub log: String,
@@ -48,10 +48,7 @@ impl Default for CodexCapture {
     }
 }
 
-pub(crate) fn read_codex_json_pipe_to_end(
-    pipe: impl Read,
-    observer: CodexObserver,
-) -> CodexCapture {
+pub fn read_codex_json_pipe_to_end(pipe: impl Read, observer: &CodexObserver) -> CodexCapture {
     let mut reader = BufReader::new(pipe);
     let mut capture = CodexCapture::default();
     let mut call_id_to_tool = HashMap::<String, String>::new();
@@ -74,37 +71,34 @@ pub(crate) fn read_codex_json_pipe_to_end(
             continue;
         }
 
-        match serde_json::from_str::<Value>(line) {
-            Ok(event) => {
-                match handle_codex_event(
-                    &observer,
-                    &event,
-                    &mut capture,
-                    &mut call_id_to_tool,
-                    &mut completed_call_ids,
-                ) {
-                    Ok(lines) => log_lines.extend(lines),
-                    Err(err) => log_lines.push(format!("AgentSession persist error: {err}")),
-                }
+        if let Ok(event) = serde_json::from_str::<Value>(line) {
+            match handle_codex_event(
+                observer,
+                &event,
+                &mut capture,
+                &mut call_id_to_tool,
+                &mut completed_call_ids,
+            ) {
+                Ok(lines) => log_lines.extend(lines),
+                Err(err) => log_lines.push(format!("AgentSession persist error: {err}")),
             }
-            Err(_) => {
-                let stripped = strip_ansi_codes(line);
-                log_lines.push(stripped.clone());
-                let _ = append_event(
-                    &observer,
-                    &mut capture,
-                    AgentEventType::Log,
-                    Some(stripped),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some("info".to_string()),
-                    None,
-                    BTreeMap::new(),
-                );
-            }
+        } else {
+            let stripped = strip_ansi_codes(line);
+            log_lines.push(stripped.clone());
+            let _ = append_event(
+                observer,
+                &mut capture,
+                AgentEventType::Log,
+                Some(stripped),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some("info".to_string()),
+                None,
+                BTreeMap::new(),
+            );
         }
     }
 
@@ -142,9 +136,10 @@ fn handle_codex_event(
         "thread.started" => {
             let thread_id = string_field(event, "thread_id");
             record_status(observer, capture, "started", thread_id.clone(), true)?;
-            return Ok(vec![thread_id
-                .map(|id| format!("Codex thread started thread={id}"))
-                .unwrap_or_else(|| "Codex thread started".to_string())]);
+            return Ok(vec![thread_id.map_or_else(
+                || "Codex thread started".to_string(),
+                |id| format!("Codex thread started thread={id}"),
+            )]);
         }
         "turn.started" => {
             append_event(
@@ -252,9 +247,10 @@ fn handle_codex_event(
                 "started"
             };
             record_status(observer, capture, status, turn_id.clone(), true)?;
-            Ok(vec![turn_id
-                .map(|id| format!("Codex turn started turn={id}"))
-                .unwrap_or_else(|| "Codex turn started".to_string())])
+            Ok(vec![turn_id.map_or_else(
+                || "Codex turn started".to_string(),
+                |id| format!("Codex turn started turn={id}"),
+            )])
         }
         ("event_msg", "task_complete") => {
             if capture.text_output.trim().is_empty() {
@@ -430,8 +426,7 @@ fn handle_codex_event(
             let call_id = string_field(payload, "call_id");
             if call_id
                 .as_ref()
-                .map(|id| completed_call_ids.contains(id))
-                .unwrap_or(false)
+                .is_some_and(|id| completed_call_ids.contains(id))
             {
                 return Ok(Vec::new());
             }
@@ -497,7 +492,7 @@ fn handle_codex_event(
                 Ok(Vec::new())
             }
         }
-        ("event_msg", "error") | ("event_msg", "task_failed") | ("error", _) => {
+        ("event_msg", "error" | "task_failed") | ("error", _) => {
             let message =
                 event_error_message(payload).unwrap_or_else(|| "unknown codex error".to_string());
             capture.error_message = Some(message.clone());
@@ -529,7 +524,7 @@ fn handle_codex_item(
     completed_call_ids: &mut HashSet<String>,
 ) -> Result<Vec<String>, AgentSessionError> {
     match string_field(item, "type").as_deref() {
-        Some("agent_message") | Some("message") => {
+        Some("agent_message" | "message") => {
             if let Some(text) = string_field(item, "text")
                 .or_else(|| item.get("content").and_then(extract_text))
                 .filter(|text| !text.trim().is_empty())
@@ -610,8 +605,7 @@ fn append_function_call_output_item(
     let call_id = string_field(item, "call_id");
     if call_id
         .as_ref()
-        .map(|id| completed_call_ids.contains(id))
-        .unwrap_or(false)
+        .is_some_and(|id| completed_call_ids.contains(id))
     {
         return Ok(Vec::new());
     }
@@ -731,7 +725,7 @@ fn append_thinking(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn append_event(
+pub fn append_event(
     observer: &CodexObserver,
     capture: &mut CodexCapture,
     event_type: AgentEventType,
@@ -795,9 +789,8 @@ fn dynamic_tool_name(payload: &Value) -> String {
 
 fn command_status(payload: &Value) -> String {
     match payload.get("exit_code").and_then(Value::as_i64) {
-        Some(0) => "completed".to_string(),
+        Some(0) | None => "completed".to_string(),
         Some(_) => "failed".to_string(),
-        None => "completed".to_string(),
     }
 }
 
@@ -940,7 +933,7 @@ mod tests {
 {"type":"event_msg","payload":{"type":"error","message":"boom"}}
 "#;
 
-        let capture = read_codex_json_pipe_to_end(stdout.as_bytes(), observer);
+        let capture = read_codex_json_pipe_to_end(stdout.as_bytes(), &observer);
 
         assert_eq!(capture.provider_session_id.as_deref(), Some("sess-1"));
         assert_eq!(capture.text_output, "hello");
@@ -1001,7 +994,7 @@ mod tests {
 {"type":"turn.completed","usage":{"input_tokens":15230,"cached_input_tokens":2432,"output_tokens":23,"reasoning_output_tokens":12}}
 "#;
 
-        let capture = read_codex_json_pipe_to_end(stdout.as_bytes(), observer);
+        let capture = read_codex_json_pipe_to_end(stdout.as_bytes(), &observer);
 
         assert_eq!(capture.provider_session_id.as_deref(), Some("thread-1"));
         assert_eq!(capture.text_output, "hello current schema");
@@ -1051,7 +1044,7 @@ mod tests {
 {"type":"item.completed","item":{"id":"item_2","type":"function_call_output","call_id":"call-1","output":"ok"}}
 "#;
 
-        let capture = read_codex_json_pipe_to_end(stdout.as_bytes(), observer);
+        let capture = read_codex_json_pipe_to_end(stdout.as_bytes(), &observer);
 
         assert_eq!(capture.tool_count, 1);
         let events = read_events(temp.path(), "demo", &session.id, None).unwrap();

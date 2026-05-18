@@ -38,7 +38,7 @@ struct PlanOutputConfig {
     schema_name: Option<String>,
 }
 
-pub(crate) fn execute_plan_node(
+pub fn execute_plan_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
     run: &TaskGraphRun,
@@ -64,7 +64,7 @@ pub(crate) fn execute_plan_node(
         &opts.project,
         &opts.run_id,
         &node.id,
-        &format!("[{}] plan node starting", start_time),
+        &format!("[{start_time}] plan node starting"),
     )?;
     run_state::update_node_state(
         &opts.workspace_root,
@@ -251,6 +251,7 @@ fn summary_from_plan(value: &Value) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn node_state(
     node: &TaskGraphNode,
     status: NodeRunStatus,
@@ -339,6 +340,7 @@ mod tests {
             codebuddy_path: "codebuddy".to_string(),
             opencode_path: "opencode".to_string(),
             opencode_config_content: None,
+            pi_path: "pi".to_string(),
             model: None,
             node_timeout: Duration::from_secs(1),
             run_timeout: Duration::from_secs(1),

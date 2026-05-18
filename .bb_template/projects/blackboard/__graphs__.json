@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "groups": [
+    {
+      "id": "bb-knowledge",
+      "title": "BB-知识库",
+      "kind": "system",
+      "sort_order": 2
+    },
+    {
+      "id": "bb-quality",
+      "title": "BB-代码质量",
+      "kind": "system",
+      "sort_order": 1
+    },
+    {
+      "id": "bb-research",
+      "title": "BB-调研",
+      "kind": "system",
+      "sort_order": 3
+    },
+    {
+      "id": "project-ungrouped",
+      "title": "未分组",
+      "kind": "project",
+      "sort_order": 0
+    },
+    {
+      "id": "system",
+      "title": "BB-日常维护",
+      "kind": "system",
+      "sort_order": 0
+    }
+  ],
+  "entries": [
+    {
+      "scope": "system",
+      "id": "bbpm-maintain",
+      "group_id": "system",
+      "favorite": false,
+      "sort_order": 0
+    },
+    {
+      "scope": "system",
+      "id": "code-monitor-check-fix",
+      "group_id": "bb-quality",
+      "favorite": false,
+      "sort_order": 1
+    },
+    {
+      "scope": "system",
+      "id": "code-review-scout-fix",
+      "group_id": "system",
+      "favorite": false,
+      "sort_order": 2
+    },
+    {
+      "scope": "system",
+      "id": "frontend-smoke",
+      "group_id": "bb-quality",
+      "favorite": false,
+      "sort_order": 2
+    },
+    {
+      "scope": "system",
+      "id": "inbox-batch-cleanup",
+      "group_id": "system",
+      "favorite": false,
+      "sort_order": 3
+    },
+    {
+      "scope": "system",
+      "id": "frontend-ui-convergence-codex",
+      "group_id": "system",
+      "favorite": false,
+      "sort_order": 4
+    },
+    {
+      "scope": "system",
+      "id": "kb-research-workflow",
+      "group_id": "bb-knowledge",
+      "favorite": false,
+      "sort_order": 4
+    },
+    {
+      "scope": "system",
+      "id": "kb-wiki-build-workflow",
+      "group_id": "bb-knowledge",
+      "favorite": false,
+      "sort_order": 5
+    },
+    {
+      "scope": "system",
+      "id": "kb-wiki-update-workflow",
+      "group_id": "bb-knowledge",
+      "favorite": false,
+      "sort_order": 6
+    },
+    {
+      "scope": "system",
+      "id": "kb-workflow-router",
+      "group_id": "bb-knowledge",
+      "favorite": false,
+      "sort_order": 7
+    },
+    {
+      "scope": "system",
+      "id": "research-external",
+      "group_id": "bb-research",
+      "favorite": false,
+      "sort_order": 8
+    },
+    {
+      "scope": "system",
+      "id": "nightly-auto-code-optimization",
+      "group_id": "system",
+      "favorite": false,
+      "sort_order": 9
+    },
+    {
+      "scope": "system",
+      "id": "research-internal",
+      "group_id": "bb-research",
+      "favorite": false,
+      "sort_order": 9
+    },
+    {
+      "scope": "system",
+      "id": "research-iteration-draft",
+      "group_id": "bb-research",
+      "favorite": false,
+      "sort_order": 10
+    },
+    {
+      "scope": "system",
+      "id": "rust-vue-code-review",
+      "group_id": "system",
+      "favorite": false,
+      "sort_order": 11
+    },
+    {
+      "scope": "system",
+      "id": "task-ticket-audit",
+      "group_id": "system",
+      "favorite": false,
+      "sort_order": 11
+    }
+  ]
+}

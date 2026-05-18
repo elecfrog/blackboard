@@ -800,7 +800,7 @@ watch(
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.9em;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--bb-font-mono);
   border: 1px solid var(--bb-md-inline-code-border);
 }
 
@@ -853,7 +853,7 @@ watch(
   text-transform: uppercase;
   font-weight: 600;
   letter-spacing: 0;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--bb-font-mono);
 }
 
 .markdown-body .code-copy {
@@ -897,9 +897,13 @@ watch(
   color: var(--bb-md-code-text);
   padding: 32px 16px 16px;
   overflow-x: auto;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--bb-font-mono);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.hljs code {
+  font-family: var(--bb-font-mono);
 }
 
 .hljs-comment,
@@ -1338,7 +1342,7 @@ watch(
   padding: 12px 16px;
   color: var(--bb-md-code-text);
   font-size: 12px;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--bb-font-mono);
   line-height: 1.5;
   white-space: pre;
 }

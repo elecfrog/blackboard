@@ -14,7 +14,7 @@ use crate::task_graph::run_state::{
 
 // ─── Branch Node ─────────────────────────────────────────────────────────────
 
-pub(crate) fn execute_branch_node(
+pub fn execute_branch_node(
     node: &TaskGraphNode,
     run: &TaskGraphRun,
     edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
@@ -31,7 +31,7 @@ pub(crate) fn execute_branch_node(
     let selected_rule_id = evaluate_branch(&config, &run.context);
 
     // Find the matching edge
-    let handle = format!("rule:{}", selected_rule_id);
+    let handle = format!("rule:{selected_rule_id}");
     let matching_edges = outgoing_edges(edge_map, &node.id, Some(&handle));
 
     if matching_edges.is_empty() {
@@ -55,8 +55,7 @@ pub(crate) fn execute_branch_node(
                     error: Some(NodeError {
                         code: "no_matching_edge".to_string(),
                         message: format!(
-                            "Branch rule '{}' has no matching outgoing edge",
-                            selected_rule_id
+                            "Branch rule '{selected_rule_id}' has no matching outgoing edge"
                         ),
                     }),
                     output_artifact: None,
@@ -84,7 +83,7 @@ pub(crate) fn execute_branch_node(
         let now = Utc::now().to_rfc3339();
         let decision = BranchDecision {
             node_id: node.id.clone(),
-            selected_rule_id: config.default_rule_id.clone(),
+            selected_rule_id: config.default_rule_id,
             selected_edge_id: default_edges[0].id.clone(),
             evaluated_at: now.clone(),
         };
@@ -127,7 +126,7 @@ pub(crate) fn execute_branch_node(
     let now = Utc::now().to_rfc3339();
     let decision = BranchDecision {
         node_id: node.id.clone(),
-        selected_rule_id: selected_rule_id.clone(),
+        selected_rule_id,
         selected_edge_id: matching_edges[0].id.clone(),
         evaluated_at: now.clone(),
     };

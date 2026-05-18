@@ -1,7 +1,7 @@
-//! AgentSession runtime — shared LLM execution/session layer.
+//! `AgentSession` runtime — shared LLM execution/session layer.
 //!
 //! This module is intentionally parallel to Task Graph. Task Graph LLM nodes
-//! call into AgentSession; direct chat can do the same later without creating
+//! call into `AgentSession`; direct chat can do the same later without creating
 //! a graph run.
 
 use std::path::PathBuf;
@@ -15,7 +15,7 @@ pub use model::{
     AgentEvent, AgentEventType, AgentResult, AgentResultStatus, AgentSession, AgentSessionParent,
     AgentSessionStatus, AgentSessionSummary, TokenUsage,
 };
-pub use runtime::{run_turn, AgentTurnOutcome, AgentTurnRequest};
+pub use runtime::{effective_agent_startup_timeout, run_turn, AgentTurnOutcome, AgentTurnRequest};
 pub use store::{
     append_event, create_session, read_events, read_session, session_dir, session_summary,
     update_session, CreateAgentSession,

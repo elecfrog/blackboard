@@ -1,0 +1,1166 @@
+{
+  "schema_version": 1,
+  "id": "research-internal",
+  "scope": "system",
+  "title": "向内调研",
+  "description": "通用内部代码调研系统管线：基于 ResourceBundle 输入契约和 Pi + MiniMax，面向当前工作区源码、文档、上游 artifacts 与 skills 动态规划 scouts，并由系统节点写入 wiki/research。",
+  "version": 1,
+  "readonly": false,
+  "metadata": {
+    "tags": [
+      "system",
+      "research",
+      "internal",
+      "code-search",
+      "pi",
+      "resource-bundle"
+    ],
+    "owner": "blackboard",
+    "created_by": "codex",
+    "updated_by": "codex",
+    "run_policy": {
+      "allow_concurrent_runs": true,
+      "max_concurrent_runs": 3,
+      "queue_enabled": true,
+      "max_queue_wait_ms": 7200000,
+      "queue_timeout_retry_enabled": true,
+      "max_queue_timeout_retries": 5
+    }
+  },
+  "inputs": [
+    {
+      "id": "input",
+      "label": "Input Prompt",
+      "type": "string",
+      "default": "",
+      "description": "User prompt for this task graph run."
+    },
+    {
+      "id": "source-root",
+      "label": "Source Root",
+      "type": "string",
+      "default": "{{env.workspace}}",
+      "description": "Root directory for code or documents that scouts should investigate. Agent runtime cwd remains env.workspace."
+    },
+    {
+      "id": "wiki-slice",
+      "label": "Wiki Slice",
+      "type": "string",
+      "default": "",
+      "description": "Optional wiki/context excerpt to include in the resource bundle."
+    },
+    {
+      "id": "skills",
+      "label": "Skills",
+      "type": "json",
+      "default": [
+        "code-research",
+        "research-output-contract"
+      ],
+      "description": "Skill ids expected by this graph; static node config also injects code-research for Pi."
+    },
+    {
+      "id": "run-marker",
+      "label": "Run Marker",
+      "type": "string",
+      "default": "research-internal",
+      "description": "Output filename prefix under wiki/research and staging marker."
+    },
+    {
+      "id": "output-slug",
+      "label": "Output Slug",
+      "type": "string",
+      "default": "research-internal",
+      "required": true,
+      "description": "Final markdown file name under wiki/research, without .md."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -900,
+        "y": -260
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "prompt-input",
+      "type": "data_value",
+      "label": "Input Prompt",
+      "position": {
+        "x": -900,
+        "y": -40
+      },
+      "config": {
+        "preset": "data_value",
+        "value": "{{inputs.input}}",
+        "value_type": "string"
+      },
+      "pins": [
+        {
+          "id": "value",
+          "label": "Value",
+          "direction": "out",
+          "category": "data",
+          "value_type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "source-root",
+      "type": "data_value",
+      "label": "Source Root",
+      "position": {
+        "x": -900,
+        "y": 120
+      },
+      "config": {
+        "preset": "data_value",
+        "value": "{{inputs.source-root}}",
+        "value_type": "string"
+      },
+      "pins": [
+        {
+          "id": "value",
+          "label": "Value",
+          "direction": "out",
+          "category": "data",
+          "value_type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "resource-bundle",
+      "type": "data_value",
+      "label": "ResourceBundle",
+      "description": "Structured L2 resource bundle for enhanced LLM execution.",
+      "position": {
+        "x": -900,
+        "y": 300
+      },
+      "config": {
+        "preset": "resource_bundle",
+        "value_type": "json",
+        "value": {
+          "schema_version": 1,
+          "kind": "task_graph_llm_resource_bundle",
+          "task": {
+            "input": "{{inputs.input}}",
+            "run-marker": "{{inputs.run-marker}}"
+          },
+          "data_sources": {
+            "source_root": "{{inputs.source-root}}",
+            "wiki_slice": "{{inputs.wiki-slice}}"
+          },
+          "runtime": {
+            "project": "{{env.project}}",
+            "workspace": "{{env.workspace}}"
+          },
+          "skills": "{{inputs.skills}}",
+          "contracts": {
+            "path_policy": "Candidate paths are relative to data_sources.source_root; runtime.workspace is only the agent working directory.",
+            "scout_output": "JSON object with findings[], risks[], coverage_notes[].",
+            "write_policy": "Scout and synthesize LLM nodes must not write final files; system_write_output writes the final artifact under wiki/research.",
+            "llm_input": "resource_bundle",
+            "final_output_dir": "wiki/research"
+          },
+          "upstream_artifacts": {}
+        }
+      },
+      "pins": [
+        {
+          "id": "value",
+          "label": "Value",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "plan-scouts",
+      "type": "llm",
+      "label": "Plan Scouts from Resource Bundle",
+      "description": "LLM creates ScoutPlan from a structured resource bundle.",
+      "position": {
+        "x": -560,
+        "y": -260
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "resource_bundle": "{{data.resource-bundle.output}}"
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 Blackboard TaskGraph 的 code research Scout Planner。\n\n你只负责把 ResourceBundle 转成 ScoutPlan。不要输出 TaskGraphDefinition，不要输出 nodes/edges，不要输出 graph_mutations，不要 Markdown，不要解释。\n\nResourceBundle JSON：\n{{inputs.resource_bundle}}\n\n输出必须是一个 JSON 对象：\n{\n  \"task_type\": \"code_research\",\n  \"question\": \"用户真正要调研的问题\",\n  \"merge_goal\": \"最终报告需要回答的核心问题\",\n  \"scouts\": [\n    {\n      \"id\": \"kebab-case-stable-id\",\n      \"title\": \"短标题\",\n      \"goal\": \"这个 scout 要回答的具体子问题，以及需要保留的 evidence/source anchors\",\n      \"paths\": [\"相对 ResourceBundle.data_sources.source_root 的候选代码或文档路径\"]\n    }\n  ]\n}\n\n规划规则：\n1. scouts 数量 2 到 5 个，根据 ResourceBundle.task.input 动态拆分。\n2. id 必须是 kebab-case，只能使用小写字母、数字和连字符。\n3. paths 必须相对 ResourceBundle.data_sources.source_root，不要使用绝对路径，不要把 ResourceBundle.runtime.workspace 当资料根目录。\n4. 如果 ResourceBundle.data_sources.wiki_slice 非空，把它作为背景线索，但代码/文档事实仍以 source_root 下文件为准。\n5. 对 bb task graph 调研，优先覆盖 definition/types/pins/validation、compile/pregel/runtime、run_state/API/coordinator/subgraph、前端 graph editor/type mirror。\n6. scout 只做调查与结构化发现，绝不能写文件。最终写文件由 system_write_output 节点完成。\n7. 只输出 JSON 对象。"
+        },
+        "run_as": "llm",
+        "runtime": "pi",
+        "skills": [
+          "code-research",
+          "research-output-contract"
+        ],
+        "resource_bundle": {
+          "input": "resource_bundle",
+          "required": true
+        },
+        "output_contract": {
+          "artifact_type": "json",
+          "required": true,
+          "schema_name": "code_research_scout_plan"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "input",
+          "label": "Input",
+          "direction": "in",
+          "category": "data",
+          "value_type": "string",
+          "required": false
+        },
+        {
+          "id": "source_root",
+          "label": "Source Root",
+          "direction": "in",
+          "category": "data",
+          "value_type": "string",
+          "required": false
+        },
+        {
+          "id": "resource_bundle",
+          "label": "Resource Bundle",
+          "direction": "in",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-plan-validate",
+      "type": "schema_validate",
+      "label": "Scout Plan Validate",
+      "position": {
+        "x": -210,
+        "y": -260
+      },
+      "config": {
+        "fail_on_invalid": false,
+        "inputs": {
+          "value": "{{nodes.plan-scouts.output}}"
+        },
+        "schema": {
+          "properties": {
+            "merge_goal": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "question": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "scouts": {
+              "items": {
+                "properties": {
+                  "expected_output": {
+                    "type": "string"
+                  },
+                  "goal": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "paths": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "scope_hints": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "goal",
+                  "paths"
+                ],
+                "type": "object"
+              },
+              "minItems": 2,
+              "type": "array"
+            },
+            "task_type": {
+              "enum": [
+                "code_research"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_type",
+            "question",
+            "scouts"
+          ],
+          "type": "object"
+        },
+        "schema_name": "code_research_scout_plan"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-plan-route",
+      "type": "branch",
+      "label": "Scout Plan Route",
+      "position": {
+        "x": 100,
+        "y": -260
+      },
+      "config": {
+        "default_rule_id": "invalid",
+        "input_ref": "$.nodes.scout-plan-validate.output",
+        "mode": "condition",
+        "rules": [
+          {
+            "id": "valid",
+            "label": "Valid",
+            "when": {
+              "op": "equals",
+              "path": "$.valid",
+              "value": true
+            }
+          },
+          {
+            "id": "invalid",
+            "label": "Invalid",
+            "when": {
+              "op": "always"
+            }
+          }
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "input",
+          "label": "Input",
+          "direction": "in",
+          "category": "data",
+          "value_type": "any",
+          "required": false
+        },
+        {
+          "id": "rule:valid",
+          "label": "Valid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "rule:invalid",
+          "label": "Invalid",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-plan-repair",
+      "type": "llm",
+      "label": "Scout Plan Repair",
+      "description": "Repairs ScoutPlan JSON using validator errors only.",
+      "position": {
+        "x": 410,
+        "y": -55
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "resource_bundle": "{{nodes.resource-bundle.output}}",
+          "original": "{{nodes.scout-plan-validate.output.data}}",
+          "validation": "{{nodes.scout-plan-validate.output}}"
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 JSON contract repair 节点。只输出修复后的 JSON 对象，不要 Markdown，不要解释。\n\nResourceBundle JSON：\n{{inputs.resource_bundle}}\n\n校验结果：\n{{inputs.validation}}\n\n原始 JSON：\n{{inputs.original}}\n\n修复目标：\n{\n  \"task_type\": \"code_research\",\n  \"question\": string,\n  \"merge_goal\": string,\n  \"scouts\": [\n    {\"id\": \"kebab-case\", \"title\": string, \"goal\": string, \"paths\": [string]}\n  ]\n}\n\n规则：保留 ResourceBundle.task.input 的真实语义；id 必须 kebab-case；scouts 至少 2 个；paths 相对 ResourceBundle.data_sources.source_root；不要输出 node/edge/graph_mutations。"
+        },
+        "run_as": "llm",
+        "runtime": "pi",
+        "skills": [
+          "code-research",
+          "research-output-contract"
+        ],
+        "resource_bundle": {
+          "input": "resource_bundle",
+          "required": true
+        },
+        "output_contract": {
+          "artifact_type": "json",
+          "required": true,
+          "schema_name": "code_research_scout_plan"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-plan-final",
+      "type": "schema_validate",
+      "label": "Scout Plan Final Gate",
+      "position": {
+        "x": 720,
+        "y": -260
+      },
+      "config": {
+        "artifact_path": "{{env.workspace}}/.staging/{{inputs.run-marker}}-078-l2-code-research-scout-plan.json",
+        "artifact_scope": "run",
+        "artifact_name": "scout-plan-final-output.json",
+        "fail_on_invalid": true,
+        "inputs": {
+          "original": "{{nodes.scout-plan-validate.output.data}}",
+          "repaired": "{{nodes.scout-plan-repair.output}}"
+        },
+        "schema": {
+          "properties": {
+            "merge_goal": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "question": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "scouts": {
+              "items": {
+                "properties": {
+                  "expected_output": {
+                    "type": "string"
+                  },
+                  "goal": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "paths": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "scope_hints": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "goal",
+                  "paths"
+                ],
+                "type": "object"
+              },
+              "minItems": 2,
+              "type": "array"
+            },
+            "task_type": {
+              "enum": [
+                "code_research"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_type",
+            "question",
+            "scouts"
+          ],
+          "type": "object"
+        },
+        "schema_name": "code_research_scout_plan",
+        "value_keys": [
+          "repaired",
+          "original"
+        ]
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "apply-scout-fanout",
+      "type": "llm_mutation",
+      "label": "Apply Scout Fanout from Resource Bundle",
+      "description": "Deterministically compiles ScoutPlan.scouts[] into parallel scout LLM nodes.",
+      "position": {
+        "x": 1060,
+        "y": -260
+      },
+      "config": {
+        "generated": {
+          "agent": "native",
+          "inputs": {
+            "resource_bundle": "{{nodes.resource-bundle.output}}"
+          },
+          "model": "minimax-cn/MiniMax-M2.7-highspeed",
+          "output_artifact_type": "json",
+          "prompt_template": "你是 Blackboard code research 动态 scout。只输出 JSON，不要 Markdown，不要写文件。\n\nResourceBundle JSON：\n{{inputs.resource_bundle}}\n\nScoutAssignment JSON：\n{\n  \"id\": \"{{item.id}}\",\n  \"title\": \"{{item.title}}\",\n  \"goal\": \"{{item.goal}}\",\n  \"candidate_paths\": {{item.paths}}\n}\n\n任务：\n1. 使用 ResourceBundle.data_sources.source_root 作为资料根目录，在 ScoutAssignment.candidate_paths 附近调研代码或文档；必要时可扩大到直接相关文件。\n2. ResourceBundle.runtime.workspace 只是 agent cwd/workspace，不是源码或文档根目录。\n3. ResourceBundle.data_sources.wiki_slice 可作为背景线索，但结论必须尽量回到 source_root 下的 source anchors。\n4. 返回事实和证据，不要泛泛而谈，不要编造文件路径。\n5. 绝对禁止写入或修改最终报告文件；最终报告必须由 system_write_output 写入 wiki/research。\n\n输出 JSON schema：\n{\"findings\":[{\"title\":string,\"summary\":string,\"source_anchors\":string[]}],\"risks\":string[],\"coverage_notes\":string[]}",
+          "runtime": "pi",
+          "skills": [
+            "code-research",
+            "research-output-contract"
+          ],
+          "resource_bundle": {
+            "input": "resource_bundle",
+            "required": true
+          },
+          "output_contract": {
+            "artifact_type": "json",
+            "required": true,
+            "schema_name": "code_research_scout_output"
+          }
+        },
+        "inputs": {
+          "plan_input": "{{data.scout-plan-final.output}}"
+        },
+        "mode": "scout_fanout",
+        "patch_target_source_ids": true,
+        "target_node_id": "scout-output-final"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "plan_input",
+          "label": "Plan Input",
+          "direction": "in",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "mutation_artifact",
+          "label": "Mutation Artifact",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "scout-output-final",
+      "type": "schema_validate",
+      "label": "Scout Output Final Gate",
+      "description": "Collects dynamic scout outputs from deterministic fanout and writes them to a staging JSON artifact.",
+      "position": {
+        "x": 1356.2023965080994,
+        "y": -260
+      },
+      "config": {
+        "artifact_path": "{{env.workspace}}/.staging/{{inputs.run-marker}}-078-l2-code-research-scout-outputs.json",
+        "artifact_scope": "run",
+        "artifact_name": "scout-output-final-output.json",
+        "fail_on_invalid": true,
+        "repair": {
+          "kind": "code_research_scout_outputs"
+        },
+        "schema": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "properties": {
+                  "coverage_notes": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "findings": {
+                    "items": {
+                      "properties": {
+                        "source_anchors": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "summary": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "title": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "summary",
+                        "source_anchors"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "risks": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "findings"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "source_anchors": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "summary": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title",
+                  "summary",
+                  "source_anchors"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "coverage_notes": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "risks": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "coverage_notes"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "coverage_notes": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "risks": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "risks"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "minProperties": 1,
+          "type": "object"
+        },
+        "schema_name": "code_research_scout_outputs",
+        "source": {
+          "kind": "node_outputs_by_prefix",
+          "prefix": "task-graph-"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "synthesize",
+      "type": "llm",
+      "label": "Synthesize from Resource Bundle",
+      "description": "Merges dynamic scout outputs using a structured synthesis resource bundle. It must not write files.",
+      "position": {
+        "x": 1679.6840038328628,
+        "y": -260
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "resource_bundle": {
+            "base": "{{nodes.resource-bundle.output}}",
+            "upstream_artifacts": {
+              "scout_plan_path": "{{nodes.scout-plan-final.output.artifact_path}}",
+              "scout_outputs_path": "{{data.scout-output-final.artifact_path}}",
+              "output_path": "{{env.workspace}}/wiki/research/{{inputs.run-marker}}-taskgraph-research-l2-resource-bundle.md"
+            }
+          }
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 Blackboard code research synthesizer。\n\nSynthesis ResourceBundle JSON：\n{{inputs.resource_bundle}}\n\n任务：\n1. 必须先读取 resource_bundle.upstream_artifacts.scout_outputs_path 和 scout_plan_path，以文件内容为事实源。\n2. 综合所有 scout 输出，写成一份中文 Markdown 调研报告。\n3. 必须回答 resource_bundle.base.task.input。\n4. 必须包含：核心结论、架构分层、关键代码路径、执行模型、数据/状态模型、Coordinator/Subgraph/Mutation 关系、限制与风险。\n5. 所有关键结论尽量带 source anchors。\n6. 只输出最终 Markdown 内容。不要调用写文件工具，不要保存文件；最终落盘必须由 system_write_output 写入 resource_bundle.upstream_artifacts.output_path，且该路径必须位于 wiki/research。"
+        },
+        "run_as": "llm",
+        "runtime": "pi",
+        "skills": [
+          "code-research",
+          "research-output-contract"
+        ],
+        "resource_bundle": {
+          "input": "resource_bundle",
+          "required": true
+        },
+        "output_contract": {
+          "artifact_type": "markdown",
+          "required": true
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "scout_outputs",
+          "label": "Scout Outputs",
+          "direction": "in",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "markdown",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "system-write-output",
+      "type": "system_write_output",
+      "label": "System Write Internal Research",
+      "description": "Writes synthesize markdown to the L2 resource-bundle output path.",
+      "position": {
+        "x": 2026.872180527923,
+        "y": -260
+      },
+      "config": {
+        "artifact_type": "markdown",
+        "content": "{{inputs.content}}",
+        "create_parent_dirs": true,
+        "inputs": {
+          "content": "{{data.synthesize.output}}"
+        },
+        "output_path": "{{env.workspace}}/wiki/research/{{inputs.output-slug}}.md",
+        "overwrite": true
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "content",
+          "label": "Content",
+          "direction": "in",
+          "category": "data",
+          "value_type": "any",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 2353.091947603941,
+        "y": -260
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-start-plan",
+      "from": "start",
+      "to": "plan-scouts",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-resource-plan-data",
+      "from": "resource-bundle",
+      "to": "plan-scouts",
+      "kind": "data",
+      "from_pin": "value",
+      "to_pin": "resource_bundle"
+    },
+    {
+      "id": "e-plan-validate",
+      "from": "plan-scouts",
+      "to": "scout-plan-validate",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-validate-route",
+      "from": "scout-plan-validate",
+      "to": "scout-plan-route",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-route-valid-final",
+      "from": "scout-plan-route",
+      "to": "scout-plan-final",
+      "kind": "exec",
+      "from_pin": "rule:valid",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-route-invalid-repair",
+      "from": "scout-plan-route",
+      "to": "scout-plan-repair",
+      "kind": "exec",
+      "from_pin": "rule:invalid",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-repair-final",
+      "from": "scout-plan-repair",
+      "to": "scout-plan-final",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-final-mutation",
+      "from": "scout-plan-final",
+      "to": "apply-scout-fanout",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-final-mutation-data",
+      "from": "scout-plan-final",
+      "to": "apply-scout-fanout",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "plan_input"
+    },
+    {
+      "id": "e-writer-end",
+      "from": "system-write-output",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-mutation-scout-output-final",
+      "from": "apply-scout-fanout",
+      "to": "scout-output-final",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-scout-output-synthesize",
+      "from": "scout-output-final",
+      "to": "synthesize",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-scout-output-synthesize-data",
+      "from": "scout-output-final",
+      "to": "synthesize",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "scout_outputs"
+    },
+    {
+      "id": "e-synthesize-writer",
+      "from": "synthesize",
+      "to": "system-write-output",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-synthesize-writer-data",
+      "from": "synthesize",
+      "to": "system-write-output",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "content"
+    }
+  ]
+}

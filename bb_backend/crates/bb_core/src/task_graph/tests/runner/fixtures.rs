@@ -28,6 +28,7 @@ pub(super) fn smoke_runner_opts(root: &Path, run_id: &str) -> RunnerOptions {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),

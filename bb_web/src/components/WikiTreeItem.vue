@@ -12,6 +12,7 @@
  */
 import { ref } from 'vue'
 import { ChevronDown, ChevronRight, FileText, Folder } from 'lucide-vue-next'
+import BbObjectItem from '@/components/common/BbObjectItem.vue'
 import type { WikiTreeNode } from '@/data/wiki'
 
 const props = withDefaults(
@@ -51,14 +52,14 @@ function onChildSelect(child: WikiTreeNode) {
 
 <template>
   <div class="bb-wiki-tree-node">
-    <button
-      type="button"
+    <BbObjectItem
+      :title="node.name"
       class="bb-wiki-tree-row"
-      :class="{ selected: node.kind === 'file' && selectedPath === node.path }"
+      :active="node.kind === 'file' && selectedPath === node.path"
       :style="{ paddingLeft: depth * 14 + 8 + 'px' }"
-      @click="onRowClick"
+      @select="onRowClick"
     >
-      <span class="bb-wiki-tree-icon">
+      <template #leading>
         <component
           :is="
             node.kind === 'dir'
@@ -69,12 +70,9 @@ function onChildSelect(child: WikiTreeNode) {
           "
           :size="14"
         />
-      </span>
-      <span v-if="node.kind === 'dir'" class="bb-wiki-tree-icon bb-wiki-tree-folder">
-        <Folder :size="14" />
-      </span>
-      <span class="bb-wiki-tree-name">{{ node.name }}</span>
-    </button>
+        <Folder v-if="node.kind === 'dir'" :size="14" />
+      </template>
+    </BbObjectItem>
     <ul
       v-if="node.kind === 'dir' && expanded && node.children && node.children.length > 0"
       class="bb-wiki-tree-children"
@@ -95,70 +93,22 @@ function onChildSelect(child: WikiTreeNode) {
 <style scoped>
 .bb-wiki-tree-node {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .bb-wiki-tree-row {
-  display: flex;
-  align-items: center;
+  --bb-object-item-height: 32px;
+}
+
+.bb-wiki-tree-row :deep(.bb-object-item-leading) {
   gap: 6px;
-  width: 100%;
-  min-height: 32px;
-  padding: 7px 10px;
-  border: 1px solid var(--bb-border-warm);
-  background: var(--bb-surface);
-  cursor: pointer;
-  text-align: left;
-  border-radius: 8px;
-  font-size: 12px;
-  color: var(--bb-text);
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
-}
-
-.bb-wiki-tree-row:hover {
-  border-color: var(--bb-theme-primary-border);
-  background: var(--bb-theme-primary-soft);
-  color: var(--bb-text-strong);
-}
-
-.bb-wiki-tree-row.selected {
-  border-color: var(--bb-theme-primary-border-strong);
-  background: var(--bb-theme-primary-soft);
-  color: var(--bb-theme-primary);
-  font-weight: 720;
-}
-
-.bb-wiki-tree-icon {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  color: var(--bb-text-muted);
-}
-
-.bb-wiki-tree-folder {
-  color: var(--bb-text-muted);
-}
-
-.bb-wiki-tree-row:hover .bb-wiki-tree-icon,
-.bb-wiki-tree-row:hover .bb-wiki-tree-folder,
-.bb-wiki-tree-row.selected .bb-wiki-tree-icon,
-.bb-wiki-tree-row.selected .bb-wiki-tree-folder {
-  color: currentColor;
-}
-
-.bb-wiki-tree-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .bb-wiki-tree-children {
   list-style: none;
-  margin: 0 0 0 10px;
+  margin: 0;
   padding: 0;
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 </style>

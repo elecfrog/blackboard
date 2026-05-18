@@ -2,9 +2,9 @@
   "schema_version": 1,
   "id": "bbpm-maintain",
   "scope": "system",
-  "title": "BBPM项目维护",
-  "description": "BB-PM 项目维护",
-  "version": 8,
+  "title": "Blackboard 项目维护",
+  "description": "Blackboard 项目维护：由系统工具尽可能清理 JSON inbox，并执行 ticket cleanup/audit，避免 LLM 直接做确定性写操作。",
+  "version": 11,
   "readonly": false,
   "metadata": {
     "created_by": "web"
@@ -14,15 +14,37 @@
       "id": "inbox-batch-count",
       "label": "Inbox 单次整理数量",
       "type": "number",
-      "default": 3,
-      "min": 1.0
+      "default": 20,
+      "min": 1.0,
+      "description": "每轮最多清理 20 条 JSON inbox note。",
+      "max": 20.0
     },
     {
       "id": "inbox-max-iterations",
       "label": "最大循环次数",
       "type": "number",
-      "default": 5,
-      "min": 1.0
+      "default": 20,
+      "min": 1.0,
+      "description": "最多 20 轮，理论上最多处理 400 条 JSON inbox note。",
+      "max": 20.0
+    },
+    {
+      "id": "ticket-bdd-batch-count",
+      "label": "Ticket BDD 单次迁移数量",
+      "type": "number",
+      "default": 20,
+      "min": 1.0,
+      "description": "每轮最多检查/修复 20 个 ticket。",
+      "max": 20.0
+    },
+    {
+      "id": "ticket-bdd-max-iterations",
+      "label": "Ticket BDD 最大循环次数",
+      "type": "number",
+      "default": 20,
+      "min": 1.0,
+      "description": "最多 20 轮 ticket 检查/修复。",
+      "max": 20.0
     }
   ],
   "nodes": [
@@ -68,8 +90,8 @@
     },
     {
       "id": "5a920d04-7f32-4d31-8bae-ea88e291efe1",
-      "type": "sub_pipeline",
-      "label": "Inbox 批量清理",
+      "type": "sub_graph",
+      "label": "Inbox 系统清理",
       "position": {
         "x": 64.0,
         "y": -106.66033336813648
@@ -105,14 +127,15 @@
           "value_type": "json",
           "required": false
         }
-      ]
+      ],
+      "description": "尽可能批量清理 JSON inbox，直到清空、无可安全处理项或达到迭代上限。"
     },
     {
       "id": "ba0905e1-7323-4697-8d8f-afb81f7b3ee1",
-      "type": "sub_pipeline",
-      "label": "Ticket 检查",
+      "type": "sub_graph",
+      "label": "Ticket 系统检查/修复",
       "position": {
-        "x": 375.61003496102165,
+        "x": 379.0140370323351,
         "y": -106.66033336813648
       },
       "config": {
@@ -143,7 +166,8 @@
           "value_type": "json",
           "required": false
         }
-      ]
+      ],
+      "description": "Inbox 清理后执行 ticket audit/维护。"
     }
   ],
   "edges": [
@@ -164,7 +188,7 @@
       "to_pin": "exec_in"
     },
     {
-      "id": "bf2818fc-1e4e-4401-9bcb-32727e6dbc18",
+      "id": "d8f4e678-3cac-4b9e-9106-dedff8b1d735",
       "from": "ba0905e1-7323-4697-8d8f-afb81f7b3ee1",
       "to": "end-success",
       "kind": "exec",

@@ -10,13 +10,15 @@ use crate::task_graph::run_state::{NodeRunStatus, TaskGraphRun, TaskGraphRunNode
 
 #[derive(Debug, Clone, Deserialize)]
 struct IntentExtractConfig {
+    #[serde(default = "default_mode")]
+    mode: String,
     #[serde(default)]
     inputs: Option<Value>,
     #[serde(default = "default_language")]
     language: String,
 }
 
-pub(crate) fn execute_intent_extract_node(
+pub fn execute_intent_extract_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
     run: &TaskGraphRun,
@@ -42,6 +44,15 @@ pub(crate) fn execute_intent_extract_node(
     let draft = inputs.get("draft").cloned().unwrap_or(Value::Null);
 
     let paths = extract_windows_paths(&intent);
+    if config.mode == "intent_gate" || config.mode == "code_search" {
+        let output = intent_gate_output(&config, &intent, &draft, &paths);
+        return Ok(successful_outcome(
+            &node.id,
+            output,
+            "Intent gate normalized route from original input",
+        ));
+    }
+
     let output_path = path_after_marker(&intent, "输出到")
         .or_else(|| path_after_marker(&intent, "输出至"))
         .or_else(|| path_after_marker(&intent, "Output to"))
@@ -94,13 +105,29 @@ pub(crate) fn execute_intent_extract_node(
         }
     });
 
+    Ok(successful_outcome(
+        &node.id,
+        output,
+        "Intent paths locked from original input",
+    ))
+}
+
+fn default_mode() -> String {
+    "kb_wiki".to_string()
+}
+
+fn default_language() -> String {
+    "zh-CN".to_string()
+}
+
+fn successful_outcome(node_id: &str, output: Value, log_tail: &str) -> NodeOutcome {
     let now = Utc::now().to_rfc3339();
-    Ok(NodeOutcome {
-        node_id: node.id.clone(),
+    NodeOutcome {
+        node_id: node_id.to_string(),
         status: NodeRunStatus::Succeeded,
         output: Some(output),
         node_state: TaskGraphRunNode {
-            node_id: node.id.clone(),
+            node_id: node_id.to_string(),
             status: NodeRunStatus::Succeeded,
             started_at: Some(now.clone()),
             completed_at: Some(now),
@@ -109,7 +136,7 @@ pub(crate) fn execute_intent_extract_node(
             exit_code: None,
             error: None,
             output_artifact: None,
-            log_tail: Some("Intent paths locked from original input".to_string()),
+            log_tail: Some(log_tail.to_string()),
             child_run_id: None,
             runtime: None,
             agent: None,
@@ -122,11 +149,58 @@ pub(crate) fn execute_intent_extract_node(
         end_result: None,
         control: vec![],
         graph_mutations: vec![],
-    })
+    }
 }
 
-fn default_language() -> String {
-    "zh-CN".to_string()
+fn intent_gate_output(
+    config: &IntentExtractConfig,
+    intent: &str,
+    draft: &Value,
+    paths: &[String],
+) -> Value {
+    let request = string_field(draft, "request").unwrap_or_else(|| intent.to_string());
+    let intent_type = string_field(draft, "intent_type")
+        .or_else(|| string_field(draft, "task_type"))
+        .or_else(|| infer_intent_type(intent))
+        .unwrap_or_else(|| "task".to_string());
+    let route = string_field(draft, "route").unwrap_or_else(|| infer_intent_route(&request));
+    let target = string_field(draft, "target")
+        .or_else(|| string_field(draft, "module_name"))
+        .or_else(|| infer_target(intent))
+        .or_else(|| paths.first().cloned());
+    let mut scope_hints = string_array_field(draft, "scope_hints");
+    scope_hints.extend(string_array_field(draft, "source_dirs"));
+    scope_hints.extend(paths.iter().cloned());
+    let scope_hints = dedupe(scope_hints);
+
+    let mut missing = Vec::new();
+    if request.trim().is_empty() {
+        missing.push("request".to_string());
+    }
+
+    json!({
+        "intent_type": intent_type,
+        "route": route,
+        "request": request,
+        "normalized_request": string_field(draft, "normalized_request").unwrap_or_else(|| intent.to_string()),
+        "target": target,
+        "scope_hints": scope_hints,
+        "constraints": array_field(draft, "constraints"),
+        "language": string_field(draft, "language").unwrap_or_else(|| config.language.clone()),
+        "ok": missing.is_empty(),
+        "missing": missing,
+        "intent_gate_contract": {
+            "routes": ["simple", "complex", "needs_clarification", "unsupported"],
+            "branch_key": "$.route",
+            "fallback_is_failure": true
+        },
+        "assumptions": array_field(draft, "assumptions"),
+        "confidence": number_field(draft, "confidence").unwrap_or(1.0),
+        "path_lock": {
+            "source": "intent_extract",
+            "candidates": paths
+        }
+    })
 }
 
 fn string_value(value: Option<&Value>) -> Option<String> {
@@ -248,7 +322,7 @@ fn extract_windows_paths(text: &str) -> Vec<String> {
     paths
 }
 
-fn is_path_delimiter(ch: char) -> bool {
+const fn is_path_delimiter(ch: char) -> bool {
     ch.is_whitespace()
         || matches!(
             ch,
@@ -272,7 +346,7 @@ fn is_path_delimiter(ch: char) -> bool {
 }
 
 fn trim_path_tail(path: &str) -> &str {
-    path.trim_end_matches(|ch| matches!(ch, ',' | ':' | '：' | '.'))
+    path.trim_end_matches([',', ':', '：', '.'])
 }
 
 fn infer_module_name(text: &str) -> Option<String> {
@@ -288,6 +362,77 @@ fn infer_module_name(text: &str) -> Option<String> {
     } else {
         Some(module.to_string())
     }
+}
+
+fn infer_intent_type(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    if lower.contains("code")
+        || lower.contains("search")
+        || text.contains("代码")
+        || text.contains("模块")
+        || text.contains("源码")
+    {
+        return Some("code_search".to_string());
+    }
+    None
+}
+
+fn infer_intent_route(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return "needs_clarification".to_string();
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.contains("unsupported") || trimmed.contains("不支持") {
+        return "unsupported".to_string();
+    }
+
+    let complex_markers = [
+        "复杂",
+        "多个",
+        "多条",
+        "跨",
+        "依赖",
+        "并行",
+        "分解",
+        "拆分",
+        "架构",
+        "全局",
+        "scout",
+        "fanout",
+        "parallel",
+        "dependency",
+    ];
+    if complex_markers
+        .iter()
+        .any(|marker| lower.contains(marker) || trimmed.contains(marker))
+    {
+        return "complex".to_string();
+    }
+
+    "simple".to_string()
+}
+
+fn infer_target(text: &str) -> Option<String> {
+    for marker in ["探索一下", "探索", "查一下", "看看", "了解一下", "search"] {
+        let Some((_, tail)) = text.split_once(marker) else {
+            continue;
+        };
+        let mut end = tail.len();
+        for boundary in ["模块", "内容", "代码", "，", "。", ",", ".", "\n"] {
+            if let Some(index) = tail.find(boundary) {
+                end = end.min(index);
+            }
+        }
+        let target = tail[..end]
+            .trim()
+            .trim_matches(|ch: char| ch == ':' || ch == '：' || ch.is_whitespace());
+        if !target.is_empty() {
+            return Some(target.to_string());
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -340,5 +485,17 @@ mod tests {
             path_after_marker(text, "Output to").as_deref(),
             Some("D:\\Dev\\blackboard\\.bb_template\\runtime\\kb-workflow")
         );
+    }
+
+    #[test]
+    fn infer_target_from_module_prompt() {
+        let text = "帮我探索一下 task_graph runtime 模块的内容";
+        assert_eq!(infer_target(text).as_deref(), Some("task_graph runtime"));
+    }
+
+    #[test]
+    fn infer_intent_route_marks_complex_prompts() {
+        let text = "帮我探索这个跨多个模块的复杂依赖关系";
+        assert_eq!(infer_intent_route(text), "complex");
     }
 }

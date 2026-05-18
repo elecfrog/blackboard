@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import BbObjectItem from '@/components/common/BbObjectItem.vue'
 import type { AgentProfile } from '@/data/agents'
 import { t } from '@/i18n'
 
@@ -68,25 +69,21 @@ function goPage(page: number) {
         @input="currentPage = 1"
       />
     </div>
-    <div class="aw-list-items">
-      <button
+    <div class="bb-object-list aw-list-items">
+      <BbObjectItem
         v-for="agent in pagedAgents"
         :key="agent.id"
-        type="button"
-        :class="['aw-list-item', { active: selectedId === agent.id }]"
-        @click="selectAgent(agent.id)"
+        class="aw-list-item"
+        :title="agent.display_name"
+        :active="selectedId === agent.id"
+        @select="selectAgent(agent.id)"
       >
-        <span class="aw-list-avatar" :style="{ background: agentColor(agent.id) }">
-          {{ agentInitial(agent) }}
-        </span>
-        <span class="aw-list-info">
-          <strong>{{ agent.display_name }}</strong>
-          <small>{{ agent.description || agent.kind }}</small>
-        </span>
-        <span v-if="assignmentCounts.get(agent.id)" class="aw-list-meta">
-          <em>{{ assignmentCounts.get(agent.id) }}</em>
-        </span>
-      </button>
+        <template #leading>
+          <span class="aw-list-avatar" :style="{ background: agentColor(agent.id) }">
+            {{ agentInitial(agent) }}
+          </span>
+        </template>
+      </BbObjectItem>
       <div v-if="pagedAgents.length === 0" class="aw-list-empty">{{ t('agentNoResults') }}</div>
     </div>
     <footer v-if="totalPages > 1" class="aw-list-pagination">

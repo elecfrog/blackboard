@@ -1,4 +1,4 @@
-//! Stateless TaskGraph schedule store and time calculation.
+//! Stateless `TaskGraph` schedule store and time calculation.
 
 use chrono::{
     DateTime, Datelike, Duration, LocalResult, NaiveDateTime, NaiveTime, TimeZone, Utc, Weekday,
@@ -16,7 +16,7 @@ use super::types::{TaskGraphError, TaskGraphScope};
 
 const DEFAULT_TIMEZONE: &str = "Asia/Shanghai";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TaskSchedule {
     pub id: String,
     pub name: String,
@@ -492,6 +492,7 @@ fn local_to_utc(tz: Tz, local: NaiveDateTime) -> Option<DateTime<Utc>> {
     }
 }
 
+#[allow(clippy::option_if_let_else)]
 fn parse_interval(expression: &str) -> Result<Duration, TaskGraphError> {
     let expression = expression.trim().to_ascii_lowercase();
     let (digits, multiplier) = if let Some(value) = expression.strip_suffix('s') {
@@ -556,8 +557,7 @@ fn parse_weekday(value: &str) -> Result<Weekday, TaskGraphError> {
 }
 
 fn normalize_cron_expression(expression: &str) -> Result<String, TaskGraphError> {
-    let fields: Vec<&str> = expression.split_whitespace().collect();
-    match fields.len() {
+    match expression.split_whitespace().count() {
         5 => Ok(format!("0 {} *", expression.trim())),
         6 => Ok(format!("{} *", expression.trim())),
         7 => Ok(expression.trim().to_string()),
@@ -769,7 +769,7 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, TaskGraphEr
     })
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 

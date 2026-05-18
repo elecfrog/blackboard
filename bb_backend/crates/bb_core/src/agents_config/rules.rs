@@ -1,4 +1,4 @@
-/// YAML frontmatter header prepended to CodeBuddy Rules files.
+/// YAML frontmatter header prepended to `CodeBuddy` Rules files.
 const RULES_HEADER: &str = "\
 ---
 description: Blackboard cross-Agent rules
@@ -16,7 +16,7 @@ pub(super) fn wrap_rules_body(source: &[u8]) -> Vec<u8> {
 }
 
 /// Extract the body (everything after the closing `---` of the YAML
-/// frontmatter) from a CodeBuddy Rules file. If no valid frontmatter is
+/// frontmatter) from a `CodeBuddy` Rules file. If no valid frontmatter is
 /// found, the entire content is returned as-is.
 pub(super) fn extract_rules_body(content: &str) -> &str {
     // A CodeBuddy Rules frontmatter starts with "---\n" and ends with the

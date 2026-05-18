@@ -4,8 +4,10 @@ use std::fs;
 #[cfg(windows)]
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Child;
 
 /// 获取当前机器主机名。
+#[must_use]
 pub fn machine_host_name() -> Option<String> {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
@@ -23,6 +25,7 @@ pub fn user_home_dir() -> Option<PathBuf> {
 }
 
 /// 获取当前操作系统名称。
+#[must_use]
 pub fn current_os_name() -> &'static str {
     match std::env::consts::OS {
         "windows" => "Windows",
@@ -33,6 +36,7 @@ pub fn current_os_name() -> &'static str {
 }
 
 /// 获取当前操作系统版本。
+#[must_use]
 pub fn current_os_version() -> Option<String> {
     match std::env::consts::OS {
         "windows" => windows_major_version(),
@@ -74,6 +78,7 @@ fn linux_version_id() -> Option<String> {
     None
 }
 
+#[must_use]
 pub fn command_output(command: &str, args: &[&str]) -> Option<String> {
     let output = std::process::Command::new(command)
         .args(args)
@@ -97,15 +102,83 @@ pub fn command_output(command: &str, args: &[&str]) -> Option<String> {
 /// command discovery, and npm shims often resolve to `.cmd`, `.ps1`, or a
 /// shell script that `CreateProcess` cannot execute directly. Prefer native
 /// executables and unwrap known npm package layouts when possible.
+#[must_use]
 pub fn resolve_spawn_program(program: &str) -> String {
     #[cfg(windows)]
     {
-        return resolve_spawn_program_windows(program);
+        resolve_spawn_program_windows(program)
     }
 
     #[cfg(not(windows))]
     {
         program.to_string()
+    }
+}
+
+/// Resolve Pi into a spawnable command.
+///
+/// On Windows, Pi is commonly installed as an npm shim. Spawning `pi.cmd`
+/// directly can fail for arbitrary prompt text because batch-file argument
+/// escaping is restricted by Rust/Windows. Prefer `node <pi cli.js>` so prompt
+/// arguments are passed to a native executable.
+#[must_use]
+pub fn resolve_pi_spawn_command(program: &str) -> (String, Vec<String>) {
+    #[cfg(windows)]
+    {
+        resolve_pi_spawn_command_windows(program)
+            .unwrap_or_else(|| (resolve_spawn_program(program), Vec::new()))
+    }
+
+    #[cfg(not(windows))]
+    {
+        (program.to_string(), Vec::new())
+    }
+}
+
+/// Resolve Codex into a spawnable command.
+///
+/// On Windows, npm installs Codex as a `.cmd`/`.ps1` shim. Spawning the batch
+/// shim directly can fail once the prompt/config arguments become complex, so
+/// prefer `node <@openai/codex/bin/codex.js>` when that package layout exists.
+#[must_use]
+pub fn resolve_codex_spawn_command(program: &str) -> (String, Vec<String>) {
+    #[cfg(windows)]
+    {
+        resolve_codex_spawn_command_windows(program)
+            .unwrap_or_else(|| (resolve_spawn_program(program), Vec::new()))
+    }
+
+    #[cfg(not(windows))]
+    {
+        (program.to_string(), Vec::new())
+    }
+}
+
+/// Terminate a child process and, on Windows, its descendants.
+///
+/// npm-backed CLIs often spawn a native child process that inherits stdout and
+/// stderr. Killing only the wrapper can leave the real runtime alive and keep
+/// pipe reader threads blocked past the configured timeout.
+pub fn terminate_child_process_tree(child: &mut Child) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        let status = std::process::Command::new("taskkill")
+            .arg("/PID")
+            .arg(child.id().to_string())
+            .arg("/T")
+            .arg("/F")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        match status {
+            Ok(status) if status.success() => Ok(()),
+            _ => child.kill(),
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        child.kill()
     }
 }
 
@@ -137,13 +210,101 @@ fn resolve_spawn_program_windows(program: &str) -> String {
 }
 
 #[cfg(windows)]
+fn resolve_codex_spawn_command_windows(program: &str) -> Option<(String, Vec<String>)> {
+    let command_path = find_windows_command_candidate(program.trim())?;
+    let bin_dir = command_path.parent()?;
+    let cli = bin_dir
+        .join("node_modules")
+        .join("@openai")
+        .join("codex")
+        .join("bin")
+        .join("codex.js");
+    if !cli.is_file() {
+        return None;
+    }
+
+    let local_node = bin_dir.join("node.exe");
+    let node = if local_node.is_file() {
+        local_node.to_string_lossy().to_string()
+    } else {
+        resolve_spawn_program("node")
+    };
+
+    Some((node, vec![cli.to_string_lossy().to_string()]))
+}
+
+#[cfg(windows)]
+fn resolve_pi_spawn_command_windows(program: &str) -> Option<(String, Vec<String>)> {
+    let command_path = find_windows_command_candidate(program.trim())?;
+    let bin_dir = command_path.parent()?;
+    let cli = bin_dir
+        .join("node_modules")
+        .join("@earendil-works")
+        .join("pi-coding-agent")
+        .join("dist")
+        .join("cli.js");
+    if !cli.is_file() {
+        return None;
+    }
+
+    let local_node = bin_dir.join("node.exe");
+    let node = if local_node.is_file() {
+        local_node.to_string_lossy().to_string()
+    } else {
+        resolve_spawn_program("node")
+    };
+
+    Some((node, vec![cli.to_string_lossy().to_string()]))
+}
+
+#[cfg(windows)]
+fn find_windows_command_candidate(program: &str) -> Option<PathBuf> {
+    if program.is_empty() {
+        return None;
+    }
+
+    let path = Path::new(program);
+    let has_path_segment =
+        path.components().count() > 1 || program.contains('\\') || program.contains('/');
+    if has_path_segment {
+        if path.is_file() {
+            return Some(path.to_path_buf());
+        }
+        for ext in windows_spawn_extensions() {
+            let candidate = with_windows_extension(path, &ext);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        return None;
+    }
+
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            for ext in windows_spawn_extensions() {
+                let candidate = with_windows_extension(&dir.join(program), &ext);
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(windows)]
 fn resolve_windows_program_path(path: &Path) -> Option<String> {
     if path.is_file() {
         if is_native_windows_executable(path) {
             return Some(path.to_string_lossy().to_string());
         }
-        return resolve_windows_shim_target(path)
-            .or_else(|| Some(path.to_string_lossy().to_string()));
+        if let Some(resolved) = resolve_windows_shim_target(path) {
+            return Some(resolved);
+        }
+        if is_windows_command_script(path) {
+            return Some(path.to_string_lossy().to_string());
+        }
     }
 
     resolve_windows_candidate(path)
@@ -162,7 +323,9 @@ fn resolve_windows_candidate(base: &Path) -> Option<String> {
         if let Some(resolved) = resolve_windows_shim_target(&candidate) {
             return Some(resolved);
         }
-        return Some(candidate.to_string_lossy().to_string());
+        if is_windows_command_script(&candidate) {
+            return Some(candidate.to_string_lossy().to_string());
+        }
     }
 
     None
@@ -170,7 +333,7 @@ fn resolve_windows_candidate(base: &Path) -> Option<String> {
 
 #[cfg(windows)]
 fn windows_spawn_extensions() -> Vec<String> {
-    let mut exts = vec!["".to_string(), ".com".to_string(), ".exe".to_string()];
+    let mut exts = vec![String::new(), ".com".to_string(), ".exe".to_string()];
     if let Ok(path_ext) = std::env::var("PATHEXT") {
         for ext in path_ext.split(';') {
             let ext = normalize_windows_extension(ext);
@@ -210,11 +373,20 @@ fn is_supported_windows_extension(ext: &str) -> bool {
 fn is_native_windows_executable(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| {
+        .is_some_and(|ext| {
             let ext = ext.to_ascii_lowercase();
             ext == "exe" || ext == "com"
         })
-        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn is_windows_command_script(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            let ext = ext.to_ascii_lowercase();
+            ext == "bat" || ext == "cmd"
+        })
 }
 
 #[cfg(windows)]
@@ -317,7 +489,7 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     #[cfg(windows)]
-    use super::resolve_spawn_program;
+    use super::{resolve_codex_spawn_command, resolve_pi_spawn_command, resolve_spawn_program};
 
     #[cfg(windows)]
     fn env_lock() -> &'static Mutex<()> {
@@ -406,6 +578,110 @@ SET dp0=%~dp0
         let resolved = resolve_spawn_program(&shim.to_string_lossy());
 
         assert_eq!(Path::new(&resolved), target);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn resolve_spawn_program_prefers_cmd_over_extensionless_npm_script() {
+        let _guard = env_lock().lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let bin = temp.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(
+            bin.join("pi"),
+            r#"#!/bin/sh
+basedir=$(dirname "$(echo "$0" | sed -e 's,\\,/,g')")
+exec "$basedir/node" "$basedir/node_modules/@earendil-works/pi-coding-agent/dist/cli.js" "$@"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            bin.join("pi.cmd"),
+            r#"@ECHO off
+"%dp0%\node.exe" "%dp0%\node_modules\@earendil-works\pi-coding-agent\dist\cli.js" %*
+"#,
+        )
+        .unwrap();
+
+        let old_path = std::env::var_os("PATH");
+        let old_pathext = std::env::var_os("PATHEXT");
+        std::env::set_var("PATH", &bin);
+        std::env::set_var("PATHEXT", ".COM;.EXE;.BAT;.CMD;.PS1");
+
+        let resolved = resolve_spawn_program("pi");
+
+        restore_env("PATH", old_path);
+        restore_env("PATHEXT", old_pathext);
+
+        assert_eq!(Path::new(&resolved), bin.join("pi.cmd"));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn resolve_pi_spawn_command_uses_node_cli_for_npm_shim() {
+        let _guard = env_lock().lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let bin = temp.path().join("bin");
+        let cli_dir = bin
+            .join("node_modules")
+            .join("@earendil-works")
+            .join("pi-coding-agent")
+            .join("dist");
+        std::fs::create_dir_all(&cli_dir).unwrap();
+        std::fs::write(bin.join("pi"), "#!/bin/sh\n").unwrap();
+        std::fs::write(bin.join("pi.cmd"), r"@ECHO off").unwrap();
+        std::fs::write(bin.join("node.exe"), "").unwrap();
+        std::fs::write(cli_dir.join("cli.js"), "").unwrap();
+
+        let old_path = std::env::var_os("PATH");
+        let old_pathext = std::env::var_os("PATHEXT");
+        std::env::set_var("PATH", &bin);
+        std::env::set_var("PATHEXT", ".COM;.EXE;.BAT;.CMD;.PS1");
+
+        let (program, args) = resolve_pi_spawn_command("pi");
+
+        restore_env("PATH", old_path);
+        restore_env("PATHEXT", old_pathext);
+
+        assert_eq!(Path::new(&program), bin.join("node.exe"));
+        assert_eq!(
+            args,
+            vec![cli_dir.join("cli.js").to_string_lossy().to_string()]
+        );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn resolve_codex_spawn_command_uses_node_cli_for_npm_shim() {
+        let _guard = env_lock().lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let bin = temp.path().join("bin");
+        let cli_dir = bin
+            .join("node_modules")
+            .join("@openai")
+            .join("codex")
+            .join("bin");
+        std::fs::create_dir_all(&cli_dir).unwrap();
+        std::fs::write(bin.join("codex"), "#!/bin/sh\n").unwrap();
+        std::fs::write(bin.join("codex.cmd"), r"@ECHO off").unwrap();
+        std::fs::write(bin.join("node.exe"), "").unwrap();
+        std::fs::write(cli_dir.join("codex.js"), "").unwrap();
+
+        let old_path = std::env::var_os("PATH");
+        let old_pathext = std::env::var_os("PATHEXT");
+        std::env::set_var("PATH", &bin);
+        std::env::set_var("PATHEXT", ".COM;.EXE;.BAT;.CMD;.PS1");
+
+        let (program, args) = resolve_codex_spawn_command("codex");
+
+        restore_env("PATH", old_path);
+        restore_env("PATHEXT", old_pathext);
+
+        assert_eq!(Path::new(&program), bin.join("node.exe"));
+        assert_eq!(
+            args,
+            vec![cli_dir.join("codex.js").to_string_lossy().to_string()]
+        );
     }
 
     #[cfg(windows)]

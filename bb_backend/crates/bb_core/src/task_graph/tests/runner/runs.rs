@@ -1,5 +1,6 @@
 //! Full runner, superstep, recovery, interrupt, and prompt rendering tests.
 
+use crate::fs_util::resolve_slash;
 use crate::task_graph::definition::types::*;
 use crate::task_graph::nodes::eval::render_prompt_template;
 use crate::task_graph::pregel::runner::*;
@@ -112,6 +113,7 @@ fn execute_simple_linear_graph_dry_run() {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),
@@ -151,6 +153,37 @@ fn execute_simple_linear_graph_dry_run() {
     assert!(events.iter().any(|event| event.kind == "superstep_started"));
     assert!(events.iter().any(|event| event.kind == "node_started"));
     assert!(events.iter().any(|event| event.kind == "node_finished"));
+    let tool_start = events
+        .iter()
+        .find(|event| event.kind == "tool_start" && event.node_id.as_deref() == Some("llm-1"))
+        .expect("llm node should emit tool_start");
+    assert_eq!(tool_start.payload["schema_version"], 1);
+    assert_eq!(tool_start.payload["run_id"], run.id);
+    assert_eq!(tool_start.payload["node_id"], "llm-1");
+    assert_eq!(tool_start.payload["tool_name"], "llm_runtime");
+    assert_eq!(tool_start.payload["tool_kind"], "agent_runtime");
+    assert_eq!(tool_start.payload["status"], "running");
+    assert_eq!(tool_start.payload["sequence"], tool_start.seq);
+    assert!(tool_start.payload["tool_call_id"]
+        .as_str()
+        .unwrap()
+        .contains("llm-1"));
+    assert!(tool_start.payload["input_summary"]["config_keys"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("runtime")));
+    let tool_end = events
+        .iter()
+        .find(|event| event.kind == "tool_end" && event.node_id.as_deref() == Some("llm-1"))
+        .expect("llm node should emit tool_end");
+    assert_eq!(tool_end.payload["schema_version"], 1);
+    assert_eq!(
+        tool_end.payload["tool_call_id"],
+        tool_start.payload["tool_call_id"]
+    );
+    assert_eq!(tool_end.payload["sequence"], tool_end.seq);
+    assert_eq!(tool_end.payload["status"], "succeeded");
+    assert_eq!(tool_end.payload["output_summary"]["has_output"], true);
     assert!(events.iter().any(|event| event.kind == "writes_committed"));
     assert!(events.iter().any(|event| event.kind == "checkpoint_saved"));
     assert!(events.iter().any(|event| event.kind == "run_completed"));
@@ -814,6 +847,7 @@ fn execute_branch_selects_correct_path() {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),
@@ -851,6 +885,7 @@ fn execute_branch_selects_correct_path() {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),
@@ -863,6 +898,164 @@ fn execute_branch_selects_correct_path() {
 
     let outcome2 = execute_run(&opts2).unwrap();
     assert!(matches!(outcome2, RunOutcome::Failed { .. }));
+}
+
+#[test]
+fn execute_branch_reads_data_pin_input() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    let graph = TaskGraphDefinition {
+        schema_version: 1,
+        id: "branch-data-input-test".to_string(),
+        scope: TaskGraphScope::Project,
+        title: "Branch Data Input Test".to_string(),
+        description: None,
+        version: 1,
+        readonly: false,
+        origin: None,
+        metadata: None,
+        inputs: Some(vec![TaskGraphInputParam {
+            id: "intent-result".to_string(),
+            label: None,
+            value_type: "json".to_string(),
+            reducer: None,
+            channel_class: None,
+            default_value: json!({}),
+            description: None,
+            min: None,
+            max: None,
+        }]),
+        nodes: vec![
+            TaskGraphNode {
+                id: "start".to_string(),
+                node_type: NodeType::Start,
+                label: "Start".to_string(),
+                description: None,
+                position: None,
+                config: json!({}),
+                pins: vec![],
+            },
+            TaskGraphNode {
+                id: "intent".to_string(),
+                node_type: NodeType::InputVar,
+                label: "Intent".to_string(),
+                description: None,
+                position: None,
+                config: json!({ "input_id": "intent-result" }),
+                pins: vec![],
+            },
+            TaskGraphNode {
+                id: "branch".to_string(),
+                node_type: NodeType::Branch,
+                label: "Branch".to_string(),
+                description: None,
+                position: None,
+                config: json!({
+                    "mode": "first_match",
+                    "rules": [
+                        { "id": "complex", "label": "Complex", "when": { "path": "$.route", "op": "equals", "value": "complex" } },
+                        { "id": "simple", "label": "Simple", "when": { "op": "always" } }
+                    ],
+                    "default_rule_id": "simple"
+                }),
+                pins: vec![],
+            },
+            TaskGraphNode {
+                id: "end-complex".to_string(),
+                node_type: NodeType::End,
+                label: "Complex".to_string(),
+                description: None,
+                position: None,
+                config: json!({ "result": "succeeded" }),
+                pins: vec![],
+            },
+            TaskGraphNode {
+                id: "end-simple".to_string(),
+                node_type: NodeType::End,
+                label: "Simple".to_string(),
+                description: None,
+                position: None,
+                config: json!({ "result": "failed" }),
+                pins: vec![],
+            },
+        ],
+        edges: vec![
+            TaskGraphEdge {
+                id: "start__intent".to_string(),
+                from: "start".to_string(),
+                to: "intent".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: None,
+                target_handle: None,
+                from_pin: Some("exec_out".to_string()),
+                to_pin: Some("exec_in".to_string()),
+            },
+            TaskGraphEdge {
+                id: "intent__branch_exec".to_string(),
+                from: "intent".to_string(),
+                to: "branch".to_string(),
+                kind: EdgeKind::Exec,
+                label: None,
+                source_handle: None,
+                target_handle: None,
+                from_pin: Some("exec_out".to_string()),
+                to_pin: Some("exec_in".to_string()),
+            },
+            TaskGraphEdge {
+                id: "intent__branch_data".to_string(),
+                from: "intent".to_string(),
+                to: "branch".to_string(),
+                kind: EdgeKind::Data,
+                label: None,
+                source_handle: Some("value".to_string()),
+                target_handle: Some("input".to_string()),
+                from_pin: Some("value".to_string()),
+                to_pin: Some("input".to_string()),
+            },
+            TaskGraphEdge {
+                id: "branch__end-complex".to_string(),
+                from: "branch".to_string(),
+                to: "end-complex".to_string(),
+                kind: EdgeKind::Exec,
+                label: Some("Complex".to_string()),
+                source_handle: Some("rule:complex".to_string()),
+                target_handle: None,
+                from_pin: Some("rule:complex".to_string()),
+                to_pin: Some("exec_in".to_string()),
+            },
+            TaskGraphEdge {
+                id: "branch__end-simple".to_string(),
+                from: "branch".to_string(),
+                to: "end-simple".to_string(),
+                kind: EdgeKind::Exec,
+                label: Some("Simple".to_string()),
+                source_handle: Some("rule:simple".to_string()),
+                target_handle: None,
+                from_pin: Some("rule:simple".to_string()),
+                to_pin: Some("exec_in".to_string()),
+            },
+        ],
+        layout: None,
+    };
+
+    let run = run_state::create_run(
+        root,
+        "test-project",
+        GraphRef {
+            scope: TaskGraphScope::Project,
+            id: "branch-data-input-test".to_string(),
+            version: 1,
+        },
+        &graph,
+        json!({ "intent-result": { "route": "complex" } }),
+    )
+    .unwrap();
+
+    let opts = smoke_runner_opts(root, &run.id);
+    let outcome = execute_run(&opts).unwrap();
+    assert!(matches!(outcome, RunOutcome::Succeeded));
 }
 
 #[test]
@@ -961,6 +1154,7 @@ fn execute_human_gate_pauses_run() {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),
@@ -1083,6 +1277,7 @@ fn execute_human_gate_reject_cancels_run() {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),
@@ -1219,6 +1414,7 @@ fn execute_loop_max_iterations_reached() {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),
@@ -1396,6 +1592,7 @@ fn execute_loop_condition_exit() {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),
@@ -1539,6 +1736,7 @@ fn execute_loop_condition_exit_on_final_allowed_iteration() {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),
@@ -1577,7 +1775,7 @@ fn prompt_template_renders_graph_inputs_and_env() {
         .insert("cleanup".to_string(), json!({ "continue": true }));
 
     let rendered = render_prompt_template(
-        "Clean {{inputs.batch-count}} notes for {{env.project}} at {{env.root}} using {{env.scripts_dir}}; continue={{nodes.cleanup.output.continue}}",
+        "Clean {{inputs.batch-count}} notes for {{env.project}} root={{env.root}} workspace={{env.workspace}} using {{env.scripts_dir}}; continue={{nodes.cleanup.output.continue}}",
         "blackboard",
         root,
         &root.join("scripts"),
@@ -1586,17 +1784,10 @@ fn prompt_template_renders_graph_inputs_and_env() {
     );
 
     assert!(rendered.contains("Clean 2 notes for blackboard"));
-    assert!(rendered.contains(&format!(
-        "at {}",
-        root.display().to_string().replace('\\', "/")
-    )));
-    assert!(rendered.contains(&format!(
-        "using {}",
-        root.join("scripts")
-            .display()
-            .to_string()
-            .replace('\\', "/")
-    )));
+    let root_slash = resolve_slash(root);
+    assert!(rendered.contains(&format!("root={}", root_slash)));
+    assert!(rendered.contains(&format!("workspace={}", root_slash)));
+    assert!(rendered.contains(&format!("using {}", resolve_slash(root.join("scripts")))));
     assert!(rendered.contains("continue=true"));
 }
 

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { BlackboardTicket, ProjectEntry } from '@/data/tickets'
 import { ticketRoute } from '@/data/tickets'
+import { BbInlineAction, BbSectionHeader } from '@/components/common'
 import { t } from '@/i18n'
 
 export interface ProjectTickets {
@@ -52,17 +53,16 @@ const groupedProjects = computed<ProjectGroup[]>(() =>
 
 <template>
   <div class="aw-section">
-    <div class="aw-section-header">
-      <h4>{{ t('activeAssignments') }}</h4>
-      <div class="aw-section-actions">
-          <label class="aw-group-by">
+    <BbSectionHeader class="aw-section-header" :title="t('activeAssignments')" title-tag="h4" :divider="false">
+      <template #actions>
+        <label class="aw-group-by">
           {{ t('groupByLabel') }}
           <select v-model="groupBy">
             <option value="project">{{ t('groupByProject') }}</option>
           </select>
         </label>
-      </div>
-    </div>
+      </template>
+    </BbSectionHeader>
     <p v-if="groupedProjects.length === 0" class="aw-empty-line">
       {{ t('noActiveAssignments') }}
     </p>
@@ -87,13 +87,12 @@ const groupedProjects = computed<ProjectGroup[]>(() =>
             </span>
           </a>
         </div>
-        <a
+        <BbInlineAction
           v-if="group.hasMore"
-          class="aw-view-all"
           :href="`#/projects/${group.project.name}/board`"
         >
           {{ t('viewAll') }} ({{ group.total }})
-        </a>
+        </BbInlineAction>
       </div>
     </div>
   </div>

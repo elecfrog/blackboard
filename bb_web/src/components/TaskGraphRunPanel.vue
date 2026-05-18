@@ -10,8 +10,10 @@ import {
   X,
 } from 'lucide-vue-next'
 import GraphCanvas, { type GraphCanvasEdge, type GraphCanvasNode } from '@/components/GraphCanvas.vue'
+import { BbActionGroup, BbButton, BbInfoGrid, BbInfoItem } from '@/components/common'
 import TaskGraphNodeShape from '@/components/task-graph/TaskGraphNodeShape.vue'
 import TaskGraphMutationTimeline from '@/components/task-graph/TaskGraphMutationTimeline.vue'
+import TaskGraphToolLifecycleTimeline from '@/components/task-graph/TaskGraphToolLifecycleTimeline.vue'
 import {
   taskGraphNodeMetaLabel,
   taskGraphNodeVisualForNode,
@@ -116,18 +118,6 @@ const latestAppliedMutationEdgeIds = computed(() => {
   return ids
 })
 
-const nodeAddedRevisionById = computed(() => {
-  const revisions = new Map<string, number>()
-  for (const event of runEvents.value) {
-    const payload = topologyMutationPayload(event.payload)
-    if (!payload || payload.result.status !== 'applied') continue
-    for (const nodeId of payload.result.summary.added_nodes) {
-      revisions.set(nodeId, payload.graph_revision_after)
-    }
-  }
-  return revisions
-})
-
 const canvasNodes = computed<GraphCanvasNode[]>(() =>
   (run.value?.graph_snapshot.nodes ?? []).map((node) => {
     const state = runNodeById.value.get(node.id)
@@ -211,10 +201,6 @@ const selectedRunNode = computed<TaskGraphRunNode | null>(() =>
 
 const selectedOutput = computed(() =>
   selectedNodeId.value ? run.value?.context.node_outputs[selectedNodeId.value] : undefined,
-)
-
-const selectedAddedRevision = computed(() =>
-  selectedNodeId.value ? nodeAddedRevisionById.value.get(selectedNodeId.value) : undefined,
 )
 
 const selectedAgentSessionId = computed(() => selectedRunNode.value?.agent_session_id ?? '')
@@ -549,35 +535,43 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
           </span>
         </div>
       </div>
-      <div>
-        <button
+      <BbActionGroup class="task-graph-run-head-actions" gap="sm">
+        <BbButton
           v-if="run?.parent_run_id"
-          type="button"
-          class="bb-top-action-button"
+          size="sm"
+          variant="secondary"
           @click="openChildRun(run!.parent_run_id!)"
         >
-          <ArrowLeft class="bb-top-action-svg" aria-hidden="true" />
+          <template #leading>
+            <ArrowLeft />
+          </template>
           <span>{{ t('taskGraphBackToParentRun') }}</span>
-        </button>
-        <button
+        </BbButton>
+        <BbButton
           v-if="isRunActive"
-          type="button"
-          class="bb-top-action-button bb-cancel-button"
+          size="sm"
+          variant="danger"
           :disabled="cancelling"
           @click="cancelRun"
         >
-          <StopCircle class="bb-top-action-svg" aria-hidden="true" />
+          <template #leading>
+            <StopCircle />
+          </template>
           <span>{{ cancelling ? t('taskGraphCancelling') : t('taskGraphCancelRun') }}</span>
-        </button>
-        <button type="button" class="bb-top-action-button" :disabled="loading" @click="loadRun">
-          <RefreshCw class="bb-top-action-svg" aria-hidden="true" />
+        </BbButton>
+        <BbButton size="sm" variant="secondary" :disabled="loading" @click="loadRun">
+          <template #leading>
+            <RefreshCw />
+          </template>
           <span>{{ t('refresh') }}</span>
-        </button>
-        <button type="button" class="bb-top-action-button" @click="emit('close')">
-          <X class="bb-top-action-svg" aria-hidden="true" />
+        </BbButton>
+        <BbButton size="sm" variant="secondary" @click="emit('close')">
+          <template #leading>
+            <X />
+          </template>
           <span>{{ t('close') }}</span>
-        </button>
-      </div>
+        </BbButton>
+      </BbActionGroup>
     </header>
 
     <div v-if="loading" class="bb-state-panel">{{ t('loading') }}</div>
@@ -642,16 +636,13 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
           <section class="task-graph-run-detail-block task-graph-run-level">
             <TaskGraphMutationTimeline :events="runEvents" :checkpoints="checkpoints" />
             <p v-if="runArtifactsError" class="task-graph-run-artifacts-error">{{ runArtifactsError }}</p>
-            <dl class="task-graph-run-level-state">
-              <div>
-                <dt>{{ t('taskGraphRevision') }}</dt>
-                <dd>{{ run.current_graph_revision }}</dd>
-              </div>
-              <div>
-                <dt>{{ t('taskGraphActiveNodes') }}</dt>
-                <dd>{{ run.active_nodes.length > 0 ? run.active_nodes.join(', ') : '-' }}</dd>
-              </div>
-            </dl>
+            <BbInfoGrid class="task-graph-run-level-state" columns="repeat(2, minmax(0, 1fr))">
+              <BbInfoItem :label="t('taskGraphRevision')" :value="run.current_graph_revision" />
+              <BbInfoItem
+                :label="t('taskGraphActiveNodes')"
+                :value="run.active_nodes.length > 0 ? run.active_nodes.join(', ') : '-'"
+              />
+            </BbInfoGrid>
           </section>
 
           <header>
@@ -662,40 +653,23 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
             </div>
           </header>
 
-          <dl v-if="selectedRunNode" class="task-graph-node-state">
-            <div>
-              <dt>{{ t('status') }}</dt>
-              <dd>{{ selectedRunNode.status }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('taskGraphDuration') }}</dt>
-              <dd>{{ formatDuration(selectedRunNode.duration_ms) }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('taskGraphStarted') }}</dt>
-              <dd>{{ formatDate(selectedRunNode.started_at) }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('taskGraphCompleted') }}</dt>
-              <dd>{{ formatDate(selectedRunNode.completed_at) }}</dd>
-            </div>
-            <div v-if="selectedRunNode.runtime">
-              <dt>{{ t('taskGraphRuntime') }}</dt>
-              <dd>{{ selectedRunNode.runtime }}</dd>
-            </div>
-            <div v-if="selectedRunNode.agent">
-              <dt>{{ t('taskGraphAgent') }}</dt>
-              <dd>{{ selectedRunNode.agent }}</dd>
-            </div>
-            <div v-if="selectedRunNode.model">
-              <dt>{{ t('taskGraphModel') }}</dt>
-              <dd>{{ selectedRunNode.model }}</dd>
-            </div>
-            <div v-if="selectedAddedRevision !== undefined">
-              <dt>{{ t('taskGraphAddedInRevision') }}</dt>
-              <dd>{{ selectedAddedRevision }}</dd>
-            </div>
-          </dl>
+          <section class="task-graph-run-detail-block">
+            <TaskGraphToolLifecycleTimeline :events="runEvents" :selected-node-id="selectedNodeId" />
+          </section>
+
+          <section v-if="run" class="task-graph-run-params">
+            <h5>{{ t('taskGraphInputs') }}</h5>
+            <BbInfoGrid
+              v-if="Object.keys(run.context.input ?? {}).length > 0"
+              class="task-graph-run-param-grid"
+              columns="repeat(2, minmax(0, 1fr))"
+            >
+              <BbInfoItem v-for="[key, value] in Object.entries(run.context.input)" :key="key" :label="key">
+                {{ typeof value === 'object' ? JSON.stringify(value) : String(value) }}
+              </BbInfoItem>
+            </BbInfoGrid>
+            <p v-else class="task-graph-run-params-empty">{{ t('taskGraphInputsEmpty') }}</p>
+          </section>
 
           <section v-if="selectedRunNode?.error" class="task-graph-run-error">
             <AlertCircle aria-hidden="true" />
@@ -787,30 +761,9 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
   min-width: 0;
 }
 
-.task-graph-run-head > div:last-child {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+.task-graph-run-head-actions {
   flex: 0 0 auto;
   min-width: 0;
-}
-
-.task-graph-run-head .bb-top-action-button {
-  height: 30px;
-  min-height: 30px;
-  padding: 0 9px;
-  gap: 6px;
-  border-radius: 6px;
-  font-size: 11px;
-  line-height: 1;
-}
-
-.task-graph-run-head .bb-top-action-svg {
-  flex-basis: 14px;
-  width: 14px;
-  height: 14px;
 }
 
 .task-graph-run-head span,
@@ -870,27 +823,30 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
   color: var(--bb-warning);
 }
 
-.task-graph-node-state {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+.task-graph-run-params {
   margin: 0;
 }
 
-.task-graph-node-state > div {
-  min-width: 0;
-  padding: 9px;
-  border: 1px solid color-mix(in srgb, var(--bb-hairline) 75%, transparent);
-  border-radius: 8px;
-  background: var(--bb-surface-soft);
+.task-graph-run-params h5 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bb-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.task-graph-node-state dd {
-  margin: 3px 0 0;
-  overflow-wrap: anywhere;
-  color: var(--bb-text-strong);
+.task-graph-run-param-grid {
+  --bb-info-grid-gap: 7px;
+  --bb-info-item-border: 1px solid color-mix(in srgb, var(--bb-hairline) 72%, transparent);
+  --bb-info-label-font-size: 11px;
+  --bb-info-label-font-weight: 600;
+}
+
+.task-graph-run-params-empty {
+  margin: 0;
+  color: var(--bb-text-3);
   font-size: 12px;
-  font-weight: 760;
 }
 
 .task-graph-run-paused {
@@ -1029,36 +985,14 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
   color: var(--bb-accent);
 }
 
-.task-graph-node-state {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .task-graph-run-level {
   padding-bottom: 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--bb-hairline) 72%, transparent);
 }
 
 .task-graph-run-level-state {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
-  margin: 0;
-}
-
-.task-graph-run-level-state > div {
-  min-width: 0;
-  padding: 7px;
-  border: 1px solid color-mix(in srgb, var(--bb-hairline) 72%, transparent);
-  border-radius: 8px;
-  background: var(--bb-surface-soft);
-}
-
-.task-graph-run-level-state dd {
-  margin: 3px 0 0;
-  overflow-wrap: anywhere;
-  color: var(--bb-text-strong);
-  font-size: 12px;
-  font-weight: 760;
+  --bb-info-grid-gap: 7px;
+  --bb-info-item-border: 1px solid color-mix(in srgb, var(--bb-hairline) 72%, transparent);
 }
 
 .task-graph-run-artifacts-error {
@@ -1111,8 +1045,8 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
   padding: 9px;
   border: 1px solid color-mix(in srgb, var(--bb-hairline) 88%, transparent);
   border-radius: 8px;
-  background: var(--bb-text-strong);
-  color: var(--bb-surface);
+  background: var(--bb-md-code-bg);
+  color: var(--bb-md-code-text);
   font-size: 11px;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -1191,24 +1125,6 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
 
 .agent-session-usage {
   color: var(--bb-text-muted) !important;
-}
-
-.bb-cancel-button {
-  border-color: var(--bb-error) !important;
-  background: var(--bb-surface) !important;
-  color: var(--bb-error) !important;
-}
-
-.bb-cancel-button .bb-top-action-svg {
-  color: var(--bb-error) !important;
-}
-
-.bb-cancel-button:hover:not(:disabled) {
-  background: var(--bb-md-error-bg) !important;
-}
-
-.bb-cancel-button:disabled {
-  opacity: 0.6;
 }
 
 @media (max-width: 1180px) {

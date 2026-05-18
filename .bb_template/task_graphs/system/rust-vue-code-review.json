@@ -1,0 +1,267 @@
+{
+  "schema_version": 1,
+  "id": "rust-vue-code-review",
+  "scope": "system",
+  "title": "Rust/Vue 代码审查",
+  "description": "基于结构化 ResourceBundle 的只读 code review 管线：确定性收集 git diff、Rust/Vue 静态检查结果，再由 Pi/MiniMax 按 rust-vue-code-review skill 输出中文审查报告，最终由 system_write_output 写入 runtime 内部目录，避免污染 wiki。",
+  "version": 3,
+  "readonly": false,
+  "metadata": {
+    "tags": [
+      "system",
+      "code-review",
+      "rust",
+      "vue",
+      "pi",
+      "resource-bundle"
+    ],
+    "owner": "blackboard",
+    "created_by": "codex",
+    "updated_by": "codex",
+    "run_policy": {
+      "allow_concurrent_runs": false,
+      "max_concurrent_runs": 1,
+      "queue_enabled": true,
+      "max_queue_wait_ms": 7200000,
+      "queue_timeout_retry_enabled": true,
+      "max_queue_timeout_retries": 5
+    }
+  },
+  "inputs": [
+    {
+      "id": "input",
+      "label": "Review Prompt",
+      "type": "string",
+      "default": "请审查当前工作区相对 HEAD 的 Rust/Vue 代码变更，重点找 bug、回归风险、安全问题和缺失测试。",
+      "description": "本次 code review 的任务描述。"
+    },
+    {
+      "id": "source-root",
+      "label": "Source Root",
+      "type": "string",
+      "default": "{{env.root}}/..",
+      "description": "代码或文档资料根目录；默认指向 Blackboard repo root，Agent cwd 仍由运行时控制。"
+    },
+    {
+      "id": "diff-base",
+      "label": "Diff Base",
+      "type": "string",
+      "default": "HEAD",
+      "description": "git diff 基准，默认审查当前工作区相对 HEAD 的变更。"
+    },
+    {
+      "id": "run-checks",
+      "label": "Run Static Checks",
+      "type": "boolean",
+      "default": true,
+      "description": "是否运行 cargo fmt/clippy 与 npm build。"
+    },
+    {
+      "id": "timeout-seconds",
+      "label": "Check Timeout Seconds",
+      "type": "number",
+      "default": 900,
+      "min": 60,
+      "max": 3600,
+      "description": "单个静态检查命令的超时时间。"
+    },
+    {
+      "id": "max-diff-chars",
+      "label": "Max Diff Chars",
+      "type": "number",
+      "default": 60000,
+      "min": 5000,
+      "max": 200000,
+      "description": "注入 ResourceBundle 的 diff patch 最大字符数。"
+    },
+    {
+      "id": "output-slug",
+      "label": "Output Slug",
+      "type": "string",
+      "default": "code-review",
+      "description": "内部 Markdown 文件名，写入 runtime/nightly/internal/reviews/{output-slug}.md。"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": 40,
+        "y": 180
+      },
+      "config": {}
+    },
+    {
+      "id": "collect-review-context",
+      "type": "shell",
+      "label": "Collect Review ResourceBundle",
+      "description": "确定性收集 git diff、untracked samples、Rust/Vue 静态检查输出，stdout_json 即 ResourceBundle。",
+      "position": {
+        "x": 360,
+        "y": 180
+      },
+      "config": {
+        "command": "python",
+        "args": [
+          "{{env.scripts_dir}}/collect_code_review_resource_bundle.py",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--source-root",
+          "{{inputs.source-root}}",
+          "--review-input",
+          "{{inputs.input}}",
+          "--diff-base",
+          "{{inputs.diff-base}}",
+          "--run-checks",
+          "{{inputs.run-checks}}",
+          "--timeout-seconds",
+          "{{inputs.timeout-seconds}}",
+          "--max-diff-chars",
+          "{{inputs.max-diff-chars}}"
+        ],
+        "permission": "project_write",
+        "expected_exit_codes": [
+          0
+        ],
+        "timeout_ms": 1800000,
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
+        }
+      }
+    },
+    {
+      "id": "review-code",
+      "type": "llm",
+      "label": "Pi Code Reviewer",
+      "description": "Pi LLM 节点：只读 ResourceBundle，按 rust-vue-code-review skill 输出 findings-first Markdown。",
+      "position": {
+        "x": 720,
+        "y": 180
+      },
+      "config": {
+        "runtime": "pi",
+        "agent": "native",
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "skills": [
+          "rust-vue-code-review"
+        ],
+        "inputs": {
+          "resource_bundle": "{{nodes.collect-review-context.output.stdout_json}}"
+        },
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "retry": {
+          "enabled": true,
+          "max_attempts": 3,
+          "backoff_ms": 2000
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 Blackboard Rust/Vue code review 增强 LLM 节点。\n\n你必须使用 rust-vue-code-review skill 的审查契约。\n本节点只做 review，不做修复，不写文件，不调用写文件工具。审查报告由 system_write_output 写入 runtime 内部目录，不写入 wiki。\n\nResourceBundle JSON：\n{{inputs.resource_bundle}}\n\n审查重点：\n1. findings first，优先找 bug、回归风险、安全问题、并发/路径/IO 问题、缺失测试。\n2. Rust 参考 Clippy 输出、Rust API Guidelines、错误处理、并发与路径安全。\n3. Vue 参考 Vue Style Guide、eslint-plugin-vue/TypeScript build 输出、响应式和 UI 状态正确性。\n4. 如果静态检查失败，把失败作为高优先级证据纳入报告，但不要把工具日志原样大段复制。\n5. 输出中文 Markdown，严格按 skill 的 Output Format。"
+        },
+        "tool_policy": {
+          "allowed_tools": [
+            "read",
+            "grep",
+            "find",
+            "ls"
+          ]
+        },
+        "resource_bundle": {
+          "input": "resource_bundle",
+          "required": true
+        },
+        "output_contract": {
+          "artifact_type": "markdown",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "system-write-output",
+      "type": "system_write_output",
+      "label": "System Write Review Report",
+      "description": "把 review Markdown 写入 runtime 内部目录，供下游 scout-fix 和最终汇总读取。",
+      "position": {
+        "x": 1080,
+        "y": 180
+      },
+      "config": {
+        "inputs": {
+          "content": "{{data.review-code.output}}"
+        },
+        "output_path": "{{env.workspace}}/runtime/nightly/internal/reviews/{{inputs.output-slug}}.md",
+        "content": "{{inputs.content}}",
+        "artifact_type": "markdown",
+        "create_parent_dirs": true,
+        "overwrite": true
+      }
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 1400,
+        "y": 180
+      },
+      "config": {
+        "result": "succeeded"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-start-collect",
+      "from": "start",
+      "to": "collect-review-context",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-collect-review",
+      "from": "collect-review-context",
+      "to": "review-code",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-review-write",
+      "from": "review-code",
+      "to": "system-write-output",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-review-write-data",
+      "from": "review-code",
+      "to": "system-write-output",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "content"
+    },
+    {
+      "id": "e-write-end",
+      "from": "system-write-output",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "scale": 1
+    }
+  }
+}

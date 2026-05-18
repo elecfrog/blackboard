@@ -983,6 +983,6 @@ defineExpose({
 .graph-data-pin-glyph {
   stroke: var(--bb-surface);
   stroke-width: 1.8;
-  filter: drop-shadow(0 2px 5px rgba(15, 23, 42, 0.16));
+  filter: drop-shadow(0 2px 5px var(--bb-graph-pin-shadow));
 }
 </style>

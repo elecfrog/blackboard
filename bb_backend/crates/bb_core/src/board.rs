@@ -1,4 +1,4 @@
-//! Blackboard (ProjectBoard) — 单项目数据句柄。
+//! Blackboard (`ProjectBoard`) — 单项目数据句柄。
 //!
 //! 每个 `Blackboard` 实例代表一个项目的 inbox/ticket CRUD 入口。
 
@@ -98,14 +98,17 @@ impl Blackboard {
         Err(InboxError::RootNotFound(start))
     }
 
+    #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
     }
 
+    #[must_use]
     pub fn inbox(&self) -> &Path {
         &self.inbox
     }

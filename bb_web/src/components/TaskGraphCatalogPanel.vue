@@ -5,10 +5,11 @@ import { Plus } from 'lucide-vue-next'
 import TaskGraphEditorPanel from '@/components/TaskGraphEditorPanel.vue'
 import TaskGraphRunPanel from '@/components/TaskGraphRunPanel.vue'
 import TaskGraphCatalogCreate from '@/components/task-graph/TaskGraphCatalogCreate.vue'
+import TaskGraphCatalogGroupDialog from '@/components/task-graph/TaskGraphCatalogGroupDialog.vue'
 import TaskGraphCatalogAlert from '@/components/task-graph/TaskGraphCatalogAlert.vue'
 import TaskGraphCatalogSidebar from '@/components/task-graph/TaskGraphCatalogSidebar.vue'
 import TaskGraphPreviewPanel from '@/components/task-graph/TaskGraphPreviewPanel.vue'
-import BbDropdown, { type BbDropdownOption } from '@/components/BbDropdown.vue'
+import { BbActionGroup, BbButton, BbToolbar } from '@/components/common'
 import {
   createTaskGraphSchedule,
   createProjectTaskGraph,
@@ -20,8 +21,12 @@ import {
   patchTaskGraphSchedule,
   readTaskGraph,
   runTaskGraphScheduleNow,
+  saveTaskGraphCatalog,
   startTaskGraphRun,
   taskGraphDefaultInput,
+  type TaskGraphCatalogEntryPatch,
+  type TaskGraphCatalogGroup,
+  type TaskGraphCatalogGroupKind,
   type TaskGraphCatalogItem,
   type TaskGraphDefinition,
   type TaskGraphRef,
@@ -40,11 +45,10 @@ const props = defineProps<{
   mode?: string
 }>()
 
-type TaskGraphFilter = 'all' | TaskGraphScope
-
 const route = useRoute()
 const router = useRouter()
 const graphs = ref<TaskGraphCatalogItem[]>([])
+const graphGroups = ref<TaskGraphCatalogGroup[]>([])
 const selectedGraph = ref<TaskGraphDefinition | null>(null)
 const selectedRef = ref<TaskGraphRef | null>(null)
 const loading = ref(true)
@@ -52,16 +56,18 @@ const graphLoading = ref(false)
 const error = ref('')
 const actionAlert = ref<{ tone: 'error' | 'warning'; message: string } | null>(null)
 const actionBusy = ref('')
-const catalogSource = ref<'rest' | 'mock'>('mock')
-const filter = ref<TaskGraphFilter>('all')
+const catalogSource = ref<'rest'>('rest')
 const createTitle = ref('')
 const createDialogOpen = ref(false)
 const createError = ref('')
 const createDialogRef = ref<InstanceType<typeof TaskGraphCatalogCreate> | null>(null)
+const groupDialog = ref<GroupDialogState | null>(null)
+const groupDialogError = ref('')
+const groupDialogRef = ref<InstanceType<typeof TaskGraphCatalogGroupDialog> | null>(null)
 const activeRunId = ref('')
 const runInputValues = ref<Record<string, unknown>>({})
 const runHistory = ref<TaskGraphRunSummary[]>([])
-const runHistorySource = ref<'rest' | 'mock'>('mock')
+const runHistorySource = ref<'rest'>('rest')
 const runHistoryLoading = ref(false)
 const schedules = ref<TaskGraphSchedule[]>([])
 const schedulesLoading = ref(false)
@@ -86,28 +92,10 @@ const selectedGraphSchedules = computed(() =>
     : [],
 )
 
-const catalogStats = computed(() => ({
-  system: graphs.value.filter((graph) => graph.scope === 'system').length,
-  project: graphs.value.filter((graph) => graph.scope === 'project').length,
-}))
-
-const filterOptions = computed<BbDropdownOption[]>(() => [
-  {
-    value: 'all',
-    label: t('taskGraphAll'),
-    badge: String(graphs.value.length),
-  },
-  {
-    value: 'system',
-    label: t('taskGraphSystem'),
-    badge: String(catalogStats.value.system),
-  },
-  {
-    value: 'project',
-    label: t('taskGraphProject'),
-    badge: String(catalogStats.value.project),
-  },
-])
+type GroupDialogState =
+  | { mode: 'create'; kind: TaskGraphCatalogGroupKind; initialTitle: string }
+  | { mode: 'rename'; groupId: string; initialTitle: string }
+  | { mode: 'delete'; groupId: string; initialTitle: string; fallbackId: string; fallbackTitle: string }
 
 function showActionError(err: unknown) {
   actionAlert.value = { tone: 'error', message: err instanceof Error ? err.message : String(err) }
@@ -115,12 +103,6 @@ function showActionError(err: unknown) {
 
 function clearActionAlert() {
   actionAlert.value = null
-}
-
-function setFilter(value: string) {
-  if (value === 'all' || validScope(value)) {
-    filter.value = value
-  }
 }
 
 function validScope(value: string | undefined): value is TaskGraphScope {
@@ -140,6 +122,7 @@ async function reloadCatalog(options: { refreshSelectedGraph?: boolean } = {}) {
   try {
     const result = await loadTaskGraphCatalog(props.project)
     graphs.value = result.graphs
+    graphGroups.value = result.groups
     catalogSource.value = result.source
     await reloadRunHistory()
     await reloadSchedules()
@@ -155,6 +138,161 @@ async function reloadCatalog(options: { refreshSelectedGraph?: boolean } = {}) {
   } finally {
     if (showLoading) loading.value = false
   }
+}
+
+function catalogEntriesFromGraphs(nextGraphs = graphs.value): TaskGraphCatalogEntryPatch[] {
+  return nextGraphs.map((graph, index) => ({
+    scope: graph.scope,
+    id: graph.id,
+    group_id: graph.group_id ?? null,
+    favorite: Boolean(graph.favorite),
+    sort_order: graph.sort_order ?? index,
+  }))
+}
+
+async function saveCatalog(
+  groups: TaskGraphCatalogGroup[],
+  entries: TaskGraphCatalogEntryPatch[],
+  options: { showAlert?: boolean } = {},
+): Promise<{ ok: boolean; error?: string }> {
+  if (actionBusy.value) return { ok: false, error: t('taskGraphCatalogBusy') }
+  actionBusy.value = 'catalog'
+  clearActionAlert()
+  try {
+    const result = await saveTaskGraphCatalog(props.project, { groups, entries })
+    graphs.value = result.graphs
+    graphGroups.value = result.groups
+    catalogSource.value = result.source
+    return { ok: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (options.showAlert ?? true) showActionError(err)
+    return { ok: false, error: message }
+  } finally {
+    actionBusy.value = ''
+  }
+}
+
+function uniqueGroupId(title: string) {
+  const base = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'graph-group'
+  const existing = new Set(graphGroups.value.map((group) => group.id))
+  let id = base
+  let suffix = 2
+  while (existing.has(id)) {
+    id = `${base}-${suffix}`
+    suffix += 1
+  }
+  return id
+}
+
+function openGroupDialog(nextDialog: GroupDialogState) {
+  groupDialog.value = nextDialog
+  groupDialogError.value = ''
+  if (nextDialog.mode !== 'delete') {
+    void nextTick(() => groupDialogRef.value?.focusInput())
+  }
+}
+
+function closeGroupDialog() {
+  if (actionBusy.value === 'catalog') return
+  groupDialog.value = null
+  groupDialogError.value = ''
+}
+
+function createGraphGroup(kind: TaskGraphCatalogGroupKind) {
+  openGroupDialog({ mode: 'create', kind, initialTitle: '' })
+}
+
+function renameGraphGroup(groupId: string, title: string) {
+  openGroupDialog({ mode: 'rename', groupId, initialTitle: title })
+}
+
+function deleteGraphGroup(groupId: string) {
+  const group = graphGroups.value.find((item) => item.id === groupId)
+  if (!group) return
+  const fallback = graphGroups.value.find((item) =>
+    item.kind === group.kind && item.id !== groupId && item.title === t('taskGraphUngrouped'),
+  ) ?? graphGroups.value.find((item) => item.kind === group.kind && item.id !== groupId)
+  if (!fallback) {
+    showActionError(new Error(t('taskGraphCatalogNeedOneGroup')))
+    return
+  }
+  openGroupDialog({
+    mode: 'delete',
+    groupId,
+    initialTitle: group.title,
+    fallbackId: fallback.id,
+    fallbackTitle: fallback.title,
+  })
+}
+
+async function submitGroupDialog(title?: string) {
+  const dialog = groupDialog.value
+  if (!dialog) return
+  groupDialogError.value = ''
+
+  if (dialog.mode === 'create') {
+    const nextTitle = title?.trim()
+    if (!nextTitle) {
+      groupDialogError.value = t('taskGraphGroupNameRequired')
+      return
+    }
+    const groups = [
+      ...graphGroups.value,
+      {
+        id: uniqueGroupId(nextTitle),
+        title: nextTitle,
+        kind: dialog.kind,
+        sort_order: graphGroups.value.filter((group) => group.kind === dialog.kind).length,
+      },
+    ]
+    const result = await saveCatalog(groups, catalogEntriesFromGraphs(), { showAlert: false })
+    if (result.ok) closeGroupDialog()
+    else groupDialogError.value = result.error ?? t('taskGraphGroupSaveFailed')
+    return
+  }
+
+  if (dialog.mode === 'rename') {
+    const nextTitle = title?.trim()
+    if (!nextTitle) {
+      groupDialogError.value = t('taskGraphGroupNameRequired')
+      return
+    }
+    const result = await saveCatalog(
+      graphGroups.value.map((group) => group.id === dialog.groupId ? { ...group, title: nextTitle } : group),
+      catalogEntriesFromGraphs(),
+      { showAlert: false },
+    )
+    if (result.ok) closeGroupDialog()
+    else groupDialogError.value = result.error ?? t('taskGraphGroupSaveFailed')
+    return
+  }
+
+  const groups = graphGroups.value.filter((item) => item.id !== dialog.groupId)
+  const entries = catalogEntriesFromGraphs().map((entry) =>
+    entry.group_id === dialog.groupId ? { ...entry, group_id: dialog.fallbackId } : entry,
+  )
+  const result = await saveCatalog(groups, entries, { showAlert: false })
+  if (result.ok) closeGroupDialog()
+  else groupDialogError.value = result.error ?? t('taskGraphGroupDeleteFailed')
+}
+
+async function moveGraphToGroup(graph: TaskGraphCatalogItem, groupId: string) {
+  const nextGraphs = graphs.value.map((item) =>
+    item.scope === graph.scope && item.id === graph.id ? { ...item, group_id: groupId } : item,
+  )
+  await saveCatalog(graphGroups.value, catalogEntriesFromGraphs(nextGraphs))
+}
+
+async function toggleGraphFavorite(graph: TaskGraphCatalogItem) {
+  const nextGraphs = graphs.value.map((item) =>
+    item.scope === graph.scope && item.id === graph.id ? { ...item, favorite: !item.favorite } : item,
+  )
+  await saveCatalog(graphGroups.value, catalogEntriesFromGraphs(nextGraphs))
 }
 
 async function reloadRunHistory() {
@@ -445,10 +583,6 @@ watch(
   () => applyRouteRunSelection(),
 )
 
-watch(filter, () => {
-  if (!selectedCatalogItem.value) void selectFromRouteOrDefault()
-})
-
 onMounted(reloadCatalog)
 </script>
 
@@ -459,12 +593,18 @@ onMounted(reloadCatalog)
         <h2>{{ t('taskGraphs') }}</h2>
         <p>{{ t('taskGraphSubtitle') }}</p>
       </div>
-      <div class="bb-workspace-head-actions">
-        <button type="button" class="bb-top-action-button" :disabled="!!actionBusy" @click="openCreateDialog">
-          <Plus class="bb-top-action-svg" aria-hidden="true" />
-          <span>{{ t('taskGraphCreate') }}</span>
-        </button>
-      </div>
+      <BbToolbar class="bb-workspace-head-actions" variant="inline">
+        <template #actions>
+          <BbActionGroup>
+            <BbButton variant="primary" :disabled="!!actionBusy" @click="openCreateDialog">
+              <template #leading>
+                <Plus />
+              </template>
+              <span>{{ t('taskGraphCreate') }}</span>
+            </BbButton>
+          </BbActionGroup>
+        </template>
+      </BbToolbar>
     </header>
 
 <TaskGraphCatalogCreate
@@ -483,21 +623,37 @@ onMounted(reloadCatalog)
       :message="actionAlert.message"
       @close="clearActionAlert"
     />
+
+    <TaskGraphCatalogGroupDialog
+      v-if="groupDialog"
+      ref="groupDialogRef"
+      :mode="groupDialog.mode"
+      :kind="groupDialog.mode === 'create' ? groupDialog.kind : undefined"
+      :initial-title="groupDialog.initialTitle"
+      :fallback-title="groupDialog.mode === 'delete' ? groupDialog.fallbackTitle : undefined"
+      :busy="actionBusy === 'catalog'"
+      :error="groupDialogError"
+      @close="closeGroupDialog"
+      @submit="submitGroupDialog"
+    />
     <div v-if="loading" class="bb-state-panel">{{ t('loading') }}</div>
     <div v-else-if="error" class="bb-state-panel bb-error">{{ error }}</div>
 
     <div v-else :class="['task-graph-layout', { 'route-detail': isRouteDetail }]">
 <TaskGraphCatalogSidebar
         :graphs="graphs"
-        :filter="filter"
+        :groups="graphGroups"
         :selected-ref="selectedRef"
-        :filter-options="filterOptions"
         :action-busy="actionBusy"
         :project="project"
-        @update:filter="setFilter"
         @open="openGraph"
         @run="runGraph"
         @customize="customizeGraph"
+        @create-group="createGraphGroup"
+        @rename-group="renameGraphGroup"
+        @delete-group="deleteGraphGroup"
+        @move-graph="moveGraphToGroup"
+        @toggle-favorite="toggleGraphFavorite"
       />
 
       <TaskGraphEditorPanel
@@ -923,7 +1079,7 @@ onMounted(reloadCatalog)
   border-radius: 8px;
   background: color-mix(in srgb, var(--bb-error) 6%, var(--bb-surface-soft));
   color: var(--bb-text-strong);
-  font-family: var(--bb-font-mono, monospace);
+  font-family: var(--bb-font-mono);
   font-size: 12px;
   line-height: 1.5;
   text-align: left;

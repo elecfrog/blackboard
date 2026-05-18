@@ -30,6 +30,7 @@ import type {
   BoardSummary,
   LaneDef,
   TicketAttachment,
+  TicketSpec,
   TicketStatus,
   TicketWriteResult,
 } from '@/data/tickets'
@@ -56,12 +57,14 @@ import {
   hiddenStatusesFromVisible,
   visibleStatusesFromHidden,
 } from './boardViewUtils'
+import { BbToolbar } from '@/components/common'
 
 const AgentConnectorPanel = defineAsyncComponent(() => import('@/components/AgentConnectorPanel.vue'))
 const AgentWorkbench = defineAsyncComponent(() => import('@/components/AgentWorkbench.vue'))
 const IdeaCanvasPanel = defineAsyncComponent(() => import('@/components/IdeaCanvasPanel.vue'))
 const InboxPanel = defineAsyncComponent(() => import('@/components/InboxPanel.vue'))
 const LaneManager = defineAsyncComponent(() => import('@/components/LaneManager.vue'))
+const RuntimeConnectorPanel = defineAsyncComponent(() => import('@/components/RuntimeConnectorPanel.vue'))
 const TicketDependencyGraph = defineAsyncComponent(() => import('@/components/TicketDependencyGraph.vue'))
 const TicketDetailPanel = defineAsyncComponent(() => import('@/components/TicketDetailPanel.vue'))
 const TaskGraphCatalogPanel = defineAsyncComponent(() => import('@/components/TaskGraphCatalogPanel.vue'))
@@ -106,6 +109,7 @@ const assigneeSavingId = ref<string | null>(null)
 const statusSavingId = ref<string | null>(null)
 const dependencySavingId = ref<string | null>(null)
 const attachmentsSavingId = ref<string | null>(null)
+const specSavingId = ref<string | null>(null)
 const deprecatingTicketId = ref<string | null>(null)
 const boardViewSaving = ref(false)
 const mutationError = ref('')
@@ -630,6 +634,7 @@ function mergeTicketWriteResult(result: TicketWriteResult) {
             extra: result.ticket.extra ?? item.extra,
             dependencies: dependenciesFromExtra(result.ticket.extra ?? item.extra, item.id),
             attachments: result.ticket.attachments,
+            spec: result.ticket.spec ?? item.spec,
           }
         : item,
     ),
@@ -763,6 +768,38 @@ async function updateTicketAttachments(ticket: BlackboardTicket, attachments: Ti
   }
 }
 
+async function updateTicketSpec(ticket: BlackboardTicket, spec: TicketSpec | undefined) {
+  if (!payload.value || specSavingId.value || !spec) return
+  const previousPayload = payload.value
+  specSavingId.value = ticket.id
+  mutationError.value = ''
+  payload.value = {
+    ...payload.value,
+    tickets: payload.value.tickets.map((item) =>
+      item.id === ticket.id
+        ? {
+            ...item,
+            spec,
+            updated_at: new Date().toISOString().slice(0, 10),
+          }
+        : item,
+    ),
+  }
+
+  try {
+    const result = await patchTicket(props.project, ticket.id, { spec })
+    mergeTicketWriteResult(result)
+  } catch (err) {
+    payload.value = previousPayload
+    mutationError.value =
+      err instanceof Error
+        ? `${err.message}。${t('boardViewTicketMoveFailed')}`
+        : t('boardViewTicketMoveFailed')
+  } finally {
+    specSavingId.value = null
+  }
+}
+
 function agentLabel(id?: string) {
   if (!id) return t('unassigned')
   return id
@@ -887,13 +924,15 @@ async function deprecateSelectedTicket(ticket: BlackboardTicket) {
       </aside>
 
       <section class="bb-dashboard-main">
-        <header class="bb-workspace-topbar">
-          <label class="bb-top-search">
-            <span class="sr-only">{{ t('searchLabel') }}</span>
-            <Search class="bb-top-search-icon" aria-hidden="true" />
-            <input v-model="query" :placeholder="t('searchPlaceholder')" />
-          </label>
-          <div class="bb-top-actions">
+        <BbToolbar as="header" class="bb-workspace-topbar" variant="bar" density="compact" sticky>
+          <template #search>
+            <label class="bb-top-search">
+              <span class="sr-only">{{ t('searchLabel') }}</span>
+              <Search class="bb-top-search-icon" aria-hidden="true" />
+              <input v-model="query" :placeholder="t('searchPlaceholder')" />
+            </label>
+          </template>
+          <template #actions>
             <button
               class="bb-top-action-button bb-top-action-button--compact bb-top-action-button--locale"
               type="button"
@@ -918,8 +957,8 @@ async function deprecateSelectedTicket(ticket: BlackboardTicket) {
               <RefreshCw class="bb-top-action-svg" aria-hidden="true" />
               <span>{{ t('refresh') }}</span>
             </button>
-          </div>
-        </header>
+          </template>
+        </BbToolbar>
 
         <main class="bb-dashboard-content">
         <div v-if="loading" class="bb-state-panel">{{ t('loadingDashboard', { project }) }}</div>
@@ -1133,6 +1172,7 @@ async function deprecateSelectedTicket(ticket: BlackboardTicket) {
                 <p>{{ t('settingsSubtitle') }}</p>
               </div>
             </header>
+            <RuntimeConnectorPanel />
             <AgentConnectorPanel :project="project" />
           </section>
         </template>
@@ -1150,11 +1190,13 @@ async function deprecateSelectedTicket(ticket: BlackboardTicket) {
       :assignee-saving="assigneeSavingId === selectedTicket.id"
       :status-saving="statusSavingId === selectedTicket.id"
       :attachments-saving="attachmentsSavingId === selectedTicket.id"
+      :spec-saving="specSavingId === selectedTicket.id"
       :deprecating="deprecatingTicketId === selectedTicket.id"
       @close="closeTicket"
       @assignee-change="updateTicketAssignee(selectedTicket, $event)"
       @status-change="updateTicketStatus(selectedTicket, $event)"
       @attachments-change="updateTicketAttachments(selectedTicket, $event)"
+      @spec-change="updateTicketSpec(selectedTicket, $event)"
       @deprecate="deprecateSelectedTicket(selectedTicket)"
     />
 

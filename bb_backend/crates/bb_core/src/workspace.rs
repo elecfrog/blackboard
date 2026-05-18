@@ -17,7 +17,11 @@ use crate::fs_util::{
     write_json_pretty,
 };
 use crate::platform::{current_os_name, current_os_version, machine_host_name, user_home_dir};
-use crate::types::*;
+use crate::types::{
+    InboxIndex, LaneDef, MachineInfo, MachineRegistryEntry, ProjectBoardViewSettings,
+    ProjectDirectoryCreate, ProjectDirectoryOpen, ProjectEntry, ProjectLocation, ProjectMeta,
+    ProjectRegistryEntry, ProjectsRegistry, TicketList,
+};
 use crate::{
     agents_registry, normalize_project_name_or_uuid, project, validate_project_name, Blackboard,
 };
@@ -57,7 +61,7 @@ impl Workspace {
             source,
         })?;
 
-        for dirname in ["agents", "projects", "schemas", "task_graphs", "templates"] {
+        for dirname in ["agents", "config", "projects", "schemas", "task_graphs"] {
             let source = seed_root.join(dirname);
             if source.is_dir() {
                 copy_dir_missing(&source, &target_root.join(dirname))?;
@@ -152,14 +156,17 @@ impl Workspace {
         Err(InboxError::RootNotFound(start))
     }
 
+    #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
     }
 
+    #[must_use]
     pub fn projects_root(&self) -> &Path {
         &self.projects_root
     }
 
+    #[must_use]
     pub fn runtime_root(&self) -> PathBuf {
         if self.root.file_name().and_then(|name| name.to_str()) == Some(WORKSPACE_TEMPLATE_DIR) {
             if let Some(parent) = self.root.parent() {
@@ -181,7 +188,10 @@ impl Workspace {
             else {
                 continue;
             };
-            let mut meta = project::read_project_meta(&data_root.join("__project__.json"))?;
+            let Ok(mut meta) = project::read_project_meta(&data_root.join("__project__.json"))
+            else {
+                continue;
+            };
             meta.data_root = Some(path_to_string(&data_root));
             projects.push(ProjectEntry {
                 name,
@@ -252,7 +262,7 @@ impl Workspace {
             }
             Err(source) => {
                 return Err(InboxError::Io {
-                    path: data_root.clone(),
+                    path: data_root,
                     source,
                 });
             }
@@ -684,7 +694,7 @@ impl Workspace {
         let absolute = location.absolute_path.trim();
         if !absolute.is_empty() {
             let candidate = self.expand_user_path(absolute);
-            if candidate.exists() {
+            if is_project_data_root(&candidate) {
                 return canonicalize_existing_dir(&candidate)
                     .map(Some)
                     .map_err(|source| InboxError::InvalidProjectMeta {
@@ -699,7 +709,7 @@ impl Workspace {
         let relative = location.relative_path.trim();
         if !relative.is_empty() {
             let candidate = self.projects_root.join(relative);
-            if !candidate.exists() {
+            if !is_project_data_root(&candidate) {
                 return Ok(None);
             }
             return canonicalize_existing_dir(&candidate)
@@ -838,8 +848,7 @@ impl Workspace {
             .or_insert_with(|| ProjectRegistryEntry {
                 uuid: requested_uuid
                     .filter(|value| !value.trim().is_empty())
-                    .map(str::to_string)
-                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                    .map_or_else(|| uuid::Uuid::new_v4().to_string(), str::to_string),
                 locations: BTreeMap::new(),
             });
         entry.locations.insert(
@@ -1017,4 +1026,135 @@ fn scripts_seed_source(seed_root: &Path) -> Option<PathBuf> {
     }
 
     None
+}
+
+fn is_project_data_root(path: &Path) -> bool {
+    path.join("__project__.json").is_file()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn list_projects_skips_stale_existing_registry_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".bb");
+        let projects_root = root.join("projects");
+        let stale_root = temp.path().join("stale-project");
+        fs::create_dir_all(&projects_root).unwrap();
+        fs::create_dir_all(&stale_root).unwrap();
+        write_json_pretty(
+            &projects_root.join("__projects__.json"),
+            &json!({
+                "projects": {
+                    "stale": {
+                        "uuid": "00000000-0000-0000-0000-000000000001",
+                        "locations": {
+                            "CURRENT": {
+                                "absolute_path": path_to_string(&stale_root),
+                                "relative_path": ""
+                            }
+                        }
+                    }
+                },
+                "machines": {}
+            }),
+        )
+        .unwrap();
+
+        let workspace = Workspace::open(&root).unwrap();
+        assert!(workspace.list_projects().unwrap().is_empty());
+    }
+
+    #[test]
+    fn list_projects_falls_back_when_current_machine_path_is_stale() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".bb");
+        let projects_root = root.join("projects");
+        let stale_root = temp.path().join("stale-project");
+        let valid_root = projects_root.join("demo");
+        fs::create_dir_all(&stale_root).unwrap();
+        fs::create_dir_all(&valid_root).unwrap();
+        write_json_pretty(
+            &valid_root.join("__project__.json"),
+            &ProjectMeta {
+                name: "Demo".to_string(),
+                kind: "tool".to_string(),
+                repos: Vec::new(),
+                description: None,
+                data_root: None,
+                local_host: None,
+                lanes: Vec::new(),
+                board_view: ProjectBoardViewSettings::default(),
+            },
+        )
+        .unwrap();
+        write_json_pretty(
+            &projects_root.join("__projects__.json"),
+            &json!({
+                "projects": {
+                    "demo": {
+                        "uuid": "00000000-0000-0000-0000-000000000002",
+                        "locations": {
+                            "CURRENT": {
+                                "absolute_path": "",
+                                "relative_path": "./demo"
+                            },
+                            "STALE-HOST": {
+                                "absolute_path": path_to_string(&stale_root),
+                                "relative_path": ""
+                            }
+                        }
+                    }
+                },
+                "machines": {
+                    "CURRENT": "STALE-HOST"
+                }
+            }),
+        )
+        .unwrap();
+
+        let workspace = Workspace::open(&root).unwrap();
+        let projects = workspace.list_projects().unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].name, "demo");
+        assert_eq!(projects[0].meta.name, "Demo");
+        assert_eq!(
+            projects[0].meta.data_root.as_deref(),
+            Some(path_to_string(&valid_root).as_str())
+        );
+    }
+
+    #[test]
+    fn list_projects_skips_invalid_project_meta_without_failing_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".bb");
+        let projects_root = root.join("projects");
+        let broken_root = projects_root.join("broken");
+        fs::create_dir_all(&broken_root).unwrap();
+        fs::write(broken_root.join("__project__.json"), "{not valid json").unwrap();
+        write_json_pretty(
+            &projects_root.join("__projects__.json"),
+            &json!({
+                "projects": {
+                    "broken": {
+                        "uuid": "00000000-0000-0000-0000-000000000003",
+                        "locations": {
+                            "CURRENT": {
+                                "absolute_path": "",
+                                "relative_path": "./broken"
+                            }
+                        }
+                    }
+                },
+                "machines": {}
+            }),
+        )
+        .unwrap();
+
+        let workspace = Workspace::open(&root).unwrap();
+        assert!(workspace.list_projects().unwrap().is_empty());
+    }
 }

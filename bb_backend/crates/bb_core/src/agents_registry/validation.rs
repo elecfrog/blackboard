@@ -97,7 +97,7 @@ fn validate_instructions_mutual_exclusion(agent: &AgentProfile) -> Result<(), In
 
 // ── Instructions path safety ──
 
-/// Validate that `instructions_path` does not escape bb_root via path traversal.
+/// Validate that `instructions_path` does not escape `bb_root` via path traversal.
 /// Actual file existence is checked at load time, not during schema validation,
 /// so this only rejects obviously unsafe paths.
 pub(super) fn validate_instructions_path_safety(
@@ -129,7 +129,7 @@ pub(super) fn validate_instructions_path_safety(
 // ── max_concurrent_tasks ──
 
 fn validate_max_concurrent_tasks(agent: &AgentProfile) -> Result<(), InboxError> {
-    if let Some(0) = agent.max_concurrent_tasks {
+    if agent.max_concurrent_tasks == Some(0) {
         return Err(InboxError::InvalidInput(format!(
             "agent `{}`: max_concurrent_tasks must be > 0",
             agent.id

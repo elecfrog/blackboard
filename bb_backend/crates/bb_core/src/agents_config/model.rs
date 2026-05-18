@@ -8,7 +8,7 @@ use super::AgentMcpConfigFormat;
 pub enum AgentConnectorType {
     /// Plain copy of the source file (AGENTS.md style).
     AgentsMd,
-    /// Wrap the source content in a CodeBuddy Rules YAML frontmatter header.
+    /// Wrap the source content in a `CodeBuddy` Rules YAML frontmatter header.
     Rules,
     /// Upsert an MCP server entry into the Agent's per-user MCP config file.
     /// Unlike `AgentsMd` / `Rules`, this does NOT overwrite the whole target
@@ -134,6 +134,17 @@ pub const AGENT_CONNECTORS: &[AgentConnectorSpec] = &[
             remote_url: BB_MCP_TARGET.remote_url,
         }),
     },
+    AgentConnectorSpec {
+        id: "pi",
+        display_name: "Pi",
+        targets: &[AgentConnectorTargetSpec {
+            label: "AGENTS.md",
+            source_template: None,
+            target_template: "~/.pi/agent/AGENTS.md",
+            connector_type: AgentConnectorType::AgentsMd,
+        }],
+        mcp_target: None,
+    },
 ];
 
 /// Per-connector state machine. Mirrors the spec in ticket `000002` §4.
@@ -227,6 +238,7 @@ pub struct AgentConnectorTarget {
 /// user-visible side-effect of the sync. Serialised with an internally
 /// tagged `type` discriminator so new variants can be added without
 /// breaking existing consumers.
+#[allow(clippy::too_long_first_doc_paragraph)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentConnectorSyncEvent {

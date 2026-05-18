@@ -1,0 +1,422 @@
+{
+  "schema_version": 1,
+  "id": "000080",
+  "lane": "bbt",
+  "title": "TaskGraph 结构化 Tool Lifecycle 事件",
+  "summary": "为 TaskGraph 引入结构化 Tool Lifecycle 事件契约。所有系统工具、AgentNode/LLM runtime 中可观测的工具调用、shell/script/system_write_output/schema_validate 等节点执行的关键外部动作，都应以 `tool_start`、`tool_update`、`tool_end` 事件进入统一 run event log。事件必须带 run/node/node_run/tool_call 关联信息、attempt、序号、时间、状态、输入摘要、输出摘要、错误和 artifact 引用，使 UI 能按节点和工具调用渲染实时进度、定位失败原因，并支持后续审计。MVP 聚焦事件 schema、后端持久化/广播、基础 UI 时间线消费和少数核心 runtime 的 start/end 包装；不要求改变 ResourceBundle 输入契约，不要求 LLM 自己保证事件结构，也不把工具执行权交给 prompt。",
+  "stories": [
+    {
+      "id": "a62c2309-e160-481f-a024-071f711f73c3",
+      "given": "TaskGraph run 中某个节点准备调用一个系统工具、agent tool、shell command、schema 校验器或文件写入器。",
+      "when": "该工具调用真正开始前。",
+      "then": "运行时写入一条 `tool_start` 事件，包含 `run_id`、`node_id`、`node_run_id`、`tool_call_id`、`tool_name`、`tool_kind`、`attempt`、`sequence`、`started_at`、输入摘要、资源引用和可安全展示的参数预览。"
+    },
+    {
+      "id": "774e8bee-f95a-44da-ba4d-37ffb9d059fa",
+      "given": "某个工具调用正在运行，并能产生阶段性进度、stdout/stderr、模型工具流、文件进度或检查点。",
+      "when": "运行时收到中间状态。",
+      "then": "系统写入一条或多条 `tool_update` 事件；这些事件必须复用同一个 `tool_call_id`，按 `sequence` 单调递增，并只保存可展示、可审计且不泄露密钥的结构化片段。"
+    },
+    {
+      "id": "88408512-dcd9-4cd0-a316-789fa86e509b",
+      "given": "某个工具调用完成、失败、超时、被取消或被 retry 取代。",
+      "when": "运行时结束该工具 attempt。",
+      "then": "系统写入一条 `tool_end` 事件，包含最终 `status`、`ended_at`、`duration_ms`、输出摘要、artifact 引用、exit code 或 provider error；失败时必须给出可定位的错误分类和原始错误摘要。"
+    },
+    {
+      "id": "6c71d7e0-8eef-458f-b27e-be6b375f93d7",
+      "given": "一个节点包含多次工具调用或多次 retry attempt。",
+      "when": "UI 或调试器读取 run event log。",
+      "then": "事件能按 `node_run_id -> tool_call_id -> attempt` 稳定分组；同一工具的 retry 不覆盖前一次 attempt，方便用户看到失败后重试的完整链路。"
+    },
+    {
+      "id": "e8ef7bd2-53e2-469b-90f1-6af715a67a59",
+      "given": "现有节点 runtime 尚未原生支持 tool lifecycle。",
+      "when": "该节点仍被 TaskGraph 执行。",
+      "then": "后端可以先在节点执行器外层合成最小 `tool_start`/`tool_end` 包装事件，保持旧 graph 和旧节点向后兼容；只有支持流式进度的 runtime 才额外产生 `tool_update`。"
+    },
+    {
+      "id": "f9bd24d7-0f95-4ba2-9bad-27663d592db4",
+      "given": "前端打开某次 TaskGraph run 的详情页。",
+      "when": "run event log 中存在 tool lifecycle 事件。",
+      "then": "UI 在节点运行状态之外展示工具调用时间线，能看到每个工具的开始、进度、结束、耗时、retry attempt、失败原因和相关 artifact 入口。"
+    },
+    {
+      "id": "8030d201-100b-48e1-84cc-329cd951a2b2",
+      "given": "事件 payload 可能包含 prompt、路径、环境变量、token、命令参数或文件内容。",
+      "when": "运行时准备持久化或广播事件。",
+      "then": "系统必须执行最小化和脱敏策略：默认只保存摘要、schema 化字段和 artifact 引用；敏感字段不可进入事件正文。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "event-noise-and-storage-growth",
+      "description": "工具 update 事件过细会让 run event log 快速膨胀，降低 UI 可读性和存储效率。",
+      "mitigation": "MVP 默认只要求 start/end；update 做节流、采样和最大 payload 限制，长内容落 artifact 后引用。",
+      "status": "open"
+    },
+    {
+      "id": "secret-leakage",
+      "description": "工具参数、环境变量、prompt 或 stdout 中可能包含密钥、路径和敏感内容。",
+      "mitigation": "事件写入层统一做红线字段过滤、长度截断和安全摘要；完整内容需要显式 artifact 策略，不直接进入 event payload。",
+      "status": "open"
+    },
+    {
+      "id": "provider-event-shape-drift",
+      "description": "Pi、OpenCode、Codex、shell 和系统工具的原生事件结构不同，如果直接透传会让 UI 难以稳定消费。",
+      "mitigation": "定义 Blackboard 标准 ToolLifecycleEvent 作为唯一 UI 契约；provider 原始事件只能作为 raw/debug 子字段或 artifact。",
+      "status": "open"
+    },
+    {
+      "id": "ordering-under-concurrency",
+      "description": "并行 scout、子图和 retry attempt 会产生交错事件，若缺少序号和关联键会导致 UI 错位。",
+      "mitigation": "事件必须带 node_run_id、tool_call_id、attempt 和 per-run monotonic sequence；UI 不依赖到达顺序推断层级。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-21",
+      "summary": "codex 完成阶段工作，handoff 写入 `2026-05-21-codex-structured-tool-lifecycle-ticket-created.md`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证：`bb_create_ticket`: passed，返回 maintenance consistency passed。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证：`python scripts/check_ticket_ids.py --project blackboard`: passed。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Next step: 实现时建议先落 `ToolLifecycleEvent` 后端 schema 与统一 event writer，再包 shell/system_write_output/schema_validate/AgentNode runtime start-end，最后接 UI 时间线。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "codex 完成阶段工作，handoff 写入 `2026-05-21-codex-research-iteration-draft-基于-080-生成草案并盯运行.md`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证：`cargo fmt --manifest-path bb_backend/Cargo.toml --all` 通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core repairs_research_scout_outputs_for_metadata_only_and_string_values -- --nocapture` 通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证：`cargo build --manifest-path bb_backend/Cargo.toml -p bb_cli` 被阻塞：`bb_backend/crates/bb_cli/src/http/task_graph/runner_config.rs` 存在 Pi 相关编译错误，未修改该并发 agent 范围。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证：`GET /healthz` 通过，后端重启后新 PID 为 331984。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Record: 验证：最终 parent/internal/external 三个 run 均为 `succeeded`，parent superstep 5，两个 child superstep 11。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Next step: 修复 external child 的 writer/data-output wiring：当前 external child 的 `artifacts/synthesize-output.md` 有真实内容，但 `.bb_template/wiki/research/080-tool-lifecycle-iteration-draft-v4-external-research.md` 被写成 `{}`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Next step: 待 Pi runner_config 编译错误修复后，重建后端并移除 `research-external` 的临时 repair kind workaround，改回 `external_research_scout_outputs`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-code-monitor-check-fix-write-scope-hardening.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-code-monitor-check-fix-write-scope-hardening.md",
+        "# Codex 交接：code-monitor-check-fix 并发写入边界加固\n时间: 2026-05-21T14:07:29Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 收紧 frontend-i18n prompt：明确允许编辑 i18n.ts 与组件/视图中的 i18n 文本改动，禁止 styles.css/theme.ts，遇到非 i18n build 错误只报告不越界修复。\n- 收紧 frontend-dark-mode prompt：明确只允许编辑 bb_web/src/styles.css，禁止 i18n.ts/theme.ts/.vue/.ts/.json，遇到非样式 build 错误只报告不越界修复。\n- 新增 scripts/task_graph_agent_write_scope_audit.py，确定性解析本 run 的 agent session events，审计 edit/write/multi_edit 工具路径是否越过节点声明的 allow/deny 范围。\n- 将 code-monitor-check-fix 升级到 v6，新增 frontend-write-scope-audit shell 节点，接在 frontend-i18n 与 frontend-theme 之后、frontend-compile-verify 之前。\n- 给 shell node runtime 注入 BB_TASK_GRAPH_RUN、BB_WORKSPACE_ROOT、BB_SCRIPTS_DIR 等环境变量；审计脚本也支持 graph-id fallback 以兼容未重启旧后端。\n## 验证了什么\n- python -m py_compile scripts/task_graph_agent_write_scope_audit.py：通过。\n- cargo check -p bb_core：通过。\n- 对上一轮真实成功 run-20260521-134301-274235a0 运行审计脚本：ok=true，frontend-i18n 检查 19 次 edit、frontend-theme 检查 4 次 edit，violation_count=0。\n- GET /api/projects/blackboard/task-graphs/system/code-monitor-check-fix：通过，version=6，nodes=15，edges=16，HasAudit=true，HasHandoff=true。\n- POST dry_run 创建 code-monitor-check-fix v6 run-20260521-140709-f5f823f1：pre-run 校验通过；随后已取消该 dr...",
+        "cleanup reason: note_2 新增 frontend-write-scope-audit shell 节点，审计 edit/write/multi_edit 工具路径是否越界，这是 000080 Tool Lifecycle 事件的核心应用：shell/script 节点执行的关键外部动作必须可观测；run event log 中输出 violation_count=0 正是 tool lifecycle audit 的落地验证。"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-structured-tool-lifecycle-ticket-created.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-structured-tool-lifecycle-ticket-created.md",
+        "# 000080 TaskGraph 结构化 Tool Lifecycle 事件 ticket 已创建\n时间: 2026-05-21T11:41:32Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 创建 JSON BDD ticket `000080-taskgraph-structured-tool-lifecycle-events.json`，定义 `tool_start` / `tool_update` / `tool_end` 事件契约。\n- MVP 范围明确为事件 schema、后端持久化/广播、基础 UI 时间线消费、核心 runtime 的 start/end 包装；不改变 ResourceBundle 输入契约，不要求 LLM 自己保证事件结构。\n- 附件关联 `000060` 执行内核、`000064` Run UI、`000078` LLM Coordinator / ResourceBundle AgentNode。\n## 验证了什么\n- `bb_create_ticket`: passed，返回 maintenance consistency passed。\n- `python scripts/check_ticket_ids.py --project blackboard`: passed。\n## 下一步\n- 实现时建议先落 `ToolLifecycleEvent` 后端 schema 与统一 event writer，再包 shell/system_write_output/schema_validate/AgentNode runtime start-end，最后接 UI 时间线。\n## 相关位置\n- .bb_template/projects/blackboard/tickets/000080-taskgraph-structured-tool-lifecycle-events.json\n- .bb_template/projects/blackboard/__tickets__.json",
+        "cleanup reason: 文件名含 000080，正文首句明确写'000080 TaskGraph 结构化 Tool Lifecycle 事件 ticket 已创建'，内容描述该 ticket 创建及附件关联 000060/000064/000078，完全对应 ticket 000080 的 tool lifecycle events 主题"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-22-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff-1.md`.",
+      "evidence": [
+        "inbox/2026-05-22-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff-1.md",
+        "# 代码监控检查和修复 graph handoff\n时间: 2026-05-22T04:37:16Z\n来源: task-graph-code-monitor-check-fix\n项目: blackboard\n## 做了什么\n- 前端 i18n 检查修复：发现 TaskGraphLlmNodeForm.vue 硬编码文本 'LLM'/'Agent'，已替换为 t() 函数调用并新增对应 i18n keys (taskGraphLlmModeLlm/taskGraphLlmModeAgent)\n- 前端明暗模式 CSS 修复：修复 bb_web/src/styles.css 中 8 处硬编码颜色值（graph 边、node 状态、canvas 按钮等），添加 dark mode CSS variable 覆盖\n- Rust 自动修复：bb_core/src/agent_session/model.rs 中 AgentToolPolicyMode 的 Default impl 由手写替换为 #[derive(Default)] + #[default]，消除 clippy derivable_impls 警告\n## 验证了什么\n- 前端 npm run build: 退出码 0，构建耗时 21.81s，错误 0，警告 0，通过\n- 后端 cargo clippy --all-targets: 退出码 0，警告 0，错误 0，通过（自动修复 1 处 derivable_impls 警告）\n## 下一步\n- 仍有 6 个 .vue 组件文件含硬编码颜色值（TicketDependencyGraph.vue、TaskGraphRunPanel.vue、TaskGraphEditorPanel.vue、AgentConnectorRow.vue、LaneManager.vue、GraphCanvas.vue），建议后续迭代逐步迁移至 CSS 变量或主题系统\n## 相关位置\n- .bb_template/task_graphs/system/code-monitor-check-fix.json\n- scripts/task_graph_code_monitor_verify.py\n- bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue\n- bb_web/src/styles.css\n- bb_backend/crates/bb_core/src/agent_session/model.rs",
+        "cleanup reason: filename含code-monitor-check-fix，content为该graph的pi-mcp-handoff节点，汇报i18n/CSS/Rust修复成果，code-monitor是Tool Lifecycle核心场景，handoff是tool lifecycle结束节点"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-22-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff-2.md`.",
+      "evidence": [
+        "inbox/2026-05-22-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff-2.md",
+        "# 代码监控检查和修复 graph handoff\n时间: 2026-05-22T05:51:48Z\n来源: task-graph-code-monitor-check-fix\n项目: blackboard\n## 做了什么\n- 前端 i18n 国际化检查完成：23 个 Vue 组件全部通过，所有用户可见文本已使用 t('...')，无硬编码文本\n- 前端 styles.css 硬编码颜色修复：6 处颜色已替换为 CSS 变量（--bb-success, --bb-error 等）\n- 前端构建验证通过：npm run build 成功，退出码 0，无 TypeScript 编译错误或警告\n- 后端编译错误修复：pre_run.rs 测试模块内添加 TaskGraphEdge 和 EdgeKind 导入\n- 后端 Clippy 扫描通过：cargo clippy 退出码 0，警告数量 0，无残留警告\n## 验证了什么\n- 前端构建验证：npm run build --prefix bb_web，退出码 0，构建时间 25.40s，无错误\n- 前端 i18n 检查：23 个 Vue 组件全部通过，无用户可见硬编码文本\n- 后端编译检查：cargo check --all-targets 通过，无编译错误\n- 后端 Clippy 检查：cargo clippy --all-targets，退出码 0，警告 0 条\n## 下一步\n- 手动替换 6 个 Vue 组件中的硬编码颜色为 CSS 变量：AgentConnectorRow.vue、GraphCanvas.vue、LaneManager.vue、TaskGraphEditorPanel.vue、TaskGraphRunPanel.vue、TaskGraphNodeShape.vue\n- 建议后续系统性处理后端 ~682 条历史积压警告（missing_errors_doc、too_many_lines 等）\n## 相关位置\n- C:/Dev/blackboard/.bb_template/task_graphs/system/code-monitor-check-fix.json\n- C:/Dev/blackboard/scripts/task_graph_code_monitor_verify.py",
+        "cleanup reason: filename含code-monitor-check-fix，内容与note_19同系列，汇报i18n/CSS/clippy修复闭环，code monitor是Tool Lifecycle的核心场景"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-22-codex-code-monitor-check-fix-deterministic-rustfmt-pass.md`.",
+      "evidence": [
+        "inbox/2026-05-22-codex-code-monitor-check-fix-deterministic-rustfmt-pass.md",
+        "# code-monitor-check-fix 补入 Rust fmt 系统修复 pass\n时间: 2026-05-22T15:30:00+08:00\n来源: codex\n项目: blackboard\n## 做了什么\n- 定位 Rust fmt 未自动修补的原因：原 code-monitor-check-fix Rust 闭环只包含 clippy-scan、clippy-fix、rust-compile-verify，cargo fmt 只在 bash allowlist 中被允许，没有 deterministic 执行节点。\n- 将 code-monitor-check-fix 升级到 v11，新增 rust-format-fix shell 节点，在 clippy-fix 后、rust-compile-verify 前执行 cargo fmt。\n- 保持可安全并行的结构：frontend-loop 与 rust-loop 继续从 start 并行；Rust 内部 clippy-fix 与 cargo fmt 不并行，避免两个写源代码步骤抢写。\n- 实际执行 cargo fmt 修复当前 12 个 Rust 格式问题，并同步更新 nightly-report-2026-05-22.md 中的 Rust fmt 状态。\n## 验证了什么\n- code-monitor-check-fix.json JSON parse: 通过，version=11。\n- cargo test -p bb_core task_graph::tests::tests::test_validate_system_graph_fixture: 通过。\n- cargo fmt: 通过。\n- cargo fmt --check: 通过。\n- cargo check -p bb_cli: 通过。\n- git diff --check: 通过，仅有 CRLF warning。\n## 下一步\n- 下一轮 nightly-auto-code-optimization 会通过 code-monitor-check-fix@v11 自动执行 Rust fmt，不再把 fmt 失败留给最终报告人工兜底。\n## 相关位置\n- .bb_template/task_graphs/system/code-monitor-check-fix.json\n- .bb_template/wiki/nightly/nightly-report-2026-05-22.md\n- bb_backend",
+        "cleanup reason: 内容为code-monitor-check-fix补入Rust fmt deterministic pass，code monitor graph技术增强直接归属Tool Lifecycle，version bump证明已落入该票工作流"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-task-graph-code-monitor-pi-minimax-runtime.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-task-graph-code-monitor-pi-minimax-runtime.md",
+        "# 代码监控 Graph LLM 节点切换到 Pi + MiniMax\n时间: 2026-05-21T11:41:14Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 将 `.bb_template/task_graphs/system/code-monitor-check-fix.json` 中 6 个 LLM 节点统一切到 `runtime=pi`。\n- 将这些 LLM 节点模型统一为 `minimax-cn/MiniMax-M2.7-highspeed`，移除旧 `opencode`、空模型和 `minimax-cn-coding-plan` 残留。\n- 更新 graph metadata：`primary_runtime=pi`、`primary_model=minimax-cn/MiniMax-M2.7-highspeed`，version 提升到 3。\n- shell 工具验证节点保持不变，因为它们是确定性工具节点，不走 LLM runtime。\n## 验证了什么\n- `python -m json.tool .bb_template/task_graphs/system/code-monitor-check-fix.json`：通过。\n- `rg` 扫描 `code-monitor-check-fix.json`：无 `runtime=opencode`、无 `minimax-cn-coding-plan`、无空模型/null 模型残留。\n- `GET /api/projects/blackboard/task-graphs/system/code-monitor-check-fix`：通过，version=3。\n- `GET /api/projects/blackboard/task-graphs`：`code-monitor-check-fix` compile_error=null、node_count=13、edge_count=14。\n## 下一步\n- 如果要进一步确认 Pi 实际执行链路，可以启动一次低 max-iterations 的真实 run；当前只做 graph runtime 配置切换和结构校验。\n## 相关位置\n- .bb_template/task_graphs/system/code-monitor-check-fix.json",
+        "cleanup reason: filename含code-monitor-check-fix，内容将graph LLM节点统一切换到Pi+MiniMax，code monitor graph配置属于Tool Lifecycle ticket定义中的'核心runtime的start/end包装'范围"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-22-codex-pi-bash-policy-wildcard-and-nightly-boss-report.md`.",
+      "evidence": [
+        "inbox/2026-05-22-codex-pi-bash-policy-wildcard-and-nightly-boss-report.md",
+        "# Pi bash 通配白黑名单与夜间总报告收敛\n时间: 2026-05-22T04:53:22Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 为 AgentBashToolPolicy 增加 wildcard 语义的 whitelist/blacklist 字段，并兼容 white_list/black_list、allowlist/denylist alias；原有 allow/deny regex 继续兼容。\n- 更新 Pi tool policy extension：bash deny/blacklist 优先拦截；如果存在 allow/whitelist，则命令必须命中任意一类正向规则；通配规则支持 * 和 ?。\n- 把 code-monitor-check-fix 升级到 v10，clippy-scan/clippy-fix 从硬 regex allow 改为 whitelist/blacklist，允许 cargo clippy/check/fmt 与 echo/ls/pwd，显式黑名单拦 cargo clean、git destructive、rm/Remove-Item 等。\n- 把 daily-unattended-code-optimization 升级到 v2，新增 nightly-overall-report LLM 节点，最终 system-write-summary 只写一份老板视角的夜间总体 review/修改/风险报告，不再拼接一堆原始 JSON 碎片。\n- 重启后端 3001，使新的 Pi runtime policy extension 生效；前端本轮未重启。\n## 验证了什么\n- PowerShell ConvertFrom-Json：code-monitor-check-fix.json 与 daily-unattended-code-optimization.json 均解析通过。\n- cargo test -p bb_core task_graph::tests::tests::test_validate_system_graph_fixture：通过。\n- cargo test -p bb_core agent_session::runtime::tests::：通过，6 passed。\n- node --check extracted bb-pi-tool-policy.mjs：通过；额外 fake pi tool_call smoke 验证 cargo clippy/echo 允许，git switch/curl/cargo clean 被拦。\n- cargo test -p bb_core：通过，380 passed。\n- cargo check -p bb_cli：通过。...",
+        "cleanup reason: 新增Pi bash whitelist/blacklist wildcard语义，Pi tool policy extension运行时强校验，bash deny优先拦截；tool_policy runtime enforcement属于Tool Lifecycle事件契约中的'runtime工具配置与生命周期管理'，code-monitor-check-fix bash规则收紧是该票的直接产出"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-22-codex-pi-tool-policy-runtime-hardening.md`.",
+      "evidence": [
+        "inbox/2026-05-22-codex-pi-tool-policy-runtime-hardening.md",
+        "# Pi tool_policy runtime 硬拦截落地\n时间: 2026-05-22T04:17:10Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 为 AgentSession/TaskGraph LLM 配置新增可选 tool_policy：支持 allowed_tools、write_roots、bash allow/deny、mcp allow/deny，并在 LLM resolver 中渲染 {{env.*}}/{{inputs.*}} 模板后传入 Pi runtime。\n- Pi runtime 每个 session 生成独立 policy.json 与 bb-pi-tool-policy.ts extension，通过 --extension 加载；默认合并危险 bash deny 底线，拦截 git checkout/reset/clean/restore/revert、cargo clean、rm -rf 等命令。\n- Pi 启动层根据 allowed_tools 自动追加 --tools 或 --no-tools；custom_args 已显式配置工具集时不重复追加，但 extension 仍做运行时强校验。\n- 更新 rust-vue-code-review、code-review-scout-fix、code-monitor-check-fix 三个系统 graph：review 只读，scout-fix 只允许 read/search/edit 且限定源码写根，handoff mcp-only，汇总 no-tools，Clippy bash 限定 cargo clippy/check/fmt。\n## 验证了什么\n- cargo test -p bb_core：通过，379 个测试全部通过。\n- cargo check -p bb_cli：通过。\n- cargo test -p bb_core task_graph::tests::tests::test_validate_system_graph_fixture：通过，系统 graph fixture 校验通过。\n- Node 模拟加载生成的 Pi policy extension 并触发 bash tool_call：git checkout bb_backend 被 block，验证 pre-hook 生效。\n## 下一步\n- 后续可以把 tool_policy 暴露到 TaskGraph editor/AgentNode UI，避免直接编辑 JSON。\n- 如果需要更强隔离，下一步做 shell sandbox/容器层；当前层能硬拦工具调用，但允许 bash 的节点仍建议尽量使用 bash allowlist。\n## 相关位置\n- bb_b...",
+        "cleanup reason: Pi tool_policy runtime 硬拦截实现 tool_policy 渲染、session-local policy.json 生成、bb-pi-tool-policy.ts extension 加载和危险 bash 拦截，属于 TaskGraph 结构化 Tool Lifecycle 事件契约的前置基础设施，与 000080 tool_start/tool_update/tool_end 事件体系直接关联"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23 实施 backend-only Tool Lifecycle MVP：新增标准 `ToolLifecycleEvent` 写入契约和 `.bb_template/schemas/tool-lifecycle-event.schema.json`；事件通过现有 `events.jsonl` 持久化，`tool_*` payload 自动带与顶层 event seq 对齐的 `sequence`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23 实施 Coordinator 单写者包装：对 LLM/Coordinator/Mutation/Plan/IntentExtract/KbPlan/ManifestMerge/SchemaValidate/SystemWriteOutput/Shell/SubGraph 等可观测节点自动合成 `tool_start` / `tool_end`，包含 `node_run_id`、`tool_call_id`、`attempt`、`tool_name`、`tool_kind`、状态、输入/输出摘要、错误和 artifact 引用。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23 边界：本轮没有做 UI；也没有解析 Pi/OpenCode/Codex provider 内部原生 tool stream，因此 `tool_update` 和 MCP/agent 内部工具调用细粒度事件留到下一轮。当前先保证后端统一契约、持久化和节点级生命周期闭环。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo fmt --manifest-path bb_backend/Cargo.toml --all`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`python -c \"import json; json.load(open('.bb_template/schemas/tool-lifecycle-event.schema.json', encoding='utf-8'))\"`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core execute_simple_linear_graph_dry_run -- --nocapture`，断言 LLM 节点产生 `tool_start/tool_end`，payload schema_version、sequence、tool_call_id、status 正确。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core task_graph::tests::runner -- --nocapture`，45 个 runner 测试通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core -- --nocapture`，382 个测试通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon -p bb_server -p bb_cli`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo clippy --manifest-path bb_backend/Cargo.toml -p bb_core --all-targets -- -D warnings`；同时修复一处既有 `resolve_slash` needless borrow。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Next step: 下一轮接 provider-native tool stream：把 Pi/OpenCode/Codex/CodeBuddy 的内部 tool call 映射为同一 `tool_start/tool_update/tool_end`，并对长 stdout/stderr 或模型工具流做节流 update。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Next step: 下一轮做 UI：run detail 按 `node_run_id -> tool_call_id -> attempt` 渲染工具时间线。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23 完成 L2 前三项：Coordinator 在 LLM/Agent 节点结束时读取 AgentSession events，并把 provider-native `ToolUse` / `ToolResult` 统一投影成 TaskGraph `tool_start` / `tool_update` / `tool_end`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Pi 工具流已接入：`tool_execution_start` 变 `tool_start`，`tool_execution_update` 变节流后的 `tool_update`，`tool_execution_end` 变 `tool_end`；投影由 Coordinator 单写者完成，不让 provider 线程直接写 run event log。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "MCP typed lifecycle 已接入：识别 `server__bb__read_ticket_by_id` 等 provider tool 名为 `mcp_tool`，标准化为 `bb.read_ticket_by_id`，并在 input_summary 里记录 `mcp_server`、`mcp_tool`、`daemon_backed=true`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "`tool_update` 已做基础节流：同一 `tool_call_id` 保留第 1 条和每 5 条 update；输出只保留 512 字符 preview，超过 2048 字符写入 run artifact 并在事件里记录 artifact 引用。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core pi_provider_tool_events_project_to_task_graph_tool_lifecycle -- --nocapture`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core task_graph::tests::runner -- --nocapture`，46 passed。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon -p bb_server -p bb_cli`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo clippy --manifest-path bb_backend/Cargo.toml -p bb_core --all-targets -- -D warnings`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core -- --nocapture`，383 passed。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`git diff --check`，仅 CRLF warning。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Next step: 下一步保留给 UI/Tool Lifecycle 展示层：run detail 按 `node_run_id -> tool_call_id -> attempt` 渲染工具时间线。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Next step: 后续可以继续扩展 OpenCode/Codex/CodeBuddy provider 原生工具流映射；本轮已完成 Pi 这一条主线。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23 完成 Tool Lifecycle 前端展示层：新增 TaskGraph 节点详情内的 Tool Lifecycle timeline，按当前选中节点过滤 `tool_start` / `tool_update` / `tool_end`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "前端类型契约已补到 `TaskGraphToolLifecyclePayload`，UI 不直接猜 payload shape；组件会按 `tool_call_id + attempt` 收敛 start/update/end，并展示状态、superstep、attempt、update 次数、输入摘要、输出摘要、错误和 artifact 引用。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "遵守前端规范：新增文案全部进 `i18n.ts`，样式局部 scoped，颜色只使用现有 CSS variables / color-mix，未引入新全局样式。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`npm run build --prefix bb_web`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 浏览器验证通过：打开 `http://127.0.0.1:8060/#/projects/blackboard/task-graphs/system/task-ticket-audit?run=run-20260523-073838-9b0e1a69`，RunPanel 显示节点工具生命周期空态，控制台 error=0。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`git diff --check`，仅 CRLF warning。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Next step: 后续等新后端重启并产生真实 `tool_*` run event 后，可在同一 UI 上验证 populated timeline；当前历史 run 多数没有 tool lifecycle 事件，因此浏览器验证覆盖的是空态和页面集成。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-codex-tool-lifecycle-backend-mvp-000080.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-tool-lifecycle-backend-mvp-000080.json",
+        "Title: 000080 Tool Lifecycle backend MVP implemented\nTime: 2026-05-23T09:50:53Z\nSource: codex\nProject: blackboard\nTopic: tool-lifecycle-backend-mvp-000080\nDone:\n- 实现 backend-only Tool Lifecycle MVP：新增标准事件模型、tool lifecycle JSON schema，并通过现有 run `events.jsonl` 持久化 `tool_start/tool_end`。\n- Coordinator 作为单写者对 LLM/Shell/SystemWriteOutput/SchemaValidate/SubGraph 等可观测节点合成节点级 tool lifecycle，避免并发 executor 直接抢写 event log。\n- 000080 已追加进展与验证记录；UI 与 provider-native 内部 tool stream 映射明确留到下一轮。\nValidation:\n- cargo fmt --manifest-path bb_backend/Cargo.toml --all\n- python JSON parse for .bb_template/schemas/tool-lifecycle-event.schema.json\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core execute_simple_linear_graph_dry_run -- --nocapture\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core task_graph::tests::runner -- --nocapture\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core -- --nocapture\n- cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon -p bb_server -p bb_cli\n- cargo clippy --manifest-path bb_backend/Cargo.toml -p bb_core --all-targets -- -D warnings\nNext step:\n- 接 Pi/OpenCode/Codex/CodeBuddy provider-native tool stream，生成细粒度 `tool_update` 和内部...",
+        "cleanup reason: note 的 title 显式写明 '000080'，document.related_tickets 显式写明 '000080'，done 内容是 Tool Lifecycle backend MVP 实现，topic tool-lifecycle-backend-mvp-000080 与 000080 Tool Lifecycle 事件直接对应。"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-codex-tool-lifecycle-provider-native-l2-000080.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-tool-lifecycle-provider-native-l2-000080.json",
+        "Title: 000080 L2 前三项：Pi provider tool stream / MCP typed lifecycle / throttled update\nTime: 2026-05-23T00:00:00+08:00\nSource: codex\nProject: blackboard\nTopic: tool-lifecycle-provider-native-l2-000080\nDone:\n- 完成 Pi provider-native tool stream 到 TaskGraph ToolLifecycle 的投影：AgentSession `ToolUse` / `ToolResult` 在 Coordinator 单写者阶段转换为 `tool_start` / `tool_update` / `tool_end`。\n- 完成 MCP typed lifecycle：`server__bb__read_ticket_by_id` 等工具名识别为 `mcp_tool`，标准化为 `bb.read_ticket_by_id`，并标记 Blackboard daemon-backed。\n- 完成 `tool_update` 节流与 artifact 化：同一 tool_call_id 保留第 1 条和每 5 条 update；长输出只进 run artifact，event payload 保留 preview 与 artifact 引用。\n- 新增 Pi fake tool stream runner 测试，验证 MCP start/end、shell update、payload sequence 对齐和 artifact 文件存在。\nValidation:\n- `cargo fmt --manifest-path bb_backend/Cargo.toml --all`: passed\n- `cargo test --manifest-path bb_backend/Cargo.toml -p bb_core pi_provider_tool_events_project_to_task_graph_tool_lifecycle -- --nocapture`: passed\n- `cargo test --manifest-path bb_backend/Cargo.toml -p bb_core task_graph::tests::runner -- --nocapture`: passed, 46 passed\n- `cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon -p bb_server -p bb_cli`: passed\n- `cargo...",
+        "cleanup reason: note 的 title 显式写明 '000080 L2'，done 内容是 Pi provider tool stream / MCP typed lifecycle / throttled update，是 000080 的 L2 扩展实现。"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-codex-tool-lifecycle-run-ui-000080.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-tool-lifecycle-run-ui-000080.json",
+        "Title: 000080 Tool Lifecycle 前端 RunPanel 展示层\nTime: 2026-05-23T00:00:00+08:00\nSource: codex\nProject: blackboard\nTopic: tool-lifecycle-run-ui-000080\nDone:\n- 新增 `TaskGraphToolLifecycleTimeline.vue`，在 TaskGraph RunPanel 的节点详情区域展示当前节点的工具生命周期。\n- 新增前端类型 `TaskGraphToolLifecyclePayload` / status / error / artifact，避免组件直接用散乱 unknown payload。\n- RunPanel 接入新组件，复用已有 `runEvents` 数据流，不新增 API。\n- i18n 补齐中英文文案；样式使用 scoped CSS 和现有 CSS variables，未新增全局颜色。\nValidation:\n- `npm run build --prefix bb_web`: passed\n- Browser: 打开真实 run panel URL 后，新增节点工具生命周期区块和空态可见，console error=0\n- `git diff --check`: passed with CRLF warnings only\nNext step:\n- 重启/刷新使用已接入 backend tool lifecycle 的服务后，跑一个会产生 `tool_*` 事件的 graph，再验证 populated timeline。\nRelated locations:\n- bb_web/src/components/task-graph/TaskGraphToolLifecycleTimeline.vue\n- bb_web/src/components/TaskGraphRunPanel.vue\n- bb_web/src/data/taskGraphs.ts\n- bb_web/src/i18n.ts",
+        "cleanup reason: note 的 title 显式写明 '000080 Tool Lifecycle 前端 RunPanel 展示层'，done 内容是 TaskGraphToolLifecycleTimeline.vue 前端展示组件，属于 000080 Tool Lifecycle 的 UI 层实现。"
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "kind": "ticket",
+      "target": "000060",
+      "label": "TaskGraph execution foundation"
+    },
+    {
+      "kind": "ticket",
+      "target": "000064",
+      "label": "TaskGraph run UI"
+    },
+    {
+      "kind": "ticket",
+      "target": "000078",
+      "label": "LLM Coordinator / ResourceBundle AgentNode"
+    }
+  ],
+  "status": "review",
+  "created_at": "2026-05-21",
+  "updated_at": "2026-05-23",
+  "extra": {
+    "area": "TaskGraph",
+    "depends_on": "000060 000064 000078",
+    "kind": "runtime-observability",
+    "layer": "execution-events",
+    "requested_by": "user",
+    "schema_version": "1.0",
+    "scope": "structured-tool-lifecycle-events"
+  }
+}

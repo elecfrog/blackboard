@@ -15,7 +15,7 @@ use crate::task_graph::run_state::{
 
 // ─── Loop Node ───────────────────────────────────────────────────────────────
 
-pub(crate) fn execute_loop_node(
+pub fn execute_loop_node(
     node: &TaskGraphNode,
     run: &TaskGraphRun,
     edge_map: &HashMap<String, Vec<&TaskGraphEdge>>,
@@ -73,7 +73,7 @@ pub(crate) fn execute_loop_node(
         .iter()
         .find(|l| l.loop_node_id == node.id);
 
-    let current_iteration = existing_loop.map(|l| l.current_iteration).unwrap_or(0);
+    let current_iteration = existing_loop.map_or(0, |l| l.current_iteration);
     let max_iterations = resolve_loop_max_iterations(&config, &run.context);
 
     // Check loop condition before max_iterations. When the body just returned a
@@ -110,7 +110,7 @@ pub(crate) fn execute_loop_node(
                     exit_code: None,
                     error: None,
                     output_artifact: None,
-                    log_tail: Some(format!("Exit: {}", exit_reason)),
+                    log_tail: Some(format!("Exit: {exit_reason}")),
                     child_run_id: None,
                     runtime: None,
                     agent: None,
@@ -142,7 +142,7 @@ pub(crate) fn execute_loop_node(
                     message: "No exit edge for loop node".to_string(),
                 }),
                 output_artifact: None,
-                log_tail: Some(format!("Exit: {}", exit_reason)),
+                log_tail: Some(format!("Exit: {exit_reason}")),
                 child_run_id: None,
                 runtime: None,
                 agent: None,
@@ -203,7 +203,7 @@ pub(crate) fn execute_loop_node(
                         message: "Max iterations reached and no exit edge".to_string(),
                     }),
                     output_artifact: None,
-                    log_tail: Some(format!("Exit: {}", exit_reason)),
+                    log_tail: Some(format!("Exit: {exit_reason}")),
                     child_run_id: None,
                     runtime: None,
                     agent: None,
@@ -234,13 +234,13 @@ pub(crate) fn execute_loop_node(
                 error: if on_max == "fail" {
                     Some(NodeError {
                         code: "max_iterations_reached".to_string(),
-                        message: format!("Loop reached max iterations ({})", max_iterations),
+                        message: format!("Loop reached max iterations ({max_iterations})"),
                     })
                 } else {
                     None
                 },
                 output_artifact: None,
-                log_tail: Some(format!("Exit: {}", exit_reason)),
+                log_tail: Some(format!("Exit: {exit_reason}")),
                 child_run_id: None,
                 runtime: None,
                 agent: None,
@@ -292,14 +292,14 @@ pub(crate) fn execute_loop_node(
             node_state: TaskGraphRunNode {
                 node_id: node.id.clone(),
                 status: NodeRunStatus::Running,
-                started_at: Some(now.clone()),
+                started_at: Some(now),
                 completed_at: None,
                 duration_ms: None,
                 iteration: Some(new_iteration),
                 exit_code: None,
                 error: None,
                 output_artifact: None,
-                log_tail: Some(format!("Iteration {}/{}", new_iteration, max_iterations)),
+                log_tail: Some(format!("Iteration {new_iteration}/{max_iterations}")),
                 child_run_id: None,
                 runtime: None,
                 agent: None,

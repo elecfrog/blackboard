@@ -1,4 +1,4 @@
-//! bb_core — Blackboard multi-project workspace kernel.
+//! `bb_core` — Blackboard multi-project workspace kernel.
 //!
 //! This crate owns the filesystem layout and CRUD surface for projects,
 //! tickets, and inbox notes. The heavy lifting is split into sub-modules:
@@ -58,7 +58,7 @@ pub use board::{Blackboard, ProjectBoard};
 pub use error::{BlackboardError, InboxError};
 pub use fs_util::{
     canonicalize, canonicalize_existing_dir, clean_path_string, path_to_string, read_json_file,
-    slug_segment, write_file_atomic, write_json_pretty,
+    resolve_slash, slug_segment, write_file_atomic, write_json_pretty,
 };
 pub use inbox::render_note;
 pub use project::{validate_lane_def, validate_lane_id, validate_ticket_lane};
@@ -72,6 +72,7 @@ pub use workspace::Workspace;
 
 // ─── Shared utility functions ────────────────────────────────────────────────
 
+#[must_use]
 pub fn is_valid_note_name(name: &str) -> bool {
     validate_note_name(name).is_ok()
 }
@@ -81,7 +82,10 @@ pub fn validate_note_name(name: &str) -> Result<String, InboxError> {
     if trimmed.is_empty() || trimmed != name {
         return Err(InboxError::InvalidName(name.to_string()));
     }
-    if !trimmed.ends_with(".md") {
+    if !Path::new(trimmed)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+    {
         return Err(InboxError::InvalidName(name.to_string()));
     }
 

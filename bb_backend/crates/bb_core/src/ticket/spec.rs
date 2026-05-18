@@ -7,12 +7,12 @@ use crate::{
     TicketStory,
 };
 
-pub(crate) const TICKET_SPEC_FRONTMATTER_KEY: &str = "ticket_spec";
+pub const TICKET_SPEC_FRONTMATTER_KEY: &str = "ticket_spec";
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct TicketJsonDocument {
+pub struct TicketJsonDocument {
     pub schema_version: u32,
     pub id: String,
     pub lane: String,
@@ -30,7 +30,7 @@ pub(crate) struct TicketJsonDocument {
 }
 
 #[cfg(feature = "schema")]
-pub(crate) fn ticket_json_document_schema() -> serde_json::Value {
+pub fn ticket_json_document_schema() -> serde_json::Value {
     schemars::schema_for!(TicketJsonDocument).to_value()
 }
 
@@ -52,7 +52,7 @@ impl TicketJsonDocument {
     }
 }
 
-pub(crate) fn normalize_ticket_spec(mut spec: TicketSpec) -> Result<TicketSpec, InboxError> {
+pub fn normalize_ticket_spec(mut spec: TicketSpec) -> Result<TicketSpec, InboxError> {
     validate_text("spec.summary", &spec.summary)?;
     if spec.stories.is_empty() {
         return Err(InboxError::InvalidInput(
@@ -68,7 +68,8 @@ pub(crate) fn normalize_ticket_spec(mut spec: TicketSpec) -> Result<TicketSpec, 
     Ok(spec)
 }
 
-pub(crate) fn render_ticket_json_document(
+#[allow(clippy::too_many_arguments)]
+pub fn render_ticket_json_document(
     id: &str,
     lane: &str,
     title: &str,
@@ -99,7 +100,7 @@ pub(crate) fn render_ticket_json_document(
     serialize_ticket_json_document(&document)
 }
 
-pub(crate) fn parse_ticket_json_document(content: &str) -> Result<TicketJsonDocument, String> {
+pub fn parse_ticket_json_document(content: &str) -> Result<TicketJsonDocument, String> {
     let document = serde_json::from_str::<TicketJsonDocument>(content)
         .map_err(|err| format!("invalid JSON ticket: {err}"))?;
     if document.schema_version != 1 {
@@ -113,9 +114,7 @@ pub(crate) fn parse_ticket_json_document(content: &str) -> Result<TicketJsonDocu
     Ok(document)
 }
 
-pub(crate) fn serialize_ticket_json_document(
-    document: &TicketJsonDocument,
-) -> Result<String, InboxError> {
+pub fn serialize_ticket_json_document(document: &TicketJsonDocument) -> Result<String, InboxError> {
     validate_ticket_spec(&document.spec())?;
     validate_ticket_attachments(&document.attachments)?;
     let mut json = serde_json::to_string_pretty(document).map_err(|err| {
@@ -125,16 +124,14 @@ pub(crate) fn serialize_ticket_json_document(
     Ok(json)
 }
 
-pub(crate) fn serialize_ticket_spec(spec: &TicketSpec) -> Result<String, InboxError> {
+pub fn serialize_ticket_spec(spec: &TicketSpec) -> Result<String, InboxError> {
     validate_ticket_spec(spec)?;
     serde_json::to_string(spec).map_err(|err| {
         InboxError::InvalidInput(format!("ticket spec could not be serialized: {err}"))
     })
 }
 
-pub(crate) fn parse_ticket_spec_field(
-    fields: &BTreeMap<String, String>,
-) -> Result<TicketSpec, String> {
+pub fn parse_ticket_spec_field(fields: &BTreeMap<String, String>) -> Result<TicketSpec, String> {
     let raw = fields
         .get(TICKET_SPEC_FRONTMATTER_KEY)
         .ok_or_else(|| format!("missing frontmatter field `{TICKET_SPEC_FRONTMATTER_KEY}`"))?;
@@ -144,7 +141,7 @@ pub(crate) fn parse_ticket_spec_field(
     Ok(spec)
 }
 
-pub(crate) fn validate_ticket_spec(spec: &TicketSpec) -> Result<(), InboxError> {
+pub fn validate_ticket_spec(spec: &TicketSpec) -> Result<(), InboxError> {
     validate_text("spec.summary", &spec.summary)?;
     if spec.stories.is_empty() {
         return Err(InboxError::InvalidInput(
@@ -189,9 +186,7 @@ fn validate_progress_record(record: &TicketProgressRecord) -> Result<(), InboxEr
     Ok(())
 }
 
-pub(crate) fn validate_ticket_attachments(
-    attachments: &[TicketAttachment],
-) -> Result<(), InboxError> {
+pub fn validate_ticket_attachments(attachments: &[TicketAttachment]) -> Result<(), InboxError> {
     for attachment in attachments {
         validate_text("attachments[].kind", &attachment.kind)?;
         validate_text("attachments[].target", &attachment.target)?;
@@ -270,7 +265,7 @@ fn validate_optional_text(field: &str, value: Option<&str>) -> Result<(), InboxE
     Ok(())
 }
 
-pub(crate) fn render_ticket_spec_body(spec: &TicketSpec) -> String {
+pub fn render_ticket_spec_body(spec: &TicketSpec) -> String {
     let mut body = String::new();
     body.push_str("# Summary\n\n");
     body.push_str(&spec.summary);

@@ -1,0 +1,336 @@
+{
+  "schema_version": 1,
+  "id": "000078",
+  "lane": "bbt",
+  "title": "LLM Coordinator 独立节点 MVP",
+  "summary": "新增独立的 LLM_Coordinator 节点类型。MVP 中，LLM_Coordinator 与旧 LLM_Mutation 节点没有继承、迁移或兼容改造关系；旧节点先保留，语义不变。Coordinator 不直接修改父图拓扑，也不管理一组分散的子任务或子节点。每次激活时，它只创建一个隔离的子图草案，验证该子图，作为独立子图运行执行，并在子图完成后把子图声明的输出暴露为 LLM_Coordinator 节点输出。子图内部负责任务分解、收敛和结果产出，从而保持父图干净、可审计。`general-code-search-mpbe2hb4` 可作为 MVP 试验 graph：在保留旧 mutation 节点的前提下，引入新的 LLM_Coordinator 节点验证新路径。",
+  "stories": [
+    {
+      "id": "013f4401-f8f5-4cf3-a133-f48f34c09179",
+      "given": "TaskGraph 中存在一个 LLM_Coordinator 节点，它的输入来自用户任务提示或上游上下文。",
+      "when": "Coordinator 判断当前任务需要动态分解。",
+      "then": "它调用 generate_subgraph 创建一个隔离的子图草案，草案包含目标、输入绑定、输出契约、允许的节点类型、约束、内部节点、内部边和声明输出；该草案不会修改父图。"
+    },
+    {
+      "id": "6bd5e93d-aac9-48d2-8631-726066ed1c26",
+      "given": "Coordinator 已经生成一个子图草案。",
+      "when": "它准备运行该子图。",
+      "then": "它调用 validate_subgraph；后端在允许执行前验证节点 schema、pin 兼容性、边合法性、输入绑定、输出契约、环与可达性约束、权限、预算限制和收敛路径。"
+    },
+    {
+      "id": "53fbcce7-a509-4c7b-b0f5-2aff57ea4509",
+      "given": "子图草案已经通过验证。",
+      "when": "Coordinator 调用 execute_subgraph。",
+      "then": "运行时启动一次隔离的子图运行并返回 subgraph_run_id；执行子图不会把内部节点或内部边加入父图拓扑。"
+    },
+    {
+      "id": "af47cc8b-c812-44b8-a899-0e262203f217",
+      "given": "一次隔离子图运行处于 pending、running、completed 或 failed 状态。",
+      "when": "Coordinator 使用 subgraph_run_id 调用 get_subgraph_result。",
+      "then": "该工具返回子图运行状态、完成后的类型化输出、摘要、失败时的错误，以及用于检查内部子图运行的审计引用。"
+    },
+    {
+      "id": "367ec5f0-bb40-4141-97e2-e6d6ed1d736f",
+      "given": "一次子图运行成功完成。",
+      "when": "父 TaskGraph 推进到 LLM_Coordinator 节点之后。",
+      "then": "子图声明输出会作为 LLM_Coordinator 节点输出暴露，并路由到已有 downstream pins；Coordinator 不需要手动 join 子任务，也不需要修改父图拓扑。"
+    },
+    {
+      "id": "5ed86fef-d642-44ab-802a-2bb45bd23da0",
+      "given": "试验 graph `general-code-search-mpbe2hb4` 中已经存在一个旧 LLM_Mutation 节点。",
+      "when": "实现者在该 graph 中验证 LLM_Coordinator MVP。",
+      "then": "旧 LLM_Mutation 节点保持不删除、不迁移、不改语义；新的 LLM_Coordinator 节点作为独立节点加入，用于验证 generate_subgraph、validate_subgraph、execute_subgraph、get_subgraph_result 这一新路径。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "parent_graph_pollution",
+      "description": "如果把生成的内部节点和内部边直接提交到父图，动态分解会让主拓扑变得嘈杂且难以审计。",
+      "mitigation": "将子图视为隔离执行单元；只通过 LLM_Coordinator 节点暴露类型化子图输出。",
+      "status": "open"
+    },
+    {
+      "id": "implicit_convergence_contract",
+      "description": "如果子图没有明确声明输出契约和收敛路径，Coordinator 仍然会被迫承担临时结果聚合逻辑。",
+      "mitigation": "要求 generate_subgraph 和 validate_subgraph 在 execute_subgraph 前包含声明输出，并验证存在有效收敛路径。",
+      "status": "open"
+    },
+    {
+      "id": "validation_scope_gap",
+      "description": "只通过表层 schema 检查的子图，仍可能因为无效 data refs、权限、预算或不可达输出而在运行时失败。",
+      "mitigation": "将 validate_subgraph 作为强制执行门禁，并纳入输入绑定、可达性、权限、预算和输出契约等运行相关检查。",
+      "status": "open"
+    },
+    {
+      "id": "legacy_mutation_coupling",
+      "description": "如果 MVP 为了复用旧实现而把 LLM_Coordinator 绑定到 LLM_Mutation，新的隔离子图语义会被旧 mutation/scout 模型污染。",
+      "mitigation": "明确 LLM_Coordinator 是独立新节点类型；MVP 不删除、不迁移、不兼容改造旧 LLM_Mutation 节点。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-19",
+      "summary": "agent 开始执行：开始实现独立 `llm_coordinator` 节点 MVP；不触碰旧 `llm_mutation` 语义，不修改已有试验 graph 文件。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-000078-inbox-batch-cleanup-主环境真实清理.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-000078-inbox-batch-cleanup-主环境真实清理.md",
+        "# 000078 inbox-batch-cleanup 主环境真实清理完成\n时间: 2026-05-21T10:21:03Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 主环境 system graph `inbox-batch-cleanup` 已升级为 v4：`shell` 系统工具节点 + `schema_validate` 输出契约。\n- 真实运行主环境 `run-20260521-101909-b42f7978`，状态 succeeded；loop 执行 2 轮，schema_validate valid=true。\n- 本次真实清理沉淀并删除 7 条高置信 inbox note，全部进入 active ticket `000078` 的 progress_record；低置信、无 ticket、多个 active id 或只命中非 active/id 时间戳的 note 均保留。\n- 清理后 `.bb_template/projects/blackboard/inbox` 文件数为 30，`__inbox__.json` 记录数为 30。\n## 验证了什么\n- 主服务 API `GET /api/projects/blackboard/task-graphs/system/inbox-batch-cleanup`：version 4。\n- 主环境 run `run-20260521-101909-b42f7978`：succeeded，superstep=9。\n- final output verification：`inbox index: rebuilt`、`ticket index: rebuilt`、`check_ticket_ids: passed`。\n- `python scripts/check_ticket_ids.py --project blackboard`：通过。\n## 下一步\n- 剩余 30 条 inbox note 都不是当前自动规则可安全沉淀的高置信 note；如果要继续减少，需要定义更强的 note-to-ticket 归因规则或人工 HITL。\n## 相关位置\n- .bb_template/task_graphs/system/inbox-batch-cleanup.json\n- scripts/cleanup_inbox_batch.py\n- .bb_template/projects/blackboard/tickets/000078-llm-mutation-coordinator.json\n- .bb_template/projects/blackboard/__inbox__.json\n- .bb_template/projects/blackboard/__ticke..."
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-19-codex-000078-coordinator-子图静态校验-pass-与自修复闭环.md`.",
+      "evidence": [
+        "inbox/2026-05-19-codex-000078-coordinator-子图静态校验-pass-与自修复闭环.md",
+        "# 078 JSON/Schema/Semantic pass 搭建并跑通\n时间: 2026-05-19 22:52 +08:00\n来源: codex\n项目: blackboard\n## 做了什么\n- 为 LLM Coordinator 的动态子图生成路径搭建串行静态校验闭环：`json_syntax -> task_graph_schema -> graph_semantic`。\n- JSON Syntax pass 使用原始 LLM 输出文本做严格 `serde_json` 解析，非法 JSON 不进入后续 pass，并把 line/column parse error 作为 tool-style validation result 返回给 LLM。\n- TaskGraph Schema pass 使用 `decode_graph_value_at` 校验完整 `TaskGraphDefinition` shape，缺字段/类型错误不再由系统 normalize，而是返回给 LLM 自修。\n- Graph Semantic pass 继续跑 `validate_graph`，并纳入 `validate_pre_run`，因此空 `prompt.template`、运行前必炸的 LLM prompt 问题会在执行前反馈给 LLM。\n- 移除动态生成主链路里的 loose normalize/child runtime 自动改写，改为静态 coordinator policy 校验：子图 LLM runtime/agent/model 必须匹配父 Coordinator，否则作为 `graph_semantic` 错误返回给 LLM。\n- 新增 `coordinator.max_repair_attempts`，默认 5；校验值必须 > 0。\n- 更新 `general-code-search-mpbe2hb4` 到 version 22，明确子图 LLM 节点必须生成 `config.prompt: {mode:\"inline\", template:\"...\"}`、`runtime:\"opencode\"`、`agent:\"native\"`、指定 model、`end.result:\"succeeded\"`。\n- 实际 smoke 中观察到闭环生效：第一次 run 被 `runtime/openai` 与 `end.result` 静态拦截；第二次 run 通过静态 pass 后在执行阶段暴露 prompt shape 缺口；补入 pre-run semantic 后第三次 run 成功。\n- 最终父 run `run-20260519-144446-6e69c1cb` succeeded；动态子图 run `run-20260519-144502-7...",
+        "cleanup reason: 文件名含 000078，正文详细记录 LLM Coordinator 子图静态校验 pass 闭环的实现，与 ticket 000078 LLM_Coordinator 独立节点 MVP 直接对应"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-19-codex-000078-general-code-search-mpbe2hb4-并发-10-run-已发起.md`.",
+      "evidence": [
+        "inbox/2026-05-19-codex-000078-general-code-search-mpbe2hb4-并发-10-run-已发起.md",
+        "# 078 并发 10 输出 xxxx_{index}.md run 启动\n时间: 2026-05-19 22:59 +08:00\n来源: codex\n项目: blackboard\n## 做了什么\n- 按用户要求将 `general-code-search-mpbe2hb4` 更新到 version 23。\n- 设置 graph run policy：`allow_concurrent_runs=true`、`max_concurrent_runs=10`、`queue_enabled=true`、`max_queue_wait_ms=1800000`。\n- 确认 Coordinator 节点 runtime/model 为 `opencode` + `minimax-cn-coding-plan/MiniMax-M2.7-highspeed`，并保留子图 policy：child LLM 必须使用同一 runtime/agent/model，否则静态校验失败返回给 LLM 修。\n- 增强 Coordinator prompt：如果上游任务要求输出到具体文件名，如 `xxxx_1.md`，生成的子图 LLM prompt 必须明确要求写入该文件，同时仍产出 markdown artifact。\n- 按用户要求发起 10 个 run，分别要求输出到 `xxxx_1.md` 到 `xxxx_10.md`；未做长轮询监控。\n- Run manifest 已保存到 `.bb_template/runtime/task_graph_runs/blackboard/078-concurrent-xxxx-runs.json`。\n## 验证了什么\n- GET `/healthz`: passed。\n- REST PATCH `/api/projects/blackboard/task-graphs/project/general-code-search-mpbe2hb4`: version 23, validation passed。\n- REST POST `/api/projects/blackboard/task-graph-runs`: 10 次均创建成功，初始状态均为 `pending`，graph version 均为 23。\n## 下一步\n- 用户自行等待最终 run 结果；如需排查，可按 manifest 中 run_id 查看 run detail 和子图 artifact。\n## 相关位置\n- .bb_template/projects/blackboard/task_graphs/general-code-search-mpbe2hb4.json\n- .bb_template/runtime/task_graph_runs/blackboard...",
+        "cleanup reason: 文件名含 078，提及 general-code-search-mpbe2hb4 graph 更新到 v23 并发起 10 个并发 run，属于 000078 LLM Coordinator MVP 的试验 graph 运行记录"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-19-codex-000078-general-code-search-mpbe2hb4-拆分式-prompt-并发-10-run-已发起.md`.",
+      "evidence": [
+        "inbox/2026-05-19-codex-000078-general-code-search-mpbe2hb4-拆分式-prompt-并发-10-run-已发起.md",
+        "# 078 仅改 prompt 后发起拆分式并发 run\n时间: 2026-05-19 23:25 +08:00\n来源: codex\n项目: blackboard\n## 做了什么\n- 按用户要求，本轮只修改 `general-code-search-mpbe2hb4` 的 Coordinator prompt，没有修改后端代码、Coordinator 节点实现或系统逻辑。\n- 将图更新到 version 24；prompt 去掉单 LLM 最小子图倾向，改为代码调研任务必须生成 `start -> 至少 3 个并行 scout llm -> synthesize llm -> end`。\n- prompt 明确要求 scout 分工：definition/runtime/integration；synthesize 负责汇总所有 scout，并写最终文件。\n- 保留所有 llm 节点必须使用 `opencode` + `native` + `minimax-cn-coding-plan/MiniMax-M2.7-highspeed` 的生成约束。\n- 发起 10 个新的并发 run，分别要求输出到 `split_1.md` 到 `split_10.md`；未做长轮询监控。\n- Run manifest 已保存到 `.bb_template/runtime/task_graph_runs/blackboard/078-concurrent-split-runs.json`。\n## 验证了什么\n- GET `/healthz`: passed。\n- REST PATCH `/api/projects/blackboard/task-graphs/project/general-code-search-mpbe2hb4`: version 24, validation passed。\n- REST POST `/api/projects/blackboard/task-graph-runs`: 10 次均创建成功，初始状态均为 `pending`，graph version 均为 24。\n## 下一步\n- 用户自行等待最终 run 结果；重点观察子图 snapshot 是否出现多个 scout 节点和 synthesize 节点。\n## 相关位置\n- .bb_template/projects/blackboard/task_graphs/general-code-search-mpbe2hb4.json\n- .bb_template/runtime/task_graph_runs/blackboard/078-concurrent-split-runs.json",
+        "cleanup reason: 文件名含 078，提及同一 graph v24 的 prompt 改动（拆分式并发），属于 000078 Coordinator 的迭代记录"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-19-codex-000078-general-code-search-mpbe2hb4-端到端跑通.md`.",
+      "evidence": [
+        "inbox/2026-05-19-codex-000078-general-code-search-mpbe2hb4-端到端跑通.md",
+        "# 078 Coordinator 图启动、监控与修复\n时间: 2026-05-19 22:16 +08:00\n来源: codex\n项目: blackboard\n## 做了什么\n- 按用户指定 prompt 启动 project graph `general-code-search-mpbe2hb4`：`帮我调研下bb系统是怎么做task graph系统的， 核心是用了什么`。\n- 监控并修复失败链路：先遇到 Coordinator 解析到末尾 edge fragment 导致 `missing field schema_version`，再遇到 LLM 生成 loose graph 缺少 `kind`/config/schema 类型，最后遇到子图 LLM runtime 继承为 macOS codex 路径导致 Windows spawn 失败。\n- 修复 `try_parse_json_or_text`：当 LLM 输出含多个 JSON object 时优先选择 graph-shaped JSON，而不是最后一个嵌套 object。\n- 修复 `llm_coordinator`：对子图 draft 做宽松规范化，补齐/迁移 schema_version、node config、prompt、output、edge kind 等字段，并让子图 LLM runtime/agent/model 继承父 Coordinator 的可用运行时。\n- 通过 REST 更新 `general-code-search-mpbe2hb4` 到 version 20，收紧 Coordinator prompt，并保持 `data_value` 节点通过 `{{inputs.intent}}` 供给 Coordinator 的 `input` data pin。\n- 最终父 run `run-20260519-140704-4ae723fc` succeeded；Coordinator 动态创建并执行子图 run `run-20260519-140721-c0b3cf54` succeeded。\n- 子图报告产物已生成：`.bb_template/runtime/task_graph_runs/blackboard/run-20260519-140721-c0b3cf54/artifacts/llm-output.md`。报告核心结论：BB TaskGraph 主要是 Rust TaskGraphDefinition/compile 层 lower 到 Pregel-style IR，再由 Pregel superstep/channel/checkpoint 调度器执行，节点 runtime 负责 LLM/Shell/SubGraph 等外部执行。\n## 验证了什么...",
+        "cleanup reason: 文件名含 078，详述 general-code-search-mpbe2hb4 Coordinator 端到端启动、监控与修复全流程，直接对应 000078 MVP 试验 graph 的核心实现过程"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-19-codex-000078-implementation-planning-exploration.md`.",
+      "evidence": [
+        "inbox/2026-05-19-codex-000078-implementation-planning-exploration.md",
+        "# Explored code for LLM Coordinator plan\n时间: 2026-05-19T07:06:23Z\n来源: Codex\n项目: blackboard\n## 做了什么\n- Explored TaskGraph backend node model, validation, compiler, executor, LLM runtime, existing SubGraph runtime, frontend node types, palette, inspector, visuals, run panel, and the `general-code-search-mpbe2hb4` graph.\n- Confirmed current code has separate `NodeType::Llm`, `NodeType::SubGraph`, and `NodeType::LlmMutation`; there is no `llm_coordinator` yet.\n- Confirmed SubGraph execution already creates child runs, records `child_run_id`, executes recursively with `execute_run`, and exposes child output through parent node output.\n- Confirmed run panel already shows `child_run_id` and supports opening child runs, so Coordinator MVP can reuse this audit path.\n- Confirmed `general-code-search-mpbe2hb4` currently contains `start -> llm_mutation -> end`, but the graph file is already modified in the worktree and should be handled carefully before implementation.\n## 验证了什么\n- Read-only exploration only; no source files changed in this planning pass.\n- Shell sandbox failed with Windows CreateProcessWithLogonW 1385; read-only commands were rerun with escalation.\n- mcp__bb__.create_inbox_no...",
+        "cleanup reason: filename 明确包含 000078；正文是 LLM Coordinator 代码探索，涵盖 node model、runtime、SubGraph infrastructure 和 frontend，完整匹配 ticket 000078 'LLM Coordinator 独立节点 MVP' 的探索阶段记录"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-19-codex-000078-llm-coordinator-implementation.md`.",
+      "evidence": [
+        "inbox/2026-05-19-codex-000078-llm-coordinator-implementation.md",
+        "# Implemented independent llm_coordinator MVP\n时间: 2026-05-19T08:48:07Z\n来源: Codex\n项目: blackboard\n## 做了什么\n- Added backend `NodeType::LlmCoordinator` with config, default pins, registry metadata, validation, compiler runtime dispatch, and executor dispatch.\n- Implemented `nodes/llm_coordinator.rs`: supports static subgraph drafts for deterministic tests, uses LLM JSON output as generated subgraph draft otherwise, validates subgraph policy and graph structure, creates an isolated child run directly from the draft snapshot, records `child_run_id`, and exposes a structured completed result without mutating parent graph topology.\n- Added backend runner tests for successful static isolated subgraph execution and invalid subgraph rejection before child run creation.\n- Added frontend support for `llm_coordinator`: TypeScript node type, default pins, palette entry/default config, inspector fields for LLM config plus coordinator policy and subgraph input bindings, graph validation, visual meta, and i18n labels.\n- Did not modify old `llm_mutation` behavior and did not edit `general-code-search-mpbe2hb4.json`.\n## 验证了什么\n- mcp__bb__.begin_ticket_work without assignee: passed; ticket moved to in...",
+        "cleanup reason: filename 包含 000078；正文实现独立 llm_coordinator MVP，包含 backend NodeType::LlmCoordinator、executor、frontend support 和测试，是 ticket 000078 的核心实现交付"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-19-codex-000078-llm-coordinator-isolated-subgraph-mvp.md`.",
+      "evidence": [
+        "inbox/2026-05-19-codex-000078-llm-coordinator-isolated-subgraph-mvp.md",
+        "# Updated 000078 to latest subgraph MVP definition\n时间: 2026-05-19T06:54:20Z\n来源: Codex\n项目: blackboard\n## 做了什么\n- Updated ticket 000078 title to `LLM Coordinator isolated subgraph MVP`.\n- Replaced the prior LLM mutation/scout/task-tool framing with the latest MVP: LLM_Coordinator creates one isolated subgraph draft, validates it, executes it, reads subgraph result, and exposes typed outputs to parent graph downstream.\n- Kept ticket history out of the ticket spec: `progress_record` remains empty and the ticket now only describes the current product definition.\n- Trimmed attachments to active TaskGraph/Pregel references: 000060 and 000069.\n## 验证了什么\n- mcp__bb__.update_ticket: passed; backend consistency checks passed for id, lane, filename, duplicates, counter, and lane_catalog.\n## 下一步\n- Implementation should define the four Coordinator tools: generate_subgraph, validate_subgraph, execute_subgraph, get_subgraph_result.\n## 相关位置\n- tickets/000078-llm-mutation-coordinator.json",
+        "cleanup reason: filename 包含 000078；正文记录将 ticket 000078 更新到最新 isolated subgraph MVP 定义，包含 title 变更和 BDD spec 重写，是 ticket 元数据维护记录"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-19-codex-000078-split900-并发3-timeout900-run-已发起.md`.",
+      "evidence": [
+        "inbox/2026-05-19-codex-000078-split900-并发3-timeout900-run-已发起.md",
+        "# 078 降 parent 并发到3并提高 node timeout 后重跑\n时间: 2026-05-19 23:59 +08:00\n来源: codex\n项目: blackboard\n## 做了什么\n- 按用户要求未修改 Coordinator prompt；REST PATCH 时校验 `prompt_unchanged=True`。\n- 将 `general-code-search-mpbe2hb4` 更新到 version 25，仅修改 metadata.run_policy：`allow_concurrent_runs=true`、`max_concurrent_runs=3`、`queue_enabled=true`、`max_queue_wait_ms=1800000`。\n- 将 HTTP task graph runner 默认 `node_timeout` 从 600 秒改为 900 秒，并重启 bb-server。\n- 发起 10 个新 run，prompt 继续要求拆分为多个 scout 子任务并综合，输出文件为 `split900_1.md` 到 `split900_10.md`。\n- 初始创建结果：前 3 个为 `pending`，后 7 个为 `queued`，符合 parent 并发 3 策略。\n- Run manifest 已保存到 `.bb_template/runtime/task_graph_runs/blackboard/078-concurrent-split900-runs.json`。\n## 验证了什么\n- `cargo fmt` in `bb_backend`: passed。\n- `cargo build -p bb_cli`: passed。\n- bb-server restart 后 `GET /healthz`: passed。\n- REST PATCH `/api/projects/blackboard/task-graphs/project/general-code-search-mpbe2hb4`: version 25, validation passed, prompt unchanged。\n- REST POST `/api/projects/blackboard/task-graph-runs`: 10 次均创建成功；3 pending + 7 queued。\n## 下一步\n- 用户等待队列逐批执行；重点观察 900s timeout + parent 并发 3 是否改善 scout 超时问题。\n## 相关位置\n- bb_backend/crates/bb_cli/src/http/task_graph/runner_config.rs\n- .bb_template/projects...",
+        "cleanup reason: 文件名含 078，降 parent 并发到 3 并提高 node timeout 后重跑，记录了 10 个 run 的发起结果，行为属于 000078 MVP 试验 graph 的运行策略调整"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-19-codex-000078-v24-拆分式并发-run-复核.md`.",
+      "evidence": [
+        "inbox/2026-05-19-codex-000078-v24-拆分式并发-run-复核.md",
+        "# 078 10存1结果复核：已拆分，主要失败因超时\n时间: 2026-05-19 23:40 +08:00\n来源: codex\n项目: blackboard\n## 做了什么\n- 复核 `.bb_template/runtime/task_graph_runs/blackboard/078-concurrent-split-runs.json` 中 10 个 parent run。\n- 确认 10 个 parent run 全部使用 `general-code-search-mpbe2hb4` version 24；报告中“8轮旧图 + 2轮新图”的说法不准确，所谓新图 ID 是 Coordinator 生成的 child graph id，不是父图模板。\n- 确认 10 个 child run 都生成了拆分式子图：6 nodes、4 LLM nodes、7 edges，典型结构为 `start -> 3 scout -> synthesize -> end`。没有发现本轮 child 退化为 `start -> single llm -> end`。\n- 确认结果仍是 1/10 succeeded：成功 parent `run-20260519-152522-29de8d7b`，child `run-20260519-152939-00731b1b`。\n- 确认成功 child 产出 scout artifacts 和 synthesize artifact，并实际写出 `.bb_template/split_4.md`，长度 15574 bytes。\n- 确认 9/10 失败主因基本一致：child run 的第一个 scout 节点约 600s `agent session timed out`，父 Coordinator 因 `execute_subgraph_failed` 失败；其他并行 scout 仍显示 running，synthesize 未执行。\n## 验证了什么\n- REST GET parent run details: 10/10 可读。\n- REST GET child run details: 10/10 可读。\n- 本地读取 child graph snapshots/artifacts: 成功。\n## 下一步\n- 如果继续实验，建议不要再按 parent 并发 10 + 每个 child 3 scout 的方式直接压测；这会形成约 30 个并行 opencode/minimax scout，当前 600s node timeout 下很容易超时。可先降 parent 并发到 2-3，或减少 scout prompt 范围，或提高 node_timeout 后再测。\n## 相关位置\n- .bb_template/runt...",
+        "cleanup reason: 文件名含 000078，内容完整复核 10 个 v24 run 的拆分式子图生成、succeeded 结果和超时失败原因，与 000078 的 MVP 试验 graph 执行结果直接相关"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-19-codex-000078-save-error-diagnostics.md`.",
+      "evidence": [
+        "inbox/2026-05-19-codex-000078-save-error-diagnostics.md",
+        "# Fixed TaskGraph save error reporting for HTTP 400\n时间: 2026-05-19T10:12:41Z\n来源: Codex\n项目: blackboard\n## 做了什么\n- Investigated save failure for `general-code-search-mpbe2hb4`: the on-disk graph still has only the old `llm_mutation`, so the reported HTTP 400 is from the browser save payload rather than the saved file.\n- Identified frontend bug: `fetchJson` discarded backend error JSON and `TaskGraphEditorPanel` classified all PATCH failures as request/network failures.\n- Added `TaskGraphHttpError` parsing for backend `{ error: { code, message, details } }` responses and preservation of validation details.\n- Updated save error handling so HTTP 400 `validation_failed` uses the validation failure wording and shows backend details instead of saying the write request did not complete.\n## 验证了什么\n- npm run build --prefix bb_web: passed after the error reporting fix.\n## 下一步\n- If save still fails after this UI fix, read the now-visible validation detail. If it says unknown variant/type for `llm_coordinator`, restart/rebuild the running bb-server so it uses the backend code that added `NodeType::LlmCoordinator`.\n## 相关位置\n- bb_web/src/data/taskGraphs.ts\n- bb_web/src/components/TaskGraphEditorPa...",
+        "cleanup reason: 文件名含 000078 token；内容为 TaskGraph save error reporting HTTP 400，与 000078 的 graph 验证失败场景直接对应；相关 graph 文件 general-code-search-mpbe2hb4 是 000078 的试验 graph。"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-18-codex-generic-mutation-node-first-implementation-pass.md`.",
+      "evidence": [
+        "inbox/2026-05-18-codex-generic-mutation-node-first-implementation-pass.md",
+        "# TaskGraph Mutation node exposed and llm_mutation generalized\n时间: 2026-05-18T17:12:45Z\n来源: Codex\n项目: blackboard\n## 做了什么\n- Exposed a generic `Mutation` palette node backed by `llm_mutation`, with default fanout prompt, model/runtime config, generated scout prompt template, and markdown scout outputs.\n- Rendered `llm_mutation` as a virtual dashed ellipse in graph canvases so it visually differs from normal LLM nodes.\n- When connecting `Mutation -> Summary`, the editor now auto-fills `target_node_id` on the Mutation node while keeping the edge itself a normal exec topology edge.\n- Generalized backend `llm_mutation` with `mode = fanout`: it can run its own LLM prompt to produce `scouts[]`, infer or use the downstream fan-in target, remove the direct continuation edge, add generated scout LLM nodes, wire scout fanout/fanin edges, and patch the target node with `scout_outputs`, `merge_goal`, and `doc_target` inputs.\n- Kept existing `scout_fanout` / `writer_fanout` KB behavior working.\n## 验证了什么\n- cargo fmt --manifest-path bb_backend\\Cargo.toml --all: passed.\n- npm exec vue-tsc -- -p tsconfig.app.json --noEmit: passed.\n- cargo test --manifest-path bb_backend\\Cargo.toml -p bb_core topol...",
+        "cleanup reason: 内容实现 generic Mutation palette node 和 llm_mutation generalization，包括 scout fanout 行为；000078 明确提到 '旧 LLM_Mutation 节点先保留，语义不变'，且 000078 的子图草案/验证/执行模型与该 note 的 scout topology 完全对齐。"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-078-taskgraph-agentnode-resourcebundle-并发压测结果.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-078-taskgraph-agentnode-resourcebundle-并发压测结果.md",
+        "# Codex 078 AgentNode ResourceBundle 并发压测 10 run\n时间: 2026-05-21T09:34:45Z\n来源: Codex\n项目: blackboard\n## 做了什么\n- 使用 task-coordinator-l2-resource-bundle v2 发起 10 个真实 run，parent max_concurrent_runs=3，workspace runtime_max_concurrency.pi=3。\n- 批次 marker：agentnode-concurrency-20260521-171138；run 列表保存到 C:/Dev/blackboard/.bb_template/.staging/agentnode-concurrency-20260521-171138-runs.json。\n- 压测结果：9/10 succeeded，1/10 failed；成功 run 均到 superstep 11、graph revision 1、end-success。\n- 所有 run 的 planner 均生成 scout plan 并进入确定性 fanout；成功 run 生成 4~5 个动态 AgentNode scout，第 8 个失败 run 生成 6 个 scout。\n- 成功 run 平均执行耗时约 361.8s，最短 273.9s，最长 422.5s；批次总墙钟约 1241.8s。\n- 报告质量抽样：成功报告大小约 12KB~24KB，均覆盖核心结论/Pregel/前端/运行态，大部分含代码路径和 source anchors。\n## 验证了什么\n- 后端健康检查 /healthz：ok。\n- REST GET graph run_policy：allow_concurrent_runs=true，max_concurrent_runs=3，queue_enabled=true，max_queue_wait_ms=7200000。\n- C:/Dev/blackboard/.bb_template/config/task_graph_runner.toml：node_timeout_secs=900，run_timeout_secs=1800，runtime_max_concurrency.pi=3。\n- 压测统计文件：C:/Dev/blackboard/.bb_template/.staging/agentnode-concurrency-20260521-171138-summary.json。\n- 质量统计文件：C:/Dev/blackboard/.bb_template/.staging/agentnode-concurrency-20260521-171138-quali...",
+        "cleanup reason: 文件名含 078 token；内容为 AgentNode ResourceBundle 并发压测，与 000078 的 LLM_Coordinator 节点 ResourceBundle 生命周期直接相关；ticket 000078 也提到 'task-coordinator-l2-resource-bundle' 路径；压测失败分析指出 TaskGraph run lifecycle 一致性问题正是 000078 需要处理的子图执行边界。"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-078-taskgraph-l2-resource-bundle-graph-试验.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-078-taskgraph-l2-resource-bundle-graph-试验.md",
+        "# 078 L2 resource bundle graph 跑通\n时间: 2026-05-21T16:35:00+08:00\n来源: codex\n项目: blackboard\n## 做了什么\n- 复制 `general-code-search-mpbe2hb4` 为新图 `task-coordinator-l2-resource-bundle`，保留原图不动。\n- 新图新增显式 `resource-bundle` data_value 节点，输出 JSON ResourceBundle，包含 `task.input`、`data_sources.source_root`、`data_sources.wiki_slice`、`runtime.workspace`、`skills` 和执行 contracts。\n- Planner / repair / dynamic scout / synthesize 均改为读取 `resource_bundle`，synthesize 的 bundle 进一步包含 upstream artifacts：scout plan path、scout outputs path、output path。\n- 新增 `.bb_template/skills/code-research/SKILL.md`，并让 planner、repair、synthesize、generated scout 注入 `code-research` skill。\n- 后端增强：data_value 的 object/array value 现在递归渲染模板；完整 `{{inputs.skills}}` 可保留 JSON array，不退化成字符串。\n- 后端增强：`llm_mutation.generated.skills` 支持传入生成的动态 LLM scout node，动态 scout 可以继承同一套 skill。\n- 重启后端 PID 360808，使用新二进制跑真实 L2 graph。\n- 真实 run `run-20260521-083011-6d657c92` 使用正确 REST 字段 `input` 发起，最终 succeeded，superstep 11，graph revision 1；生成 4 个动态 scout：definition/types/pins/validation、compile/pregel/execution、run_state/API/nodes、frontend graph editor/type mirror。\n## 验证了什么\n- `cargo fmt` in `bb_backend`: 通过。\n- `cargo test -p bb_core data_value_resolves_nested...",
+        "cleanup reason: 文件名含078且正文描述L2 resource bundle graph试验，验证了LLM_Coordinator节点类型的运行，涉及task-coordinator-l2-resource-bundle图和动态scout生成，属于ticket 000078的MVP试验范围"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-078-taskgraph-pi-runtime-source-root-workspace-分离与真实跑通.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-078-taskgraph-pi-runtime-source-root-workspace-分离与真实跑通.md",
+        "# 078 TaskGraph Pi source-root/workspace 分离跑测\n时间: 2026-05-21T15:38:00+08:00\n来源: codex\n项目: blackboard\n## 做了什么\n- 修正 `general-code-search-mpbe2hb4` 输入：`input` 保持用户 prompt，新增 kebab-case `source-root` 作为资料根目录；动态 scout 的 Agent workspace/cwd 继续使用 `{{env.workspace}}`。\n- 修正 graph prompt：planner/scout 的候选路径改为相对 Data source root，不再把 `env.workspace` 当资料根目录。\n- 修正 Pi provider：`tool_execution_end isError=true` 仅记录 ToolResult error，不再直接设置 `capture.error_message`；provider/turn 级 `extension_error`、message error、auto_retry failed 仍为 fatal。\n- 保持 Windows Pi 运行路径修复：后端通过 `node.exe <pi-coding-agent/dist/cli.js>` 启动 Pi，避开 `.cmd` batch 参数限制。\n- 重启后端与前端：后端 PID 314700，前端 Vite 8060 进程已启动。\n- 真实运行 `run-20260521-073444-3f1764e6`：使用 `runtime=pi`、`model=minimax-cn/MiniMax-M2.7-highspeed`、`input=帮我调研下bb系统是怎么做task graph系统的，核心是用了什么`、`source-root=C:/Dev/blackboard`，最终 succeeded。\n## 验证了什么\n- `cargo fmt` in `bb_backend`: 通过。\n- `cargo test -p bb_core pi_tool_errors_do_not_mark_successful_turn_failed -- --nocapture`: 通过。\n- `cargo test -p bb_core pi_events_persist_status_text_tools_usage_and_error -- --nocapture`: 通过。\n- `cargo test -p bb_core resolve_pi_spawn_command_uses_node_cli_for_npm_shim -- --nocapture`: 通过。\n- `cargo...",
+        "cleanup reason: 文件名含078且正文描述Pi runtime的source-root/workspace分离与真实跑通，属于ticket 000078 LLM_Coordinator节点试验的一部分（Pi runtime是Coordinator的runtime实现）"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-078-taskgraph-queue-timeout-retry-120min-policy.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-078-taskgraph-queue-timeout-retry-120min-policy.md",
+        "# 078 v30 queue timeout retry 已实现并完成真实并发跑测\n时间: 2026-05-21 13:05 Asia/Shanghai\n来源: codex\n项目: blackboard\n## 做了什么\n- 在 TaskGraph run_policy 增加 queue_timeout_retry_enabled 与 max_queue_timeout_retries，默认关闭、默认最大重试 5 次。\n- 后端 dispatch_queued_task_graph_runs 在 queued run 超过 queue_deadline_at 时，会读取当前 graph policy；若启用重试且未超过上限，则写入 run_queue_timeout_retry 事件并刷新 queue_deadline_at，保持原 queued_at/FIFO 排队顺序；超过上限后仍写 run_queue_timeout 并 failed。\n- 为 queued run 增加 update_queued_run_deadline 后端 API helper，并在 decode/semantic validation 中校验新增字段。\n- 前端 Graph 设置面板增加“排队超时后自动重试”和“最大超时重试次数”字段，TaskGraphRunPolicy TS 类型与中英文 i18n 已更新。\n- 目标图 general-code-search-mpbe2hb4 当前 run_policy 已改为 max_queue_wait_ms=7200000（120min）、queue_timeout_retry_enabled=true、max_queue_timeout_retries=5。\n- 重启本地后端为新 bb.exe 后，发起真实 10-run 批次：C:\\Dev\\blackboard\\.bb_template\\.staging\\078-v30-queue120-retry5-concurrency3-20260521-122252-runs.json。最终 8 succeeded / 2 failed；0 个 run 发生 queue timeout retry，说明本轮排队时间未超过 120min。\n## 验证了什么\n- cargo fmt：通过。\n- npm run build --prefix bb_web：通过。\n- cargo test -p bb_cli tg_queued_dispatcher -- --nocapture：通过，覆盖旧超时失败路径和新增超时重试后再失败路径。\n- cargo test -p bb_core graph_run_policy -- --nocapture：通过。\n- API GET /api/proj...",
+        "cleanup reason: 文件名含078且正文描述v30 queue timeout retry与真实并发跑测，属于ticket 000078的run_policy验证内容，10-run批次测试验证了Coordinator调度的并发能力"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-078-taskgraph-resourcebundle-agentnode-产品化与-l2-跑通.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-078-taskgraph-resourcebundle-agentnode-产品化与-l2-跑通.md",
+        "# Codex 078 ResourceBundle AgentNode 产品化与真实跑通\n时间: 2026-05-21T09:05:32Z\n来源: Codex\n项目: blackboard\n## 做了什么\n- 后端 LlmConfig 增加可选 harness 契约，支持 kind=agent_node、resource_bundle_input、output_contract，旧 LLM config 不带 harness 仍保持兼容。\n- llm_mutation.generated 增加 harness 透传；当 harness.kind=agent_node 时，动态生成的 scout 节点自动带 preset=agent_node，测试覆盖了 harness/preset 传递。\n- 前端节点面板新增 ResourceBundle preset（复用 data_value）和 AgentNode preset（复用 llm），AgentNode 默认 runtime=pi/model=minimax，并显示 resource_bundle 数据输入 pin。\n- 升级 project graph task-coordinator-l2-resource-bundle v2：ResourceBundle 结构化注入 input/source-root/wiki-slice/skills/runtime；planner/repair/synthesize/dynamic scouts 都设置 agent_node harness；最终写文件仍由 system_write_output 完成。\n- 重启后端并真实运行 run-20260521-085943-b8333bd1，最终 succeeded；生成 5 个动态 scout 并全部成功，最终报告写到 C:/Dev/blackboard/.bb_template/078-taskgraph-research-l2-resource-bundle.md。\n## 验证了什么\n- cargo fmt：通过。\n- cargo test -p bb_core data_value_resolves_nested_resource_bundle_templates -- --nocapture：通过。\n- cargo test -p bb_core scout_fanout_plan_builds_deterministic_mutation_requests -- --nocapture：通过。\n- cargo test -p bb_core data_value_resolves_graph_input_template -- --nocapture：通过。\n- npm run build --pre...",
+        "cleanup reason: 文件名含 078，正文描述 ResourceBundle AgentNode 产品化与 L2 跑通，harness.kind=agent_node、动态 scout、运行时 pi 等与 000078 LLM_Coordinator 独立节点语义一致"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-078-taskgraph-v30-并发复测.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-078-taskgraph-v30-并发复测.md",
+        "# 078 v30 runtime=opencode:3 并发10复测结果\n时间: 2026-05-21 11:08 Asia/Shanghai\n来源: codex\n项目: blackboard\n## 做了什么\n- 基于 general-code-search-mpbe2hb4 v30 启动 10 个 run，parent run policy 为 max_concurrent_runs=3，runtime_max_concurrency.opencode=3。\n- 批次记录：C:\\Dev\\blackboard\\.bb_template\\.staging\\078-v30-runtime3-concurrency-20260521-102713-runs.json。\n- 最终结果：9 succeeded，1 failed；失败 run 为 run-20260521-022714-b2e4b305，superstep=0，未启动节点。events.jsonl 显示原因是 run_queue_timeout，queued_at=02:27:14Z，queue_deadline_at=02:57:14Z。\n- 9 个实际启动的 run 均完成到 superstep=11，writer 节点 succeeded；每个 run 动态生成 4 或 5 个 scout，没有退化为 start->llm->end。\n- 监控过程中 opencode 进程数通常保持在 3，后续随队列完成降到 2/1/0；本轮未观察到此前 Busy: FileSystem.writeFile snapshot 类失败。\n- 注意：system_write_output 仍写固定文件 C:/Dev/blackboard/.bb_template/078-taskgraph-research-fanout.md，因此 9 个成功 run 会互相覆盖最终文件；每个 run 的 synthesize-output.md artifact 仍单独保留。\n## 验证了什么\n- API GET /api/projects/blackboard/task-graphs/project/general-code-search-mpbe2hb4 确认 graph version=30 且 run_policy max_concurrent_runs=3 queue_enabled=true。\n- API GET /api/projects/blackboard/task-graph-runs/<id> 汇总最终状态、superstep、writer 状态和 mutation batch。\n- 读取 run-20260521-022714-b2e4b305/events.jsonl 确认唯一失败为队列等待超过 ...",
+        "cleanup reason: 文件名含 078，正文描述 v30 并发复测、superstep=11 完成、动态 scout 生成，与 000078 LLM_Coordinator 子图执行语义一致"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-078-taskgraph-执行优化与并发跑测停止.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-078-taskgraph-执行优化与并发跑测停止.md",
+        "# 078 TaskGraph node retry / scout output tolerance run stopped\n时间: 2026-05-21T07:01:01Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 实现后端 LLM agent-session transient retry 配置与运行逻辑草案：LlmConfig.retry 默认 enabled=true/max_attempts=3/backoff_ms=1000，opencode/codex/codebuddy agent-session 失败命中 timeout/api_error/rate limit/5xx/429/network 等 transient 文案时重试。\n- 实现 schema_validate 的 code_research_scout_outputs 确定性 repair 草案：metadata-only scout 输出补 findings:[]，string/flat/non-object 输出包装成 findings[]，用于降低 scout 输出不稳定导致的 hard fail。\n- 目标 graph general-code-search-mpbe2hb4 调整 scout-output-final schema：允许 source_anchors:[]、允许 findings:[]，并兼容仅 coverage_notes/risks 的 scout 输出；同时给本轮跑测传入 run_marker 隔离 .staging scout plan/output 文件。\n- 按用户要求停止最新 10-run batch：1-5 与 10 已 succeeded；6/7/8 在 running 状态 cancel 后落 failed；9 queued cancel 后 cancelled；当前无 active opencode 进程残留。\n- 并行 pi/第四 provider 改动按用户要求未处理、未回退、未纳入本轮判断。\n## 验证了什么\n- cargo fmt: 通过。\n- cargo test -p bb_core repairs_code_research_scout_outputs_for_metadata_only_and_string_values -- --nocapture: 通过。\n- cargo test -p bb_core classifies_transient_agent_failures -- --nocapture: 通过。\n- cargo test -p bb_core source_by_ids_collects_exact_node_outputs_and_marks_missin...",
+        "cleanup reason: 文件名含 078，正文描述 retry 配置、scout output tolerance、schema_validate deterministic repair，与 000078 LLM_Coordinator 执行层优化语义一致"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-pi-task-graph-深度集成调研补充.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-pi-task-graph-深度集成调研补充.md",
+        "# Pi 深度集成 Task Graph 调研补充\n时间: 2026-05-21\n来源: codex\n项目: blackboard\n## 做了什么\n- 根据用户澄清，将焦点从 `runtime=pi` provider 接入提升到更深层的 Task Graph 集成。\n- 新增并扩展调研文档：`.bb_template/wiki/research/2026-05-21-pi-task-graph-integration.md`。\n- 补充核心结论：provider 只是 L1，真正有价值的是 Pi AgentHarness 作为 Task Graph AgentNode 微内核、Pi extension/package 作为 Task Graph 插件 ABI、Pi session tree 对齐 fanout/fork/provenance、Pi durable harness 思路进入 Blackboard run_state。\n- 明确不建议方向：不要让 Pi 替代 Pregel coordinator，不要让 Pi extension 直接写 graph/run_state，不要把 Pi session leaf 当 Pregel checkpoint。\n## 验证了什么\n- `Get-Content .bb_template\\wiki\\research\\2026-05-21-pi-task-graph-integration.md -TotalCount 180`: 通过，新增深度集成章节可读。\n- `Measure-Object -Line -Word -Character`: 通过，407 行 / 2130 词 / 16834 字符。\n- `git status --short .bb_template\\wiki\\research`: 通过，research 目录为新增/修改状态。\n- `mcp__bb__.create_inbox_note`: 通过，本次补充交接已写入。\n## 下一步\n- 若继续落地，建议先设计 `AgentNode harness` schema，而不是先实现 `runtime=pi` provider；provider 只是 transport，schema 决定能否深度集成。\n- 可以继续拆一张 implementation ticket：Pi AgentHarness sidecar / extension bridge / session fork provenance 三块分阶段实现。\n## 相关位置\n- C:\\Dev\\blackboard\\.bb_template\\wiki\\research\\2026-05-21-pi-task-graph-integration.md\n- C:\\Dev\\blackboa...",
+        "cleanup reason: note 正文明确提到 'general-code-search-mpbe2hb4 可作为 MVP 试验 graph'，与 000078 summary 中的 MVP 试验目标一致；正文核心内容 Pi AgentHarness 作为 TaskGraph AgentNode 微内核直接对应 000078 的 LLM_Coordinator 节点设计；正文 '下一步' 建议继续拆 implementation ticket，落在 000078 覆盖范围。"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-19-codex-task-graph-runner-config-refactor.md`.",
+      "evidence": [
+        "inbox/2026-05-19-codex-task-graph-runner-config-refactor.md",
+        "# Task Graph runner 配置化与 codex command 默认值调整\n时间: 2026-05-20T00:12:32+08:00\n来源: codex\n项目: blackboard\n## 做了什么\n- 将 Task Graph runner 的 codex 默认值从 macOS 绝对路径改为命令名 codex；codebuddy/opencode 同样走命令默认。\n- 新增 workspace 配置文件 config/task_graph_runner.toml，存放 codex/codebuddy/opencode command 与 node/run timeout 默认值。\n- Daemon CLI 的 --codex/--codebuddy/--opencode/--node-timeout-seconds/--run-timeout-seconds 改为可选 override，避免默认值覆盖配置层。\n- Workspace::init_from_seed 现在会复制 config/ 目录，保证新 workspace 带 runner 配置。\n## 验证了什么\n- cargo fmt: 通过\n- cargo test -p bb_cli runner_config -- --nocapture: 通过，3 passed\n- cargo test -p bb_core workspace_init_from_seed_copies_assets_without_runtime -- --nocapture: 通过，1 passed\n- cargo build -p bb_cli: 通过\n- bb HTTP 127.0.0.1:3002 /healthz: 通过；127.0.0.1:3001 存在旧不可见 LISTEN PID 206300 导致健康检查超时。\n## 下一步\n- 如果需要恢复默认 3001 服务，需要先处理 netstat 显示的旧 LISTEN PID 206300；当前进程表无法定位该 PID。\n## 相关位置\n- bb_backend/crates/bb_cli/src/http/task_graph/runner_config.rs\n- bb_backend/crates/bb_cli/src/daemon.rs\n- bb_backend/crates/bb_cli/src/main.rs\n- bb_backend/crates/bb_core/src/workspace.rs\n- bb_backend/crates/bb_core/src/tests/mod.rs\n- .bb_template/config/task_graph_runner.toml",
+        "cleanup reason: note 描述 Task Graph runner 配置化（codex 默认值改为命令名、config/task_graph_runner.toml 新增、daemon CLI --codex/--opencode 参数重命名、workspace 初始化复制 config/），这是 LLM_Coordinator 独立节点 MVP 所需的 runtime 配置基础设施，正文多个相关位置与 000078 验收目标一致。文件名含 078 token 为强信号。"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-pi-l1-替代-opencode-生产价值论证.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-pi-l1-替代-opencode-生产价值论证.md",
+        "# Pi L1 替代 OpenCode 论证补充\n时间: 2026-05-21\n来源: codex\n项目: blackboard\n## 做了什么\n- 按用户要求将论证焦点收窄到 L1：Pi 作为 AgentSession runtime 第四 provider 时，为什么值得替代 OpenCode。\n- 更新 `.bb_template/wiki/research/2026-05-21-pi-task-graph-integration.md`，新增 `L1 替代 OpenCode 的生产价值` 章节。\n- 论证从 headless integration 面、RPC 协议、供应链 pin/审计、产品耦合、structured final output、PoC 验证指标六个维度展开。\n- 本机验证 OpenCode 当前版本为 `1.15.0`；npm 当前 `opencode-ai` latest 为 `1.15.6`，OpenCode Windows x64 optional binary package unpacked size 约 160MB；Pi coding-agent package unpacked size 约 11.5MB。\n## 验证了什么\n- `opencode --version`: 通过，返回 `1.15.0`。\n- `npm view opencode-ai version dist-tags --json`: 通过，latest 为 `1.15.6`，存在大量 snapshot/dev/beta/windows/fix dist-tags。\n- `npm view opencode-windows-x64@1.15.0 dist.unpackedSize`: 通过，约 `160444408` bytes。\n- `npm view @earendil-works/pi-coding-agent@0.75.4 dist.unpackedSize`: 通过，约 `11474594` bytes。\n- `Get-Content .bb_template\\wiki\\research\\2026-05-21-pi-task-graph-integration.md | Select-Object -Skip 70 -First 190`: 通过，新增章节可读。\n- `Measure-Object -Line -Word -Character`: 通过，文档当前 509 行 / 2807 词 / 21953 字符。\n- `mcp__bb__.create_inbox_note`: 通过，本次补充交接已写入。\n## 下一步\n- 如果继续推进，建议建立 L1 A/B benchmark：同 prompt 下比较 OpenCode 与 Pi...",
+        "cleanup reason: note 补充 L1 替代 OpenCode 的生产价值论证（headless integration、RPC 协议、供应链体积对比、schema 输出等），属于 LLM_Coordinator 节点以 pi 为第四 provider 的可行性论证，与 000078 验收目标直接相关。"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-earendil-works-pi-调研落盘.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-earendil-works-pi-调研落盘.md",
+        "# earendil-works-pi 调研完成\n时间: 2026-05-21\n来源: codex\n项目: blackboard\n## 做了什么\n- 调研 GitHub 仓库 earendil-works/pi、pi.dev 文档、README、package manifests，并浅克隆源码快照 `4868222e3414554987bf4b05fbb393fc65080aa0` 检查 packages/coding-agent、packages/agent、packages/ai、packages/tui 的职责边界。\n- 按用户要求新增调研文档：`.bb_template/wiki/research/2026-05-21-earendil-works-pi.md`。\n- 文档覆盖 Pi 的定位、当前状态、CLI/RPC/SDK/Extension/Agent Core/AI Provider/TUI 模型、与 Blackboard 的关系、可借鉴点、风险和接入方案。\n## 验证了什么\n- `Get-Content .bb_template\\wiki\\research\\2026-05-21-earendil-works-pi.md -TotalCount 40`: 通过，文件可读且内容正确。\n- `Measure-Object -Line -Word -Character`: 通过，122 行 / 835 词 / 8018 字符。\n- `git status --short .bb_template\\wiki\\research\\2026-05-21-earendil-works-pi.md`: 通过，仅显示该调研文档为新增未跟踪文件。\n- `tool_search` Blackboard 工具发现: 通过，暴露 `mcp__bb__` namespace。\n- `mcp__bb__.list_projects`: 通过，确认 project `blackboard` 可见。\n## 下一步\n- 若要继续，可基于文档中的方案 A 做一个 Pi skill PoC，用 Pi 调用 Blackboard CLI/结构化工具。\n- 若要评估更深集成，可单独调研 Pi extension 封装 Blackboard MCP/HTTP 的可行性和安全边界。\n## 相关位置\n- C:\\Dev\\blackboard\\.bb_template\\wiki\\research\\2026-05-21-earendil-works-pi.md\n- https://github.com/earendil-works/pi\n- https://pi.dev/docs/latest",
+        "cleanup reason: 文件名和正文明确调研落盘 Pi（earendil-works/pi），覆盖 Pi 定位、与 Blackboard 关系、skill/MCP 集成；000078 summary 明确包含 'Pi skill PoC' 和 'Blackboard MCP/HTTP 集成可行性调研'，属于该 ticket 调研阶段的直接产出。"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-pi-作为第四个-agentsession-provider-runtime.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-pi-作为第四个-agentsession-provider-runtime.md",
+        "# Pi AgentSession provider/runtime 接入完成\n时间: 2026-05-21T06:43:39Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 全局安装 Pi CLI：`npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.75.4`，`pi --version` 返回 `0.75.4`。\n- 新增 Pi AgentSession provider，支持 `pi --mode json --print` JSONL 事件解析、provider session id、文本/思考流、工具调用、usage、错误与 finalize。\n- 后端 task graph/runtime 已把 `pi` 作为第四个 AgentSession runtime/provider：KNOWN_RUNTIMES、RunnerOptions.pi_path、LLM node dispatch、嵌套 runner 配置、daemon `--pi`、runner config `pi_command/pi_path`、direct project chat、runtime model endpoint 均已接入。\n- Agent tool/connectors/skills/default agent 已补齐 Pi：工具规格使用 npm 包 `@earendil-works/pi-coding-agent@0.75.4` + `--ignore-scripts`，connector 目标为 `~/.pi/agent/AGENTS.md`，skills 注入到 `.pi/skills`。\n- 前端已把 Pi 加入 AgentChatFab、TaskGraph 编辑/表单、AgentWorkbench、connector lock 与 i18n 文案。\n- 按用户要求没有重启后端，避免打断正在执行的 task。\n## 验证了什么\n- `pi --version`: 通过，返回 `0.75.4`。\n- `cargo fmt --all`（bb_backend）: 通过。\n- `cargo check --workspace`（bb_backend）: 通过。\n- `cargo test -p bb_core pi_ -- --nocapture`（bb_backend）: 通过，4 tests passed。\n- `npm run build --prefix bb_web`: 通过。\n- `mcp__bb__.list_projects`: 通过，确认 project `blackboard` 可见。\n- `mcp__bb__.create_inbox...",
+        "cleanup reason: 文件名含 'pi-agentsession-provider-runtime'，正文详细记录 Pi 作为第四个 AgentSession runtime 的完整接入，包括 LLM node dispatch、daemon、agent tools/skills/connectors；000078 summary 直接描述 LLM_Coordinator 与 Pi runtime 协作，note_3 是该 runtime 集成的完成记录。"
+      ]
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-21-codex-taskgraph-external-research-openai-symphony.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-taskgraph-external-research-openai-symphony.md",
+        "# 2026-05-21 Codex 外部调研管线 graph 与 wiki/research 输出契约\n时间: 2026-05-21 18:16 Asia/Shanghai\n来源: codex\n项目: blackboard\n## 做了什么\n- 新增 project graph `external-research-openai-symphony@v1`：ResourceBundle -> external research planner -> deterministic scout fanout -> scout output gate -> synthesize -> system_write_output -> end。\n- 新 graph 使用 Pi + `minimax-cn/MiniMax-M2.7-highspeed`，默认 primary URLs 为 OpenAI Symphony 文章与 `https://github.com/openai/symphony`。\n- 新增并注入 skills：`external-research` 与 `research-output-contract`，同时写入 `.bb_template/skills` 和 `.bb_template/.pi/skills`。\n- 更新 `code-research` skill：研究报告最终落盘必须遵守 `resource_bundle.contracts.final_output_dir`，Blackboard research 默认为 `wiki/research`。\n- 更新现有 code research graph 输出契约：`task-coordinator-l2-resource-bundle` v2 -> v3，`general-code-search-mpbe2hb4` v30 -> v31，最终输出路径改到 `{{env.workspace}}/wiki/research/...`。\n- 发起真实外部调研 run `run-20260521-100833-dcd762e5`，5 个动态 scout 自由探索后收敛到 synthesize，并由 system writer 落盘。\n## 验证了什么\n- JSON 解析校验：`external-research-openai-symphony.json` / `task-coordinator-l2-resource-bundle.json` / `general-code-search-mpbe2hb4.json` 均可解析。\n- 后端读取新 graph：`GET /api/projects/blackboard/task-graphs/project/external-research-o...",
+        "cleanup reason: 正文明确提到 'general-code-search-mpbe2hb4 可作为 MVP 试验 graph'，并验证了该 graph 新增 resource-bundle 支持和输出契约改到 wiki/research；000078 summary 直接引用该 graph 作为 MVP 试验目标，note_5 记录了相关 graph 的迭代升级。"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-pi-skills-无锁事务化-snapshot-修复.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-pi-skills-无锁事务化-snapshot-修复.md",
+        "# Pi skills copy-on-write snapshot 修复并重启后端\n时间: 2026-05-21T13:21:32Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 确认 Pi skills 锁不是普通读文件导致，而是 TaskGraph LLM node 在 runtime concurrency permit 之前执行 skills 注入，并且 Pi 使用共享 `.pi/skills` 目标目录。\n- 在 `bb_core::skills` 增加 `create_skill_snapshot`，使用 staging 目录 copy-on-write，完成后 rename 到 committed snapshot，provider 只读取 committed 目录。\n- TaskGraph Pi LLM node 改为在 runtime permit 之后准备 skills；Pi runtime 不再写共享 `.pi/skills`，而是追加 `--no-skills --skill <run-local snapshot>` 到 Pi custom args。\n- 保留非 Pi runtime 原有 provider-native skills 注入路径，但也移动到 runtime permit 之后执行。\n- 重建 `bb_cli` 并重启后端，新 PID 为 363872，`/healthz` 返回 ok。\n## 验证了什么\n- `cargo fmt --manifest-path bb_backend/Cargo.toml --all` 通过。\n- `cargo test --manifest-path bb_backend/Cargo.toml -p bb_core create_skill_snapshot_commits_complete_snapshot -- --nocapture` 通过。\n- `cargo test --manifest-path bb_backend/Cargo.toml -p bb_core pi_llm_node_uses_committed_skill_snapshot_instead_of_shared_pi_skills -- --nocapture` 通过。\n- `cargo test --manifest-path bb_backend/Cargo.toml -p bb_core pi_llm_node_creates_agent_session -- --nocapture` 通过。\n- `cargo test --manifest-path bb_backend/Cargo.toml -p bb_core skills::tests -- --nocap...",
+        "cleanup reason: Pi skills snapshot copy-on-write 修复直接影响 TaskGraph LLM node 的 skills 注入路径，Pi runtime agent session 创建依赖 skill snapshot，LLM Coordinator 节点正是创建隔离子图并由子图内 LLM/Agent nodes 执行任务，两者在 runtime skills 机制上强耦合"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-task-graph-pi-prompt-injection.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-task-graph-pi-prompt-injection.md",
+        "# 说明并修正 Pi LLM 节点 prompt 注入方式\n时间: 2026-05-21T11:49:18Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 确认 `code-monitor-check-fix` 中旧前端 prompt 仍通过 LLM node 的 `prompt.mode=file` 注入：`frontend-i18n` 读取 `agents/prompts/frontend-i18n.md`，`frontend-theme` 读取 `agents/prompts/frontend-dark-mode.md`。\n- 确认 Pi runtime 的执行路径是 TaskGraph 后端先读取/渲染 node prompt，再通过 `pi --mode json --print --model ... <prompt>` 作为 task prompt 传入，不再依赖 opencode profile 自动加载 prompt。\n- 将两个旧 prompt 文件中的 `{root}` / `{project}` 修正为 TaskGraph 当前模板变量 `{{env.workspace}}` / `{{env.project}}`，避免切到 Pi 后占位符原样泄漏。\n## 验证了什么\n- `rg` 检查两个 prompt 文件：已无 `{root}` / `{project}`，存在 `{{env.workspace}}` / `{{env.project}}`。\n- 尝试 `GET /api/projects/blackboard/task-graphs/system/code-monitor-check-fix`：失败，8060 接口连接被拒绝，判断为当前 bb-server 未响应，未作为 graph 校验失败。\n## 下一步\n- 如果要进一步产品化，可以把 prompt 注入规则写进 AgentNode/LLM node 契约：Pi graph 不依赖 runtime profile prompt，所有任务语义必须来自 node prompt、ResourceBundle 或 skill。\n## 相关位置\n- .bb_template/agents/prompts/frontend-i18n.md\n- .bb_template/agents/prompts/frontend-dark-mode.md\n- .bb_template/task_graphs/system/code-monitor-check-fix.json",
+        "cleanup reason: Pi LLM node prompt 注入方式修正是 TaskGraph LLM node 的核心行为变更，直接影响 LLM Coordinator 节点如何从父图接收任务语义和执行 prompt，属于 LLM Coordinator 独立节点 MVP 的运行时核心实现"
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "kind": "ticket",
+      "target": "000060",
+      "label": "TaskGraph execution foundation"
+    },
+    {
+      "kind": "ticket",
+      "target": "000069",
+      "label": "Pregel topology mutation contract gate"
+    }
+  ],
+  "status": "review",
+  "created_at": "2026-05-19",
+  "updated_at": "2026-05-22",
+  "extra": {}
+}

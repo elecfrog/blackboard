@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::InboxError;
 
 const OPENCODE_VERSION: &str = "1.15.0";
+const PI_VERSION: &str = "0.75.4";
 
 #[derive(Debug, Clone, Copy)]
 struct AgentToolSpec {
@@ -22,6 +23,7 @@ struct AgentToolSpec {
     npm_package: &'static str,
     target_version: &'static str,
     install_arg: &'static str,
+    install_flags: &'static [&'static str],
 }
 
 const AGENT_TOOL_SPECS: &[AgentToolSpec] = &[
@@ -32,6 +34,7 @@ const AGENT_TOOL_SPECS: &[AgentToolSpec] = &[
         npm_package: "opencode-ai",
         target_version: OPENCODE_VERSION,
         install_arg: "opencode-ai@1.15.0",
+        install_flags: &[],
     },
     AgentToolSpec {
         id: "codex",
@@ -40,6 +43,7 @@ const AGENT_TOOL_SPECS: &[AgentToolSpec] = &[
         npm_package: "@openai/codex",
         target_version: "latest",
         install_arg: "@openai/codex@latest",
+        install_flags: &[],
     },
     AgentToolSpec {
         id: "codebuddy",
@@ -48,6 +52,16 @@ const AGENT_TOOL_SPECS: &[AgentToolSpec] = &[
         npm_package: "@tencent-ai/codebuddy-code",
         target_version: "latest",
         install_arg: "@tencent-ai/codebuddy-code@latest",
+        install_flags: &[],
+    },
+    AgentToolSpec {
+        id: "pi",
+        display_name: "Pi",
+        cli_name: "pi",
+        npm_package: "@earendil-works/pi-coding-agent",
+        target_version: PI_VERSION,
+        install_arg: "@earendil-works/pi-coding-agent@0.75.4",
+        install_flags: &["--ignore-scripts"],
     },
 ];
 
@@ -99,6 +113,7 @@ pub struct AgentToolInstallResult {
     pub stderr_tail: Option<String>,
 }
 
+#[must_use]
 pub fn list_agent_tools() -> AgentToolList {
     let npm_program = resolve_command_path("npm");
     let tools = AGENT_TOOL_SPECS
@@ -116,7 +131,9 @@ pub fn install_agent_tool(id: &str) -> Result<AgentToolInstallResult, InboxError
     let npm_spawn_program = crate::platform::resolve_spawn_program(&npm_program.to_string_lossy());
     let command = install_command_display(spec);
     let output = Command::new(&npm_spawn_program)
-        .args(["install", "-g", spec.install_arg])
+        .args(["install", "-g"])
+        .args(spec.install_flags)
+        .arg(spec.install_arg)
         .output()
         .map_err(|source| InboxError::Io {
             path: PathBuf::from(&npm_spawn_program),
@@ -219,11 +236,13 @@ fn status_from_probe(
             Some(format!("failed to parse `{}` version", spec.cli_name)),
         );
     }
-    if spec.id == "opencode" && current_version != Some(OPENCODE_VERSION) {
+    if spec.target_version != "latest" && current_version != Some(spec.target_version) {
         return (
             AgentToolStatus::VersionMismatch,
             Some(format!(
-                "OpenCode must be locked to {OPENCODE_VERSION}, found {}",
+                "{} must be locked to {}, found {}",
+                spec.display_name,
+                spec.target_version,
                 current_version.unwrap_or("unknown")
             )),
         );
@@ -261,7 +280,14 @@ fn npm_global_package_version(npm: &Path, package: &str) -> Option<String> {
 }
 
 fn install_command_display(spec: &AgentToolSpec) -> String {
-    format!("npm install -g {}", spec.install_arg)
+    let mut parts = vec!["npm".to_string(), "install".to_string(), "-g".to_string()];
+    parts.extend(
+        spec.install_flags
+            .iter()
+            .map(std::string::ToString::to_string),
+    );
+    parts.push(spec.install_arg.to_string());
+    parts.join(" ")
 }
 
 fn resolve_command_path(command: &str) -> Option<PathBuf> {
@@ -329,7 +355,7 @@ fn parse_version(text: &str) -> Option<String> {
             token
                 .chars()
                 .next()
-                .filter(|ch| ch.is_ascii_digit())
+                .filter(char::is_ascii_digit)
                 .map(|_| token.to_string())
         })
         .filter(|token| !token.is_empty())
@@ -366,6 +392,18 @@ mod tests {
     }
 
     #[test]
+    fn pi_uses_earendil_package_and_ignores_scripts() {
+        let spec = find_tool_spec("pi").unwrap();
+        assert_eq!(spec.cli_name, "pi");
+        assert_eq!(spec.npm_package, "@earendil-works/pi-coding-agent");
+        assert_eq!(spec.install_arg, "@earendil-works/pi-coding-agent@0.75.4");
+        assert_eq!(
+            super::install_command_display(spec),
+            "npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.75.4"
+        );
+    }
+
+    #[test]
     fn unknown_tool_id_is_invalid() {
         let err = find_tool_spec("unknown").unwrap_err().to_string();
         assert!(err.contains("unknown agent tool id"));
@@ -378,6 +416,16 @@ mod tests {
         assert_eq!(status, AgentToolStatus::VersionMismatch);
 
         let (status, _) = status_from_probe(spec, true, true, Some("1.15.0"), Some("1.15.0"), None);
+        assert_eq!(status, AgentToolStatus::Installed);
+    }
+
+    #[test]
+    fn pi_mismatch_and_locked_version_statuses() {
+        let spec = find_tool_spec("pi").unwrap();
+        let (status, _) = status_from_probe(spec, true, true, Some("0.75.3"), Some("0.75.3"), None);
+        assert_eq!(status, AgentToolStatus::VersionMismatch);
+
+        let (status, _) = status_from_probe(spec, true, true, Some("0.75.4"), Some("0.75.4"), None);
         assert_eq!(status, AgentToolStatus::Installed);
     }
 

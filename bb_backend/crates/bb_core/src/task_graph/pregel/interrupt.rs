@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use super::model::{PregelCheckpoint, PregelTask, PregelWrite};
 use super::runtime_channels::{INTERRUPT_CHANNEL, RESUME_CHANNEL};
 
+#[must_use]
 pub fn should_interrupt(
     checkpoint: &PregelCheckpoint,
     interrupt_nodes: &[String],
@@ -49,6 +50,7 @@ pub fn interrupt_write(task: &PregelTask, reason: impl Into<String>) -> PregelWr
         }),
     }
 }
+#[must_use]
 pub fn resume_write(task: &PregelTask, value: Value) -> PregelWrite {
     PregelWrite {
         task_id: task.id.clone(),

@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "id": "000085",
+  "lane": "bbp",
+  "title": "明确 Desktop 与开发目录的 Blackboard 数据边界",
+  "summary": "明确 Blackboard 在四种运行场景下的数据边界：开发使用 repo/.bb_template 作为 dogfood 工作区；打包从 .bb_template 生成 clean seed/home-template；Desktop 使用用户态 ~/.bb 并 materialize 内置 blackboard 到 ~/.bb/projects/blackboard；Web 只消费当前连接的 daemon workspace，不自行决定数据根。过期或不匹配的 ~/.bb registry 必须可诊断、可跳过、可修复，不得导致首页 500。",
+  "stories": [
+    {
+      "id": "812bc5a3-9836-41ce-9681-fa57b4c135b6",
+      "given": "开发者在 repo 内运行 dev.py 或本地 daemon。",
+      "when": "系统需要加载 Blackboard 自身的 dogfood project。",
+      "then": "开发态默认 workspace 可以指向 repo/.bb_template；blackboard 项目的权威开发数据位于 repo/.bb_template/projects/blackboard。开发态 runtime、logs、agent sessions、locks、动态 MCP/skills 注入不得写入 repo/.bb_template/projects/blackboard，必须进入 repo/.bb/runtime 或 per-run sandbox。"
+    },
+    {
+      "id": "22adfb1f-1920-46e4-ad17-98c8151aa071",
+      "given": "执行 Desktop 打包流程。",
+      "when": "构建 bundled resources。",
+      "then": "打包脚本从 repo/.bb_template 生成两个资源：seed 包含可 materialize 的内置项目，home-template 是空用户 workspace 模板。二者都不得包含 runtime、locks、agent sessions 或开发机绝对路径；home-template 不包含 projects/blackboard。"
+    },
+    {
+      "id": "fda0a6b1-7c83-4fa1-806a-f7a5b9c3fea6",
+      "given": "Desktop 首次启动或用户态 ~/.bb 不存在。",
+      "when": "Desktop 执行 init。",
+      "then": "系统创建 ~/.bb 作为用户运行态 workspace，并用 home-template 初始化空 registry、agents、schemas、task_graphs；不得把 repo/.bb_template 或 C:/Dev/blackboard/.bb 直接注册为用户项目。"
+    },
+    {
+      "id": "2afbe8c0-4acb-46f3-8a62-635023b38311",
+      "given": "Desktop 需要提供内置 blackboard 项目。",
+      "when": "~/.bb/projects/blackboard/__project__.json 不存在，或用户选择重置内置 blackboard 项目。",
+      "then": "系统从 bundled seed/.bb/projects/blackboard 复制到 ~/.bb/projects/blackboard，并在 ~/.bb/projects/__projects__.json 注册 blackboard -> relative_path ./blackboard。"
+    },
+    {
+      "id": "df4ed000-810a-4b05-9925-2102a07a2b0e",
+      "given": "用户在 Desktop 中打开开发代码目录，例如 C:/Dev/blackboard。",
+      "when": "该目录下的 .bb 不是完整 project capsule，缺少 __project__.json、__tickets__.json 或 __inbox__.json。",
+      "then": "系统不得把 C:/Dev/blackboard/.bb 注册为项目数据根；应提示创建 project capsule、打开已有 capsule，或继续使用 ~/.bb/projects/blackboard。"
+    },
+    {
+      "id": "04b2a159-2330-4bca-a74a-7154e977b635",
+      "given": "用户明确选择将某个开发目录作为 Blackboard project capsule。",
+      "when": "系统创建或打开该目录下的 .bb。",
+      "then": "只有当 .bb 具备完整 project capsule 结构时，才允许注册到 ~/.bb/projects/__projects__.json；该 project capsule 属于用户运行态，不是 .bb_template 的权威模板。"
+    },
+    {
+      "id": "306f8f0d-d308-4933-86ac-07ab37160dec",
+      "given": "Web 前端运行在浏览器、Tauri WebView 或 dev server。",
+      "when": "前端请求 /api/projects。",
+      "then": "Web 只展示当前 daemon 返回的 workspace/projects，不根据当前 URL、代码目录或本地路径自行推断 .bb/.bb_template；项目数据根选择完全由 daemon/root 决定。"
+    },
+    {
+      "id": "f98f6c78-4b1e-4c8c-bb41-aa95da338894",
+      "given": "用户目录 ~/.bb 已存在，但 registry schema 旧、CURRENT machine 不匹配，或某个 location 指向不存在/非 project capsule 目录。",
+      "when": "Desktop 启动或 /api/projects/list_projects 执行。",
+      "then": "系统应保守迁移或跳过无效 location，并返回可诊断状态；有效项目仍应正常展示；不得因单个 stale/broken registry entry 导致整个 /api/projects HTTP 500。"
+    },
+    {
+      "id": "9417baf3-fe4d-4c75-8959-6ca7cfd257bf",
+      "given": "~/.bb/projects/blackboard 与 bundled seed 的版本或 schema 不匹配。",
+      "when": "Desktop 启动。",
+      "then": "系统不得静默覆盖用户态项目；应保留用户数据，提供显式升级/重置入口，或只执行安全的 schema migration。"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-25",
+      "summary": "codex 完成阶段工作，handoff 写入 `2026-05-25-codex-desktop-与开发目录-blackboard-数据边界实施完成.json`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-25",
+      "summary": "Record: 验证：cargo test --manifest-path bb_backend/Cargo.toml -p bb_core workspace::tests -- --nocapture：通过，3 tests。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-25",
+      "summary": "Record: 验证：cargo check --manifest-path bb_desktop/src-tauri/Cargo.toml：通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-25",
+      "summary": "Record: 验证：python -m py_compile scripts/dev.py scripts/desktop.py：通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-25",
+      "summary": "Record: 验证：python scripts/desktop.py prepare --release --skip-web-build --skip-sidecar-build：通过，seed/home-template 校验通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-25",
+      "summary": "Record: 验证：npm run build in bb_desktop with CARGO_BUILD_JOBS=1：通过，生成 blackboard-desktop.exe 与 NSIS installer。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-25",
+      "summary": "Record: 验证：真实启动 release desktop：/api/projects 返回 200，data_root 为 C:\\\\Users\\\\ornizhou\\\\.bb\\\\projects\\\\blackboard。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-25",
+      "summary": "Record: 验证：dev daemon --root .bb_template on 3071：/api/projects 返回 200。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-25",
+      "summary": "Record: 验证：dev.py --backend --root runtime/tmp/dev-root-000085/.bb with ports 3072/3073：daemon/server /api/projects 均返回 200。",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "review",
+  "created_at": "2026-05-25",
+  "updated_at": "2026-05-25",
+  "extra": {}
+}

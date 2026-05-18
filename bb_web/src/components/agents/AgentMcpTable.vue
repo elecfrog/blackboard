@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { McpServerConfig } from '@/data/agents'
+import { BbButton, BbSectionHeader, BbStatusPill } from '@/components/common'
 import { t } from '@/i18n'
 
 const props = defineProps<{
@@ -45,12 +46,13 @@ function updateField(index: number, field: keyof McpServerConfig, value: string)
 
 <template>
   <div class="aw-section">
-    <div class="aw-section-header">
-      <h4>{{ t('mcpServersTitle') }}</h4>
-      <div class="aw-section-actions">
-        <button v-if="editMode" type="button" class="aw-add-btn" @click="addServer">+ {{ t('mcpServerAdd') }}</button>
-      </div>
-    </div>
+    <BbSectionHeader class="aw-section-header" :title="t('mcpServersTitle')" title-tag="h4" :divider="false">
+      <template #actions>
+        <BbButton v-if="editMode" size="sm" variant="secondary" @click="addServer">
+          + {{ t('mcpServerAdd') }}
+        </BbButton>
+      </template>
+    </BbSectionHeader>
     <template v-if="servers.length > 0">
       <table class="aw-table">
         <thead>
@@ -63,12 +65,12 @@ function updateField(index: number, field: keyof McpServerConfig, value: string)
         <tbody>
           <tr v-for="(server, idx) in visibleServers" :key="idx">
             <td>
-              <template v-if="!editMode">{{ server.name || '—' }}</template>
+              <template v-if="!editMode">{{ server.name || t('runtimeUnset') }}</template>
               <input v-else :value="server.name" type="text" class="aw-table-input" :placeholder="t('mcpServerNamePlaceholder')" @input="updateField(idx, 'name', ($event.target as HTMLInputElement).value)" />
             </td>
             <td>
               <template v-if="!editMode">
-                <span class="aw-transport-badge">{{ server.transport }}</span>
+                <BbStatusPill :status="server.transport" :label="server.transport" />
               </template>
               <select v-else :value="server.transport" class="aw-table-select" @change="updateField(idx, 'transport', ($event.target as HTMLSelectElement).value)">
                 <option value="stdio">stdio</option>
@@ -76,20 +78,22 @@ function updateField(index: number, field: keyof McpServerConfig, value: string)
               </select>
             </td>
             <td v-if="editMode">
-              <button type="button" class="aw-remove-btn" @click="removeServer(idx)">✕</button>
+              <BbButton size="mini" variant="danger" icon-only :aria-label="t('mcpServerRemove')" @click="removeServer(idx)">
+                ✕
+              </BbButton>
             </td>
           </tr>
         </tbody>
       </table>
     </template>
     <p v-else class="aw-empty-line">{{ t('mcpServersNoneConfigured') }}</p>
-    <button
+    <BbButton
       v-if="!showAll && servers.length > maxVisible"
-      type="button"
-      class="aw-view-all"
+      size="sm"
+      variant="ghost"
       @click="showAll = true"
     >
       {{ t('mcpServersViewAll') }} ({{ servers.length }})
-    </button>
+    </BbButton>
   </div>
 </template>

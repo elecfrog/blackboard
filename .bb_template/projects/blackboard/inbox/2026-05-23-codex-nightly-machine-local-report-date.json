@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "title": "Codex handoff: nightly report filename now uses machine local date",
+  "time": "2026-05-23T16:17:33Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "nightly-machine-local-report-date",
+  "done": [
+    "按用户纠正，将 nightly report 文件名日期从静态 report-date / 固定时区思路改为机器本地时间基准。",
+    "新增 scripts/resolve_local_report_date.py：使用 datetime.now().astimezone() 读取机器本地日期，输出 report_date/local_datetime/timezone_name/utc_offset，source=machine-local-time。",
+    "更新 .bb_template/task_graphs/system/nightly-auto-code-optimization.json：version 9->10；删除静态 report-date 输入；新增只读 shell 节点 resolve-report-date；执行链改为 start -> resolve-report-date -> code-review；nightly-overall-report.report_path 和 system-write-summary.output_path 改为引用 {{nodes.resolve-report-date.output.stdout_json.report_date}}。",
+    "更新 scripts/collect_daily_context.py：generated_at/report_date/timezone_name/utc_offset 使用机器本地时间，避免东八区凌晨日报上下文仍按 UTC 前一天。",
+    "本轮未再跑完整 nightly graph，避免额外触发 review/scout/code-quality 自动修复；只做局部 JSON/脚本验证。"
+  ],
+  "validation": [
+    "python -m json.tool .bb_template/task_graphs/system/nightly-auto-code-optimization.json：通过。",
+    "python -m py_compile scripts/resolve_local_report_date.py scripts/collect_daily_context.py：通过。",
+    "python scripts/resolve_local_report_date.py：输出 report_date=2026-05-24，local_datetime=2026-05-24T00:17:01+08:00，source=machine-local-time。",
+    "python scripts/collect_daily_context.py --repo-root . --workspace-root .bb_template --project blackboard --max-items 1：输出 generated_at=2026-05-24T00:17:01+08:00，report_date=2026-05-24，time_source=machine-local-time。",
+    "git diff --check -- .bb_template/task_graphs/system/nightly-auto-code-optimization.json scripts/resolve_local_report_date.py scripts/collect_daily_context.py：通过。",
+    "mcp__bb__.create_inbox_note: 通过。"
+  ],
+  "next_step": [
+    "下一轮完整 nightly run 应生成 project wiki 文件 nightly-report-2026-05-24.md（以机器本地日期为准）。",
+    "如机器时区配置错误，产物日期会跟随错误机器环境；这是预期行为，应通过机器配置修复而非 graph 内硬编码时区。",
+    "后续仍可单独修 collect_nightly_final_facts.py 的 daily_brief artifact 识别问题。"
+  ],
+  "related_locations": [
+    "C:\\Dev\\blackboard\\.bb_template\\task_graphs\\system\\nightly-auto-code-optimization.json",
+    "C:\\Dev\\blackboard\\scripts\\resolve_local_report_date.py",
+    "C:\\Dev\\blackboard\\scripts\\collect_daily_context.py"
+  ],
+  "related_tickets": [
+    "000081"
+  ],
+  "attachments": [
+    {
+      "kind": "file",
+      "target": ".bb_template/task_graphs/system/nightly-auto-code-optimization.json",
+      "label": "nightly graph v10 local date node"
+    },
+    {
+      "kind": "file",
+      "target": "scripts/resolve_local_report_date.py",
+      "label": "machine local report date resolver"
+    },
+    {
+      "kind": "file",
+      "target": "scripts/collect_daily_context.py",
+      "label": "daily context local time facts"
+    }
+  ],
+  "extra": {
+    "full_nightly_rerun": "not_run_to_avoid_extra_auto_fixes",
+    "graph_version": "10",
+    "time_source": "machine-local-time"
+  }
+}

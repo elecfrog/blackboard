@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { LaneDef } from '@/data/tickets'
 import { archiveLane, patchLane, upsertLane } from '@/data/tickets'
+import { BbButton, BbEmptyState, BbInlineAlert } from '@/components/common'
 import { t } from '@/i18n'
 
 const props = defineProps<{
@@ -118,7 +119,7 @@ async function reactivate(lane: LaneDef) {
     <div class="lane-manager">
       <header>
         <h2>{{ t('manageLanes') }} · {{ project }}</h2>
-        <button type="button" class="btn-base btn-outline" @click="emit('close')">{{ t('close') }}</button>
+        <BbButton variant="secondary" @click="emit('close')">{{ t('close') }}</BbButton>
       </header>
 
       <section class="lane-manager-list">
@@ -135,28 +136,28 @@ async function reactivate(lane: LaneDef) {
           </div>
           <div class="lane-row-actions">
             <span v-if="lane.status !== 'active'" class="lane-archived-pill">{{ t('laneArchived') }}</span>
-            <button type="button" class="btn-base btn-outline" :disabled="busy" @click="startEdit(lane)">{{ t('edit') }}</button>
-            <button
+            <BbButton size="sm" variant="secondary" :disabled="busy" @click="startEdit(lane)">{{ t('edit') }}</BbButton>
+            <BbButton
               v-if="lane.status === 'active'"
-              type="button"
-              class="btn-base btn-outline"
+              size="sm"
+              variant="secondary"
               :disabled="busy"
               @click="archive(lane)"
             >
               {{ t('laneArchive') }}
-            </button>
-            <button
+            </BbButton>
+            <BbButton
               v-else
-              type="button"
-              class="btn-base btn-outline"
+              size="sm"
+              variant="secondary"
               :disabled="busy"
               @click="reactivate(lane)"
             >
               {{ t('laneReactivate') }}
-            </button>
+            </BbButton>
           </div>
         </div>
-        <div v-if="sortedLanes.length === 0" class="lane-empty">{{ t('laneEmptyShort') }}</div>
+        <BbEmptyState v-if="sortedLanes.length === 0" :message="t('laneEmptyShort')" />
       </section>
 
       <section class="lane-form">
@@ -184,12 +185,12 @@ async function reactivate(lane: LaneDef) {
             <option value="archived">{{ t('laneStatusArchived') }}</option>
           </select>
         </label>
-        <p v-if="errorMsg" class="lane-error">{{ errorMsg }}</p>
+        <BbInlineAlert v-if="errorMsg" tone="error">{{ errorMsg }}</BbInlineAlert>
         <div class="lane-form-actions">
-          <button type="button" class="btn-base btn-outline" :disabled="busy" @click="startCreate">{{ t('laneReset') }}</button>
-          <button type="button" class="btn-base btn-primary" :disabled="busy" @click="save">
+          <BbButton variant="secondary" :disabled="busy" @click="startCreate">{{ t('laneReset') }}</BbButton>
+          <BbButton variant="primary" :disabled="busy" @click="save">
             {{ editing ? t('save') : t('create') }}
-          </button>
+          </BbButton>
         </div>
       </section>
     </div>

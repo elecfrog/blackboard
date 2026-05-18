@@ -1,4 +1,4 @@
-//! Node output lowering into Pregel writes, including StateGraph and Command MVPs.
+//! Node output lowering into Pregel writes, including `StateGraph` and Command MVPs.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -66,8 +66,7 @@ pub fn writes_from_node_outcome(
     if compiled
         .nodes
         .get(&source)
-        .map(|node| node.node_type == NodeType::End)
-        .unwrap_or(false)
+        .is_some_and(|node| node.node_type == NodeType::End)
     {
         writes.push(PregelWrite {
             task_id: task.id.clone(),
@@ -199,8 +198,7 @@ fn state_writers_for_process(compiled: &CompiledGraph, source: &str) -> BTreeMap
                 if compiled
                     .channels
                     .get(&writer.channel)
-                    .map(|channel| channel.kind == CompiledChannelKind::State)
-                    .unwrap_or(false) =>
+                    .is_some_and(|channel| channel.kind == CompiledChannelKind::State) =>
             {
                 Some((key.clone(), writer.channel.clone()))
             }
@@ -218,7 +216,7 @@ fn state_update_entries(output: &Value, allowed_keys: &BTreeSet<String>) -> Vec<
     }
 
     if let Some(items) = output.as_array() {
-        if items.iter().any(|item| is_command(item)) {
+        if items.iter().any(is_command) {
             let mut entries = Vec::new();
             for item in items {
                 if is_command(item) {

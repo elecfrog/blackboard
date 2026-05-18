@@ -1,0 +1,223 @@
+{
+  "schema_version": 1,
+  "id": "000083",
+  "lane": "bbt",
+  "title": "将 Inbox Note 存储格式 JSON 化并对齐 Ticket",
+  "summary": "Inbox note 的权威存储格式改为结构化 JSON 文档，并与 JSON BDD ticket 的 schema_version、parse/serialize、索引、API、MCP 工具、Agent/BBPM 工作流和前端结构化展示方式对齐。改造后系统不再读取或兼容旧 inbox/*.md Markdown note；新建、索引、搜索、详情读取、MCP/Agent 工具、BBPM inbox 清理 graph 和前端展示都以 inbox/*.json 为唯一事实源。",
+  "stories": [
+    {
+      "id": "a9a7cf90-df7b-45f8-8283-3d67c9754190",
+      "given": "项目的 inbox 目录中同时可能存在旧的 *.md 文件和新的 *.json 文件",
+      "when": "后端列出 inbox notes、重建 __inbox__.json 或执行 search_notes",
+      "then": "系统只读取和索引 schema_version=1 的 JSON inbox document；旧 Markdown 文件不进入列表、索引、搜索结果或详情读取范围"
+    },
+    {
+      "id": "29fc4143-a819-4bc6-8328-f9db0dab7b8a",
+      "given": "Agent 或 Web 通过 create_inbox_note / POST /api/projects/{project}/inbox/notes 创建新的 inbox note",
+      "when": "请求包含 source、topic、done、validation、next_step、related_locations 等结构化字段",
+      "then": "系统写入 schema_version=1 的 JSON inbox document，文件名使用既有日期-source-topic 防冲突规则但扩展名为 .json"
+    },
+    {
+      "id": "df854bf7-c5c8-4049-883e-2f1ef4309c6a",
+      "given": "客户端读取一条 inbox note 详情",
+      "when": "请求的 note name 指向有效 JSON inbox document",
+      "then": "后端返回结构化 inbox document 字段，并可提供由同一结构化数据生成的 content/display projection；请求旧 Markdown note 应返回 not_found 或 invalid_name，不做 Markdown 解析"
+    },
+    {
+      "id": "adcb20bb-7bfd-4e78-a363-e787974976db",
+      "given": "Web Inbox 面板展示 JSON inbox note",
+      "when": "用户打开 Inbox 工作区或选择一条 inbox note",
+      "then": "前端使用结构化字段展示标题、时间、来源、完成工作、验证、下一步、相关位置等内容；实现方式对齐 ticket 的结构化 document 展示，不再把 Markdown 正文作为主要 UI 数据源"
+    },
+    {
+      "id": "044e0e08-046e-4943-8cad-2b8cbbc5c05f",
+      "given": "项目维护者需要验证或生成数据 schema",
+      "when": "运行 Blackboard schema 生成或检查流程",
+      "then": "仓库提供 inbox note JSON schema，并与 ticket.schema.json 一样由后端结构体/schema 工具维护，避免手写 schema 漂移"
+    },
+    {
+      "id": "02635118-82b1-49b4-a8f7-bc345db30a53",
+      "given": "仓库中仍保留 .bb_template/templates/inbox-note.md 或旧 Markdown inbox 文件",
+      "when": "系统运行新版 inbox 创建、读取、索引、搜索和前端展示流程",
+      "then": "这些 Markdown 模板或旧文件不再参与运行时行为；必要清理可以作为独立维护工作处理，不属于 JSON inbox 的兼容目标"
+    },
+    {
+      "id": "64811a84-2788-4b4b-b970-f7c2d18f3610",
+      "given": "MCP tools/list 暴露 inbox 相关工具",
+      "when": "客户端查看 list_inbox_notes、read_inbox_note、delete_inbox_note、search_notes、create_inbox_note、find_work_context 或 completion handoff 工具 schema/description",
+      "then": "工具 schema、描述和 handler 全部表达 JSON inbox document 语义，不再说 Markdown note；工具参数和返回值能让 Agent 操作 JSON note name、结构化字段和必要 display projection"
+    },
+    {
+      "id": "40311ba1-f52e-4653-b787-a1f77f05db6c",
+      "given": "默认 Agent profile 与 BBPM profile 使用 inbox 工具",
+      "when": "普通 Agent 或 BBPM daemon 通过 stdio MCP 或 remote /mcp 调用 inbox 工具",
+      "then": "默认 Agent 工具和 BBPM 专用 delete_inbox_note 都只处理 JSON inbox document；BBPM 不得通过本地文件删除或读取旧 Markdown"
+    },
+    {
+      "id": "5bb7005c-bac3-45d6-b2d0-420af97cb720",
+      "given": "Agent 工具说明和 prompts 引导 inbox/handoff 行为",
+      "when": "Codex/OpenCode/BBPM agents 读取 .bb_template/agents 下的 AGENTS/CODEX/opencode/bb-pm 或 inbox cleanup prompts",
+      "then": "说明文字、工具门禁、handoff 规则和 cleanup 指令全部更新为 JSON inbox；不再要求读取 Markdown 正文、Markdown note path 或把 Markdown 文件作为事实源"
+    },
+    {
+      "id": "4914c5ee-a37b-45ea-9e44-df4bba74c0bf",
+      "given": "BBPM inbox 清理 graph 运行 inbox-batch-cleanup 或 bbpm-maintain",
+      "when": "graph 收集 inbox ResourceBundle、让 LLM 做归因决策、应用 cleanup decision 并删除已沉淀 note",
+      "then": "graph 和脚本只收集 schema_version=1 的 JSON inbox document，ResourceBundle 暴露结构化字段和投影文本，apply 阶段通过结构化工具删除 JSON note，并且不再 glob/read/write *.md"
+    },
+    {
+      "id": "5ff1a40b-7ec8-4004-a4c2-377015908ae0",
+      "given": "nightly-auto-code-optimization 调用 bbpm-maintain",
+      "when": "夜间无人值守维护总结 Inbox / Ticket 维护结果",
+      "then": "最终报告基于 JSON inbox cleanup 输出总结清理数量、残留原因和 ticket 沉淀结果，不能依赖旧 Markdown inbox 统计或路径"
+    }
+  ],
+  "risks": [
+    {
+      "id": "old-markdown-hidden",
+      "description": "切换后历史 Markdown inbox note 将从产品读取路径中消失，可能还有未转入 ticket 的交接信息。",
+      "mitigation": "接受该行为作为产品决策；需要保留的信息应在切换前另行整理进 ticket 或手动迁入 JSON。",
+      "status": "accepted"
+    },
+    {
+      "id": "api-contract-churn",
+      "description": "REST/MCP 当前返回 InboxNote { name, content }，改为结构化 JSON 会影响前端和 Agent 调用。",
+      "mitigation": "本 ticket 明确包含前端、MCP schema/handler 和工具调用契约同步修改；不以旧 Markdown API 兼容为约束。",
+      "status": "open"
+    },
+    {
+      "id": "frontend-ticket-alignment",
+      "description": "如果前端仍按 MarkdownRenderer/pre 展示 inbox，JSON 化后体验会和 ticket 结构化展示不一致。",
+      "mitigation": "前端必须新增或复用结构化 document 展示组件，使 Inbox 详情的数据消费方式对齐 Ticket。",
+      "status": "open"
+    },
+    {
+      "id": "index-search-projection",
+      "description": "JSON 文档需要新的 excerpt/search text 投影，否则 __inbox__.json 和 search_notes 质量会下降。",
+      "mitigation": "为 JSON inbox document 提供统一 projection 函数，索引、搜索、ResourceBundle 和 content/display 复用同一逻辑。",
+      "status": "open"
+    },
+    {
+      "id": "mcp-agent-doc-drift",
+      "description": "MCP tool schema、Agent instructions 和 BBPM prompts 目前多处明写 Markdown note，若不同时更新会导致 Agent 继续按旧格式操作。",
+      "mitigation": "把 bb_cli MCP schema/handler、.bb_template/agents、opencode bb-pm prompt 和 inbox cleanup prompts 作为同一验收面处理。",
+      "status": "open"
+    },
+    {
+      "id": "bbpm-graph-md-assumption",
+      "description": "inbox-batch-cleanup、bbpm-maintain、nightly 维护以及 scripts/cleanup_inbox_batch.py 等脚本当前按 *.md 收集和重建索引，直接 JSON 化会让维护 graph 失效。",
+      "mitigation": "同步修改 graph fixture 和确定性脚本，所有收集、决策、应用、统计逻辑改用 JSON inbox document。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "summary": "已确认当前 .bb_template/templates/inbox-note.md 只作为模板文件存在，create_inbox_note 实际由 bb_core::inbox::render_note 硬编码生成 Markdown；目标已调整为不兼容旧 Markdown，Inbox 新事实源只保留 JSON。",
+      "evidence": [
+        "inbox/2026-05-22-codex-inbox-template-json-analysis.md"
+      ]
+    },
+    {
+      "summary": "根据用户反馈更新范围：不做旧 Markdown 兼容，不再读取历史 Markdown note；前端修改纳入 ticket，要求结构化展示方式对齐 ticket。",
+      "evidence": []
+    },
+    {
+      "summary": "补充遗漏范围：MCP inbox 工具 schema/handler、Agent/BBPM prompts、BBPM inbox cleanup graphs 和确定性清理脚本都必须同步从 Markdown inbox 切到 JSON inbox。",
+      "evidence": [
+        "bb_backend/crates/bb_cli/src/mcp_tools/schema.rs",
+        "bb_backend/crates/bb_cli/src/mcp_tools/mod.rs",
+        ".bb_template/agents/AGENTS.md",
+        ".bb_template/agents/CODEX.md",
+        ".bb_template/agents/opencode/bb-pm.md",
+        ".bb_template/agents/prompts/inbox-cleanup.md",
+        ".bb_template/agents/prompts/task-graph-inbox-cleanup.md",
+        ".bb_template/task_graphs/system/inbox-batch-cleanup.json",
+        ".bb_template/task_graphs/system/bbpm-maintain.json",
+        ".bb_template/task_graphs/system/nightly-auto-code-optimization.json",
+        "scripts/collect_inbox_resource_bundle.py",
+        "scripts/cleanup_inbox_batch.py",
+        "scripts/apply_inbox_cleanup_decisions.py",
+        "scripts/normalize_inbox_cleanup_decision.py"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "2026-05-22：完成 JSON-only inbox 后端、MCP/HTTP、前端、Agent/BBPM/Graph/scripts 改造",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "2026-05-22：生成 inbox.schema.json 并替换旧 inbox-note.md 模板",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 验证：cargo run -p bb_schema -- check --root ..\\.bb_template 通过",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 验证：cargo test -p bb_core 通过；cargo test -p bb_cli 通过",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: 验证：npm run build --prefix bb_web 通过；Python py_compile 通过",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Record: Smoke：in-app Browser iab 不可用；3101 预览服务 REST/静态 smoke 通过",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23：废弃 .bb_template/templates，保留 schemas 作为 JSON contract 目录",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 删除 .bb_template/templates/inbox-note.json 并移除空 templates 目录",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: scripts/dev.py、scripts/desktop.py、Workspace::init_from_seed 不再复制 templates",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证：cargo run -p bb_schema -- check --root ..\\.bb_template 通过；cargo test -p bb_core/bb_cli 通过",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-22-codex-json-inbox-000083-implemented.json`.",
+      "evidence": [
+        "inbox/2026-05-22-codex-json-inbox-000083-implemented.json",
+        "Title: 000083 JSON inbox implementation handoff\nTime: 2026-05-22T11:03:03Z\nSource: codex\nProject: blackboard\nTopic: json-inbox-000083-implemented\nDone:\n- 完成 inbox/*.json schema_version=1 文档模型、JSON-only 读写/索引/搜索/展示投影\n- 同步 MCP/HTTP create/read/list/search/delete 契约，create_inbox_note 写 .json 并返回 document/content\n- 前端 Inbox 改为结构化 JSON document 展示，对齐 ticket JSON 展示方式\n- 同步 Agent/CODEX/BBPM prompts、inbox cleanup graphs 与 cleanup scripts，去掉 Markdown inbox 事实源\n- 删除 inbox-note.md 模板并新增 inbox-note.json，生成 .bb_template/schemas/inbox.schema.json\n- 将 000083 更新到 review 并写入本轮验证记录\nValidation:\n- cargo run -p bb_schema -- generate --root ..\\.bb_template 通过\n- cargo run -p bb_schema -- check --root ..\\.bb_template 通过\n- cargo test -p bb_core 通过\n- cargo test -p bb_cli 通过\n- npm run build --prefix bb_web 通过\n- python -m py_compile scripts\\collect_inbox_resource_bundle.py scripts\\cleanup_inbox_batch.py scripts\\apply_inbox_cleanup_decisions.py scripts\\normalize_inbox_cleanup_decision.py 通过\n- 本地 3101 预览服务 /healthz、/、JSON inbox create/read REST smoke 通过；in-app Browser iab 不可用，无法截图\nNext step:\n- 等待用户验收 000083；如验收通过可把 ticket 从 review 流转到 done\nRelated locations:\n- bb_backend/crates/bb_core/src/inbox/render.rs\n- ...",
+        "cleanup reason: 文件名包含 000083，document.related_tickets 和 document.attachments 均指向 ticket 000083，content 是该 ticket 的实现 handoff 记录，包含 done/validation/next_step 等结构化字段。000083 在 active_tickets 中且状态为 review，可执行 append。"
+      ]
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Consolidated inbox note `2026-05-23-codex-templates-deprecated-000083.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-templates-deprecated-000083.json",
+        "Title: 000083 templates deprecated follow-up\nTime: 2026-05-23T06:39:36Z\nSource: codex\nProject: blackboard\nTopic: templates-deprecated-000083\nDone:\n- 按用户要求废弃 .bb_template/templates，删除 inbox-note.json 和空 templates 目录\n- 保留 .bb_template/schemas/inbox.schema.json 作为 inbox JSON contract 事实源\n- 移除 scripts/dev.py、scripts/desktop.py、Workspace::init_from_seed 对 templates 的复制\n- 更新 bb_backend/README.md 与 bb_desktop/README.md，不再把 templates 列为全局配置目录\nValidation:\n- python -m py_compile scripts\\desktop.py scripts\\dev.py 通过\n- cargo fmt --all 通过\n- cargo run -p bb_schema -- check --root ..\\.bb_template 通过\n- cargo test -p bb_core 通过\n- cargo test -p bb_cli 通过\nNext step:\n- 000083 仍保持 review，等待验收\nRelated locations:\n- .bb_template/schemas/inbox.schema.json\n- scripts/desktop.py\n- scripts/dev.py\n- bb_backend/crates/bb_core/src/workspace.rs\n- bb_backend/README.md\n- bb_desktop/README.md\nRelated tickets:\n- 000083",
+        "cleanup reason: note 的 title 显式写明 '000083'，document.related_tickets 显式写明 '000083'，done 内容是废弃 templates 目录并清理相关引用，topic templates-deprecated-000083 与 000083 Inbox Note 存储格式 JSON 化直接关联。"
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "kind": "inbox",
+      "target": "inbox/2026-05-22-codex-inbox-template-json-analysis.md",
+      "label": "Inbox 模板与 JSON 化分析"
+    }
+  ],
+  "status": "review",
+  "created_at": "2026-05-22",
+  "updated_at": "2026-05-23",
+  "extra": {}
+}

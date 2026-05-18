@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "id": "000084",
+  "lane": "bbt",
+  "title": "MCP / Daemon Agent 工具架构：结构化本机工具层",
+  "summary": "为 Blackboard 建立面向 Agent 的结构化工具架构和后端进程/crate 边界：本机常驻 bb daemon 作为唯一权威写入者，Graph 内 LLM/Agent 通过 daemon-backed stdio MCP adapter 调用 ticket、inbox、wiki、task graph 等 typed tools；CLI 作为人类和系统节点的客户端，不作为 LLM 自由 shell 写入接口。普通文件 read/write 能力必须与 Blackboard 托管数据写入边界分开：Agent 可以按 tool_policy 读取 source roots、写 scratch/write_roots，但不得用 generic file/shell 工具修改 inbox/ticket/wiki/task graph/index 等托管状态。所有托管状态写操作必须经过 daemon 的权限、事务、审计和 tool lifecycle 事件。该 ticket 同时定义 Rust 后端拆包方向：bb_core 承载领域服务，bb_daemon 承载常驻权威进程，bb_server 作为 Web/API facade，bb_cli 作为 daemon client。",
+  "stories": [
+    {
+      "id": "bf361ada-7a0a-4e1a-829a-9e78b8a0b538",
+      "given": "本机开发环境启动了 bb daemon。",
+      "when": "Graph 内的 LLM/Agent 需要读取或修改 Blackboard 的 ticket、inbox、wiki 或 task graph。",
+      "then": "Agent 通过 stdio MCP adapter 调用结构化工具；adapter 将请求转发给 bb daemon，由 daemon 执行权限校验、事务写入和审计记录。"
+    },
+    {
+      "id": "72943a6c-3e32-41e0-9e4f-22caa38819b4",
+      "given": "Agent 需要删除或归档 inbox note，或修改 ticket/wiki/task graph 等 Blackboard 托管状态。",
+      "when": "当前 MCP profile 或 tool_policy 没有暴露对应 typed write tool，例如 delete/archive inbox。",
+      "then": "这是权限和能力边界问题：Agent 不得使用 shell `rm`、PowerShell 删除、generic file edit 或直接改 `.bb_template` 托管文件绕过权限；系统应补齐 daemon-backed MCP tool，或明确报告该操作被工具权限阻塞。"
+    },
+    {
+      "id": "1134f29c-41d3-4b8b-bab9-45abbcdb9249",
+      "given": "Agent 拥有普通文件 read/grep/edit/bash 工具。",
+      "when": "它处理用户提供的源码、文档、桌面目录或 graph 的 source-root。",
+      "then": "普通文件工具只受 tool_policy 的 source roots、write_roots、scratch_dir 和 bash allow/deny 约束；这些能力不得自动扩展为 Blackboard 托管状态写权限，尤其不得修改 `.bb_template/projects/**/__*.json`、`tickets/`、`inbox/`、`task_graphs/` 等权威数据。"
+    },
+    {
+      "id": "c552cb0a-83e9-4832-b757-2ff90cc5b999",
+      "given": "人类开发者或确定性系统节点需要执行 Blackboard 操作。",
+      "when": "它们调用 bb CLI。",
+      "then": "CLI 默认作为 daemon client 工作，请求 daemon 的结构化 API；只有 dev/admin/debug 显式 direct mode 才允许直接调用 bb_core，本模式必须受权限、事务和日志约束。"
+    },
+    {
+      "id": "85b121cb-a502-4308-b87b-e9bb72c5c3a7",
+      "given": "LLM/Agent 在 Graph run 内调用 MCP 工具。",
+      "when": "工具开始、更新、结束或失败。",
+      "then": "工具调用必须产出 `tool_start`、`tool_update`、`tool_end` 事件，携带 run/node/tool/attempt/input_summary/output_summary/error/artifact 等可观测信息，供 UI 和审计使用。"
+    },
+    {
+      "id": "7f209d0d-5400-487e-a258-5d21014a507a",
+      "given": "Blackboard 后端进行 Rust crate/process 拆分。",
+      "when": "实现 MCP 工具、HTTP API、CLI 命令或 TaskGraph 系统节点。",
+      "then": "写语义必须集中在 bb_core service 层；bb_core 不依赖 HTTP/MCP/CLI；bb_daemon 依赖 bb_core 并作为常驻权威进程；bb_server 和 bb_cli 只作为适配层/客户端，不复制文件写入逻辑。"
+    },
+    {
+      "id": "934a61e1-bcad-4d3f-8a6d-0474658b486d",
+      "given": "本地开发需要同时运行 daemon、server、frontend，并保留随时可调用的 CLI。",
+      "when": "开发者运行 `scripts/dev.py`。",
+      "then": "dev.py 应作为本地 supervisor：启动或复用 bb_daemon，启动 bb_server/Web API facade 和 Vite frontend，注入 BB_DAEMON_URL/BB_SERVER_URL 等环境变量，执行健康检查；CLI 不常驻，只作为可调用 daemon client。"
+    },
+    {
+      "id": "1444cd4f-b6b8-4920-ae36-f46dfba575fb",
+      "given": "Rust 代码从当前 bb_cli/http 混合形态迁移。",
+      "when": "拆分 crate 或 binary。",
+      "then": "目标形态至少包含 `bb_core`、`bb_daemon`、`bb_server`、`bb_cli`：core 放领域模型、存储、事务、权限、TaskGraph engine 和 service；daemon 放本机常驻入口、MCP、scheduler、run dispatcher；server 放前端 BFF/HTTP facade；cli 放人类命令和系统节点客户端。"
+    },
+    {
+      "id": "9f02085f-9196-4204-ad88-c049dae43605",
+      "given": "未来需要从本地开发迁移到云端或远程工作区。",
+      "when": "本机 stdio MCP adapter、HTTP MCP 或 CLI client 发生部署变化。",
+      "then": "Agent 工具契约和 daemon/core service 语义保持一致；只替换 transport/adapter，不改变 tool schema、权限模型、事务语义和审计事件。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "transport_confusion",
+      "description": "同时存在 stdio MCP、HTTP MCP 和 CLI 时，开发者可能不清楚 Graph 内 Agent 应该使用哪一种。",
+      "mitigation": "明确约定：Graph 内 LLM/Agent 优先使用 stdio MCP；CLI 给人类和确定性系统节点；HTTP/MCP 由 daemon 暴露给本地或远程 adapter。",
+      "status": "open"
+    },
+    {
+      "id": "file_boundary_leak",
+      "description": "Agent 拥有普通文件工具后，可能误以为可以直接修改 `.bb_template` 下的 inbox/ticket/wiki/task graph 文件。",
+      "mitigation": "把普通文件 read/write 与 Blackboard 托管状态写权限分离；托管状态写入只能通过 daemon-backed typed tool；tool_policy 对 `.bb_template/projects/**` 默认 deny generic writes。",
+      "status": "open"
+    },
+    {
+      "id": "duplicated_write_logic",
+      "description": "如果 CLI、server、MCP adapter 各自实现写文件逻辑，会再次出现绕过权限、事务和审计的问题。",
+      "mitigation": "所有写入必须下沉到 bb_core service，并由 daemon 调用；适配层只做协议转换和身份上下文注入。",
+      "status": "open"
+    },
+    {
+      "id": "crate_split_overreach",
+      "description": "过早把 Rust crate 拆得太细会拖慢当前功能落地，且容易造成循环依赖。",
+      "mitigation": "MVP 先拆清 `bb_core` / `bb_daemon` / `bb_server` / `bb_cli` 的依赖方向；更细的 model/store/task_graph/services/http/mcp crate 后续再做。",
+      "status": "open"
+    },
+    {
+      "id": "over_permissioned_agent_tools",
+      "description": "为了让 Agent 好用而暴露过宽工具，可能导致误删 inbox、错误改 ticket 或污染 wiki。",
+      "mitigation": "MCP tools 按 profile/tool_policy 暴露；危险工具如 delete/archive 必须 typed、带 reason、可审计，并支持 dry-run 或 human gate。",
+      "status": "open"
+    },
+    {
+      "id": "local_cloud_divergence",
+      "description": "本地 daemon 方案如果没有抽象好，未来上云时可能重写工具层。",
+      "mitigation": "保持 tool schema 与 service 语义 transport-agnostic；本地 stdio adapter 和云端 HTTP adapter 都调用同一 daemon/service contract。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "summary": "Record: 创建本 ticket 时的架构判断：bb daemon 是本机权威写入者；Graph 内 Agent 用 daemon-backed stdio MCP；CLI 是客户端，不作为 LLM 自由 shell 写入接口。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "根据用户反馈更新：将 inbox delete/archive 明确为权限控制和普通文件工具边界问题；补充 Rust 后端 crate/process 拆分、dev.py supervisor 和 bb_core/bb_daemon/bb_server/bb_cli 依赖方向。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "实现第一阶段拆包：新增 `bb_daemon` crate/bin，把原 `bb_cli` 中的 HTTP、MCP、stdio、daemon runner 迁移为常驻守护进程模块；新增 `bb_server` crate/bin 作为 Web/API facade；`bb_cli` 收敛为薄 CLI 入口并调用 daemon 模块。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "实现 Pi tool policy 写入边界：`AgentToolPolicy` 增加 `write_deny_roots`；Pi policy extension 在 write/edit 前先检查 deny roots；默认将当前 Blackboard workspace 的 `projects` 目录注入 deny roots，阻止 generic file tools 直接改 tickets/inbox/wiki/task graph 等托管状态。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "重构 `scripts/dev.py` 为本地 supervisor：支持启动/复用 `bb_daemon`、启动 `bb_server`、启动 Vite frontend，注入 `BB_DAEMON_URL`、`BB_SERVER_URL`、`BLACKBOARD_API_TARGET`，并对 3001/3002/8060 做端口清理和 healthz 等待。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "前端 Vite dev proxy 默认从 3001 改到 `bb_server` 的 3002，保留 `BLACKBOARD_API_TARGET` override。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo fmt --manifest-path bb_backend/Cargo.toml --all`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo check --manifest-path bb_backend/Cargo.toml -p bb_cli -p bb_daemon -p bb_server`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core pi_tool_policy -- --nocapture`，2 个 Pi policy 测试通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon -- --nocapture`，95 个迁移后的 daemon/http/mcp/stdio 测试通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`python -m py_compile scripts/dev.py` 与 `python scripts/dev.py --help`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`npm run build --prefix bb_web`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Next step: 后续需要继续把 `bb_server` 从当前复用 daemon HTTP router 的过渡形态，演进为真正的 Web/API facade client/proxy，不复制写入逻辑。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Next step: 后续需要补 daemon-backed typed delete/archive inbox 工具和完整 tool lifecycle 事件，确保托管状态变更全链路可观测。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "收紧 `bb_server`：从过渡性的直接复用 daemon HTTP router，改为真正的本地 Web/API facade。`bb_server` 自己只提供 `/healthz`、静态资源 fallback，并把 `/api/**`、`/mcp/**` 反向代理到 `bb_daemon`，不再直接打开 workspace 执行业务写入。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 追加验证通过：`cargo check --manifest-path bb_backend/Cargo.toml -p bb_server -p bb_cli -p bb_daemon`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 追加 smoke 通过：临时启动 `bb_daemon` 于 127.0.0.1:3901、`bb_server` 于 127.0.0.1:3902；`GET /healthz` 返回 200 ok；经 server 代理的 `GET /api/projects` 返回 200，随后已停止临时进程。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Next step: 下一阶段重点变为 daemon-backed typed delete/archive inbox 工具和完整 tool lifecycle 事件；`bb_server` 已不再作为第二个 writer。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "补完整 Rust 进程边界：`bb_cli` 不再链接 `bb_daemon` 实现；除 `init` 外，`stdio/http/daemon` 兼容入口改为查找同目录 `bb-daemon` binary 并转发到 `bb-daemon stdio/serve/run`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "补完整 Desktop sidecar 边界：Tauri externalBin 增加 `bb-daemon`；Desktop 仍用 `bb` sidecar 做一次性 init，但 HTTP sidecar 改为 `bb-daemon serve`；`scripts/desktop.py prepare` 同时构建并校验 `bb` 与 `bb-daemon` 两个 sidecar。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "补文档和提示：更新 backend/web/desktop README、TaskGraph README、前端 8060/3001 提示为 8060/3002，使开发态语义明确为 daemon 3001、server 3002、frontend 8060。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "真实启动 `scripts/dev.py` 三进程：`bb_daemon` 监听 127.0.0.1:3001，`bb_server` 监听 127.0.0.1:3002 并代理到 daemon，Vite frontend 监听 8060。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "通过 3002 server 代理真实运行 3 个已有 graph：`task-ticket-audit`、`rust-vue-code-review`、`inbox-batch-cleanup` 均 succeeded。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo fmt --manifest-path bb_backend/Cargo.toml --all`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo check --manifest-path bb_backend/Cargo.toml -p bb_cli -p bb_daemon -p bb_server`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon -- --nocapture`，95 个测试通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core pi_tool_policy -- --nocapture`，2 个测试通过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`npm run build --prefix bb_web`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`python -m py_compile scripts/dev.py scripts/desktop.py`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`python scripts/desktop.py prepare --dev --skip-web-build` 生成并校验 `bb` / `bb-daemon` sidecars。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo check --manifest-path bb_desktop/src-tauri/Cargo.toml`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`python scripts/dev.py --help`、`python scripts/desktop.py --help`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 真实服务 smoke 通过：`GET http://127.0.0.1:3001/healthz` = 200，`GET http://127.0.0.1:3002/healthz` = 200，`GET http://127.0.0.1:3002/api/projects` = 200，`GET http://127.0.0.1:8060/` = 200。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: Graph 验证通过：`task-ticket-audit` run `run-20260523-073354-97f6a925` succeeded, superstep 7。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: Graph 验证通过：`rust-vue-code-review` run `run-20260523-073438-5229c5db` succeeded, superstep 5，输出 runtime review `daemon-split-smoke.md`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: Graph 验证通过：`inbox-batch-cleanup` run `run-20260523-073737-13416f19` succeeded, superstep 10。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: CLI wrapper smoke 通过：`cargo run --manifest-path bb_backend/Cargo.toml -p bb_cli -- --root C:\\Dev\\blackboard\\.bb_template daemon --graph system/task-ticket-audit --project blackboard --once --dry-run` 成功转发到 `bb-daemon run`，创建 `run-20260523-073838-9b0e1a69`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Next step: 剩余工作聚焦 daemon-backed typed delete/archive inbox 工具和 tool lifecycle 事件产品化；Rust/进程拆分和 dev 三进程启动链路已完成实跑验证。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23 收口：补齐 daemon-backed typed inbox lifecycle tool。`archive_inbox_note` 已加入 bbpm/dev-all MCP profile，可将 active inbox note 原子移动到 `inbox/archive`，并要求传入非空 `reason`；普通 agent profile 仍不暴露 delete/archive。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23 收口：`delete_inbox_note` schema 已明确为 daemon-backed typed tool，并允许携带可选 `reason`；边界仍是通过 MCP tool 删除，不允许 agent 用 shell `rm` 或直接改 inbox 文件绕过。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "2026-05-23 边界：Tool Lifecycle start/update/end 事件与 UI 展示按用户要求留到下一轮；本轮只收 daemon-backed typed tools、Rust 拆包/CLI/server/daemon 基础和 ResourceBundle 契约。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo fmt --manifest-path bb_backend/Cargo.toml --all`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_core archives_inbox_note -- --nocapture`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon archive_inbox_note -- --nocapture`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon daemon_only_delete_inbox_note_returns_standard_content_result -- --nocapture`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon all_listed_tools_return_standard_content_results -- --nocapture`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-23",
+      "summary": "Record: 验证通过：`cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon -p bb_server -p bb_cli`。",
+      "evidence": []
+    }
+  ],
+  "attachments": [
+    {
+      "kind": "ticket",
+      "target": "000080",
+      "label": "Tool Lifecycle 事件契约"
+    },
+    {
+      "kind": "ticket",
+      "target": "000082",
+      "label": "LLM 节点增强语义 / ResourceBundle / Tool Policy"
+    },
+    {
+      "kind": "ticket",
+      "target": "000078",
+      "label": "LLM Coordinator / ResourceBundle 试验基础"
+    }
+  ],
+  "status": "done",
+  "created_at": "2026-05-23",
+  "updated_at": "2026-05-23",
+  "extra": {}
+}

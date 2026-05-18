@@ -20,7 +20,7 @@ use crate::task_graph::nodes;
 use crate::task_graph::pregel::PregelTaskKind;
 use crate::task_graph::run_state::TaskGraphRun;
 
-/// 执行一批 ready nodes，返回所有 NodeOutcome。
+/// 执行一批 ready nodes，返回所有 `NodeOutcome`。
 ///
 /// - Inline 节点：在当前线程直接执行
 /// - Dispatch 节点：使用 `std::thread::scope` 并行执行
@@ -93,22 +93,21 @@ pub(super) fn execute_ready_nodes(
     // 多个 Dispatch 节点：并行执行
     let dispatch_results: Vec<(String, Result<NodeOutcome, TaskGraphError>)> =
         std::thread::scope(|s| {
-            let handles: Vec<_> = dispatch_nodes
+            dispatch_nodes
                 .iter()
                 .map(|rn| {
                     let node_id = rn.node_id.clone();
-                    s.spawn(move || {
+                    let handle = s.spawn(move || {
                         let Some(node) = node_map.get(node_id.as_str()) else {
                             return (
                                 node_id.clone(),
                                 Err(TaskGraphError::ValidationFailed {
                                     count: 1,
                                     errors: vec![TaskGraphValidationError {
-                                        path: format!("nodes.{}", node_id),
+                                        path: format!("nodes.{node_id}"),
                                         code: "node_not_found".to_string(),
                                         message: format!(
-                                            "Node '{}' not found in graph snapshot",
-                                            node_id
+                                            "Node '{node_id}' not found in graph snapshot"
                                         ),
                                     }],
                                 }),
@@ -123,14 +122,25 @@ pub(super) fn execute_ready_nodes(
                             node_map,
                         );
                         (node_id, result)
+                    });
+                    (rn.node_id.clone(), handle)
+                })
+                .map(|(node_id, h)| {
+                    h.join().unwrap_or_else(|_| {
+                        (
+                            node_id.clone(),
+                            Err(TaskGraphError::ValidationFailed {
+                                count: 1,
+                                errors: vec![TaskGraphValidationError {
+                                    path: format!("nodes.{node_id}"),
+                                    code: "parallel_node_panicked".to_string(),
+                                    message: format!("Parallel node '{node_id}' panicked"),
+                                }],
+                            }),
+                        )
                     })
                 })
-                .collect();
-
-            handles
-                .into_iter()
-                .map(|h| h.join().expect("parallel node thread panicked"))
-                .collect()
+                .collect::<Vec<_>>()
         });
 
     for (_node_id, result) in dispatch_results {
@@ -294,6 +304,7 @@ mod tests {
             codebuddy_path: "codebuddy".to_string(),
             opencode_path: "opencode".to_string(),
             opencode_config_content: None,
+            pi_path: "pi".to_string(),
             model: None,
             node_timeout: Duration::from_secs(1),
             run_timeout: Duration::from_secs(1),

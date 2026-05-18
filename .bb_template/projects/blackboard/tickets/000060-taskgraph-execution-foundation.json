@@ -134,6 +134,105 @@
       "at": "2026-05-17",
       "summary": "000060 closed；topology mutation follow-up 为 completed 000069",
       "evidence": []
+    },
+    {
+      "at": "2026-05-21",
+      "summary": "Consolidated inbox note `2026-05-18-codex-taskgraph-branch-data-pin.md`.",
+      "evidence": [
+        "inbox/2026-05-18-codex-taskgraph-branch-data-pin.md",
+        "# TaskGraph Branch 支持显式 data pin 输入\n时间: 2026-05-18T17:35:28Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 给 Branch 默认 pin 增加 `Value` data input，前端旧 Branch 节点渲染时会补齐缺失的默认 pin。\n- 连接创建时增加 pin category 校验，data output 只能连 data input；新 Branch 默认不再写入 `input_ref`。\n- 后端 Branch 默认/升级 pins 补齐 `value` data pin；执行时优先从 data edge 注入的 `__data` 读取判断输入，旧 `input_ref` 作为兼容 fallback。\n- 新增后端测试覆盖 Branch 从 data pin 输入读取 route 并选择正确分支。\n## 验证了什么\n- mcp__bb__.create_inbox_note: 本条写入中\n- cargo fmt --manifest-path bb_backend\\Cargo.toml --all: 通过\n- cargo test --manifest-path bb_backend\\Cargo.toml -p bb_core branch: 通过，17 passed\n- npm exec vue-tsc -- -p tsconfig.app.json --noEmit: 通过\n- npm run build --prefix bb_web: 通过\n- git diff --check: 通过，仅 CRLF warning\n## 下一步\n- 在编辑器里手动连接 `Task Intent.output -> Branch.Value`，再保留 `Task Intent.exec_out -> Branch.exec_in`，检查保存后的 graph validation。\n## 相关位置\n- bb_web/src/data/taskGraphPins.ts\n- bb_web/src/components/TaskGraphEditorPanel.vue\n- bb_backend/crates/bb_core/src/task_graph/definition/pins.rs\n- bb_backend/crates/bb_core/src/task_graph/definition/upgrade.rs\n- bb_backend/crates/bb_core/src/task_graph/nodes/eval.rs\n- bb_backend/crates/bb_core/src/task_graph/tests/runner/eval.rs\n- bb_bac...",
+        "cleanup reason: note_1 描述 Branch 默认 pin 增加 `Value` data input、连接时 pin category 校验（data output 对 data input）、后端补齐 value data pin 并在执行时从 data edge 注入的 `__data` 读取判断输入。这套新增的 data pin 机制属于 000060 Graph Compile & Superstep Execution Kernel 的核心职责：定义图中数据流的 pin 类型系统与执行时注入逻辑。相关文件 bb_core/src/task_graph/definition/pins.rs、upgrade.rs、eval.rs 均在 TaskGraph 核心层。"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-code-monitor-check-fix-pi3-mcp-handoff-run.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-code-monitor-check-fix-pi3-mcp-handoff-run.md",
+        "# Codex 交接：code-monitor-check-fix pi=3 真实跑测\n时间: 2026-05-21T13:53:16Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 重启了 Blackboard 后端 3001 和前端 Vite 8060，后端 healthz 返回 ok，前端返回 HTTP 200。\n- 确认 .bb_template/config/task_graph_runner.toml 中 runtime_max_concurrency.pi = 3。\n- 启动真实 system graph code-monitor-check-fix v5：run-20260521-134301-274235a0。\n- 验证第 4 个 superstep 中 clippy-fix、frontend-i18n、frontend-theme 三个 Pi 节点均以 limit=3、waited_ms=0 获取 runtime permit。\n- run 最终 succeeded，mcp-handoff 节点 succeeded，并通过 pi-mcp-adapter 调用 bb_create_inbox_note 写出 graph handoff。\n## 验证了什么\n- backend GET /healthz: ok；frontend GET http://127.0.0.1:8060: 200。\n- TaskGraph run run-20260521-134301-274235a0: status=succeeded, current_superstep=9。\n- frontend-compile-verify: succeeded, npm build exit_code=0。\n- rust-compile-verify: succeeded, cargo clippy exit_code=0。\n- mcp-handoff session as-20260521-135208-3f636dc8: tool_count=1，tool=mcp 调用 bb_create_inbox_note 返回 inbox/2026-05-21-task-graph-code-monitor-check-fix-code-monitor-check-fix-pi-mcp-handoff.md。\n## 下一步\n- 如果要避免两个前端 Agent 同时修同一文件，后续可把 i18n 与 theme 的写文件范围拆得更硬，或引入文件级 lease/冲突检测。\n## 相关位置\n- .bb_template/task_graphs/system/code-monitor-check-fix.json\n- .bb_template/config/...",
+        "cleanup reason: note_1 验证了 code-monitor-check-fix v5 在 superstep=4 时 clippy-fix、frontend-i18n、frontend-theme 三节点并发执行（limit=3、waited_ms=0 获取 runtime permit），与 000060 TaskGraph 060 的 superstep execution kernel（定义并发、失败、重试、取消机制）直接对应，且 run 最终 succeeded 进入 superstep=9，属于 superstep 执行内核的实跑验证记录。"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-code-monitor-check-fix-实跑验证.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-code-monitor-check-fix-实跑验证.md",
+        "# code-monitor-check-fix 实跑通过与验证器修正\n时间: 2026-05-21 20:30 Asia/Shanghai\n来源: codex\n项目: blackboard\n## 做了什么\n- 启动真实 TaskGraph run：run-20260521-120823-18bdd3a6，graph=system/code-monitor-check-fix@v4，最终 status=succeeded，current_superstep=8。\n- 确认执行路径：frontend-loop 与 rust-loop 并发；前端 i18n/明暗模式并发；前端 npm build 与 Rust cargo clippy 验证节点均成功；两个汇总报告节点成功。\n- 修复 scripts/task_graph_code_monitor_verify.py 的 Windows 命令解析问题：npm/cargo 先解析到真实可执行文件，避免 shell node 中裸 npm 找不到；同时改为 utf-8/errors=replace 捕获输出，最终 JSON 使用 ASCII-safe 输出。\n- 发现 run 中汇总 LLM 节点额外写文件漂移到 .bb_template；已收紧 code-monitor-check-fix 两个汇总节点 prompt，要求只输出 Markdown artifact，不创建/修改/删除工作区文件。\n## 验证了什么\n- python -m py_compile scripts/task_graph_code_monitor_verify.py：通过。\n- python scripts/task_graph_code_monitor_verify.py --repo-root . --frontend-workspace bb_web --skip-rust --timeout-seconds 900：通过，npm build exit_code=0。\n- python scripts/task_graph_code_monitor_verify.py --repo-root . --rust-workspace bb_backend --skip-frontend --timeout-seconds 900：通过，cargo clippy exit_code=0。\n- TaskGraph run run-20260521-120823-18bdd3a6：succeeded。\n## 下一步\n- 如果要把报告落盘产品化，建议加 system_write_output 节点，禁止 report LLM 自己写文件。\n- 如果不希望 clippy-fix 用 allow 处理 too_many_arguments，需要...",
+        "cleanup reason: content describes TaskGraph code-monitor-check-fix system graph real-run verification; explicitly references graph run, frontend-loop/rust-loop execution, superstep=8, code-monitor-check-fix system graph nodes and verification script fixes"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-pi-mcp-adapter-graph-handoff-smoke.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-pi-mcp-adapter-graph-handoff-smoke.md",
+        "# Pi MCP adapter 接入与 TaskGraph handoff smoke 通过\n时间: 2026-05-21 20:58 Asia/Shanghai\n来源: codex\n项目: blackboard\n## 做了什么\n- 安装 pi-mcp-adapter：pi install npm:pi-mcp-adapter，pi list 显示 User packages 包含 npm:pi-mcp-adapter。\n- 新增 .bb_template/.mcp.json，配置 bb MCP server 指向 http://127.0.0.1:3001/mcp，并允许 create_inbox_note/list_projects/read_ticket_by_id/search_tickets 作为 directTools；测试中使用 mcp proxy tool。\n- 普通 Pi 进程 smoke test 通过：Pi 使用 mcp tool 调用 bb_create_inbox_note，创建 inbox/2026-05-21-pi-mcp-smoke-pi-mcp-direct.md。\n- 新增最小系统图 .bb_template/task_graphs/system/pi-mcp-handoff-smoke.json，用 TaskGraph Pi runtime 调用 MCP 写 handoff。\n- 首个 graph smoke run 因 runtime_max_concurrency.pi=1 排队等待，已取消 run-20260521-124214-f6fd75fa；为避免影响另一个长跑 Pi 任务，临时把 pi 并发升到 2 启动第二个 smoke，跑完后恢复到测试前的 pi=1。\n- 第二个 graph smoke run run-20260521-124851-808cc74f 成功，pi-mcp-handoff 节点 tool_count=1，调用 mcp -> bb_create_inbox_note，创建 inbox/2026-05-21-pi-mcp-graph-pi-mcp-graph-smoke-204850.md。\n## 验证了什么\n- pi --version：0.75.4。\n- pi list：包含 npm:pi-mcp-adapter。\n- 普通 Pi 命令：pi --mode json --print --no-builtin-tools --tools mcp --model minimax-cn/MiniMax-M2.7-highspeed，在 .bb_template cwd 下成功调用 mcp。\n- TaskGraph run run-20260521-124851-808cc74f：sta...",
+        "cleanup reason: content explicitly describes migrating three project graphs to system graphs (research-internal/external/iteration-draft), updating child node references, and consolidating naming; clearly TaskGraph structure work for 000060 kernel"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-research-iteration-draft-基于-080-生成草案并盯运行.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-research-iteration-draft-基于-080-生成草案并盯运行.md",
+        "# research-iteration-draft 080 草案运行完成\n时间: 2026-05-21T13:02:53Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 启动 `research-iteration-draft`，基于 000080 Tool Lifecycle Events 需求生成研究迭代草案。\n- 首轮暴露 `research-external` scout schema repair kind 未被当前运行后端支持；已在 `schema_validate.rs` 增加 `external_research_scout_outputs` alias 并补单测，但 bb_cli 当前因并发 Pi runner_config 编译错误未能重建。\n- 为让当前运行后端可执行，将 system graph `research-external` 的 repair kind 临时切到已有 `code_research_scout_outputs`，语义仍是 scout output 结构修复。\n- 将 `.bb_template/config/task_graph_runner.toml` 中 `pi` runtime concurrency 降为 1 并重启后端，绕过 Windows `.bb_template/skills` 目录并发锁。\n- 成功 run：parent `run-20260521-123213-0cf1c2c3`，internal child `run-20260521-123213-b52dc0ac`，external child `run-20260521-123213-217408db`。\n- 主草案已写入 `.bb_template/wiki/research/080-tool-lifecycle-iteration-draft.md`。\n## 验证了什么\n- `cargo fmt --manifest-path bb_backend/Cargo.toml --all` 通过。\n- `cargo test --manifest-path bb_backend/Cargo.toml -p bb_core repairs_research_scout_outputs_for_metadata_only_and_string_values -- --nocapture` 通过。\n- `cargo build --manifest-path bb_backend/Cargo.toml -p bb_cli` 被阻塞：`bb_backend/crates/bb_cli/src/http/task_graph/runner_config.rs` 存在 Pi 相关编译错误，未修改该并发 agent 范...",
+        "cleanup reason: content describes running research-iteration-draft graph with internal/external child runs, system_write_output artifacts, superstep execution; directly involves TaskGraph runtime execution kernel"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-task-graph-code-monitor-merge.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-task-graph-code-monitor-merge.md",
+        "# 合并三个简单系统 Graph 为代码监控检查和修复\n时间: 2026-05-21T11:26:20Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 新增 system graph `.bb_template/task_graphs/system/code-monitor-check-fix.json`，标题为 `代码监控检查和修复`。\n- 将原 `task-frontend-i18n` 的 i18n LLM 节点、`frontend-light-dark-fix` 的暗色模式 LLM 节点、`rust-clippy-pipeline` 的 Clippy scan/fix/check loop 内联到同一张图。\n- 删除旧 system graph：`frontend-light-dark-fix.json`、`task-frontend-i18n.json`、`rust-clippy-pipeline.json`。\n- 更新 `frontend-smoke.json`：原先指向 `frontend-light-dark-fix` 的子图引用改为 `code-monitor-check-fix`，并将 version 从 4 提升到 5。\n## 验证了什么\n- `python -m json.tool .bb_template/task_graphs/system/code-monitor-check-fix.json`：通过。\n- `python -m json.tool .bb_template/task_graphs/system/frontend-smoke.json`：通过。\n- `GET /api/projects/blackboard/task-graphs`：`code-monitor-check-fix` scope=system、version=1、compile_error=null；`frontend-smoke` version=5、compile_error=null。\n- 检查新图节点：9 个节点、8 条边，`has_subgraph=false`，确认是 inline graph。\n- 旧 system graph API `frontend-light-dark-fix`、`task-frontend-i18n`、`rust-clippy-pipeline` 均返回 404。\n## 下一步\n- 如需进一步压实运行质量，可以单独跑一次 `code-monitor-check-fix`，但它会实际触发前端和 Rust 修复型 Agent，当前只做结构合并和 catalog 校验。\n## 相关位置\n- .bb_template/task_graphs/system/code-monitor-chec...",
+        "cleanup reason: content explicitly describes merging three system graphs into code-monitor-check-fix, deleting old system graphs, updating subgraph references; core TaskGraph graph structure consolidation for 000060"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-task-graph-code-monitor-tool-verification-loop.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-task-graph-code-monitor-tool-verification-loop.md",
+        "# 代码监控 Graph 增加工具编译验证闭环\n时间: 2026-05-21T11:39:57Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 将 `code-monitor-check-fix` 改为两个并行闭环：前端闭环和后端/Rust 闭环。\n- 前端闭环：`frontend-loop` fan out 到 `frontend-i18n` 和 `frontend-theme` 并发执行，汇入 `frontend-compile-verify` shell 工具节点；若 `stdout_json.has_issues=true`，回到前端修复链路重试。\n- 后端闭环：`rust-loop` 执行 `clippy-scan -> clippy-fix -> rust-compile-verify`；若 `stdout_json.has_issues=true`，回到 Clippy 修复链路重试。\n- 新增 deterministic 工具脚本 `scripts/task_graph_code_monitor_verify.py`，用于 shell 节点实际运行 `npm run build --prefix <frontend>` 或 `cargo clippy --all-targets`，并输出 JSON：`ok/has_issues/issue_count/checks/issues`。\n- 前端汇总 `frontend-health-report` 与后端汇总 `rust-health-report` 已拆分为独立报告节点；两者都完成后进入 `end-success`。\n## 验证了什么\n- `python -m py_compile scripts/task_graph_code_monitor_verify.py`：通过。\n- `python -m json.tool .bb_template/task_graphs/system/code-monitor-check-fix.json`：通过。\n- `GET /api/projects/blackboard/task-graphs/system/code-monitor-check-fix`：通过，version=2，scope=system。\n- `GET /api/projects/blackboard/task-graphs`：`code-monitor-check-fix` node_count=13、edge_count=14、compile_error=null。\n- 本地脚本 no-op 路径 `python scripts/task_graph_code_monitor_verify.py --repo-root . --skip-frontend...",
+        "cleanup reason: content describes code-monitor-check-fix graph adding tool verification loops (frontend-compile-verify, clippy-scan/fix/check), deterministic verify script, parallel fan-out/join structure; superstep execution infrastructure for 000060"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-task-graph-research-system-graph-migration.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-task-graph-research-system-graph-migration.md",
+        "# Research 三件套迁移到 system graph 并收敛命名\n时间: 2026-05-21T11:16:31Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 将三份 project graph 迁移为 system graph：`research-internal`、`research-external`、`research-iteration-draft`。\n- 收敛 graph 文件名/ID/title/description：`research-internal`=向内调研，`research-external`=向外调研，`research-iteration-draft`=内外调研到迭代草案。\n- 删除 project graph 目录下旧三份：`external-research.json`、`task-coordinator-l2-resource-bundle.json`、`research-to-iteration-draft.json`。\n- 父管线子图引用改为 system scope：`research-internal` 和 `research-external`，并同步更新父图 child node ID 与 upstream artifact path。\n- 将 internal graph 默认 `source-root` 改为 `{{env.workspace}}`，补齐 `output-slug` 输入，使向内/向外调研输出命名一致。\n## 验证了什么\n- `python -m json.tool` 校验三份 system graph：通过。\n- `GET /api/projects/blackboard/task-graphs`：三份 `research-*` 均为 `scope=system`、`source=builtin`、`compile_error=null`。\n- `GET /api/projects/blackboard/task-graphs/system/{research-internal,research-external,research-iteration-draft}`：均可读取。\n- 旧 project graph API `project/{external-research,task-coordinator-l2-resource-bundle,research-to-iteration-draft}`：返回 missing/404，符合迁移预期。\n- `rg` 扫描三份 system graph：无旧 graph id、project graph_scope、旧 nodes 引用残留。\n## 下一步\n- 如果后续要继续产品化，建议把 TaskG...",
+        "cleanup reason: content explicitly describes migrating research system graphs, converging graph scope to system, deleting old project graphs, updating parent-child references; TaskGraph structure migration for 000060 kernel"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-taskgraph-bbpm-maintenance-graphs-system-tool-refactor.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-taskgraph-bbpm-maintenance-graphs-system-tool-refactor.md",
+        "# 2026-05-21 Codex TaskGraph BBPM 维护图改为系统工具优先\n时间: 2026-05-21 18:06 Asia/Shanghai\n来源: codex\n项目: blackboard\n## 做了什么\n- 盘点并重构仍由 `bb-pm` 执行维护写操作的 system graph：`inbox-batch-cleanup`、`ticket-bdd-cleanup`、`task-ticket-audit`，以及父图 `bbpm-maintain`。\n- 新增 shell node 通用结构化输出能力：当 stdout 是 JSON 时，节点输出新增 `stdout_json`，供 loop/branch/schema_validate 直接引用。\n- 新增 `scripts/cleanup_inbox_batch.py`：确定性 inbox cleanup 工具，只处理显式命中单一 active ticket id 的 note，将内容追加到目标 JSON ticket `progress_record` 后删除 note，并重建 `__inbox__.json`。\n- 新增 `scripts/migrate_ticket_bdd_batch.py`：确定性 legacy Markdown ticket -> JSON BDD 迁移工具，生成有效 JSON ticket、删除原 Markdown、重建 ticket index。\n- 新增 `scripts/repair_tickets_from_audit.py`：读取 `audit_tickets.py` 报告，对报告列出的 JSON ticket 做安全 schema 归一化（trim、补 required shape、story UUID、extra.attachments 迁移等），不处理 inbox/lane/新建 ticket。\n- `inbox-batch-cleanup` 改为 shell/system tool 节点，loop 条件改读 `$.stdout_json.continue`。\n- `ticket-bdd-cleanup` 改为 shell/system tool 节点，schema_validate 改校验 `{{nodes.bdd-cleanup.output.stdout_json}}`。\n- `task-ticket-audit` 的 repair 节点从 `bb-pm + opencode` 改为 shell/system repair tool，schema_validate 改校验 `{{nodes.ticket-audit-repair.output.stdout_json}}`。\n- `bbpm-maintain` 文案更新为系统工...",
+        "cleanup reason: content describes BBPM maintenance graphs (inbox-batch-cleanup, ticket-bdd-cleanup, task-ticket-audit, bbpm-maintain) refactor to shell/system tool nodes, stdout_json structured output, schema_validate loop; directly implements 000060 runtime infrastructure"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-taskgraph-external-search-generic-proof-run.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-taskgraph-external-search-generic-proof-run.md",
+        "# 泛化 external-research graph 并完成真实运行证明\n时间: 2026-05-21T18:45:00+08:00\n来源: codex\n项目: blackboard\n## 做了什么\n- 将外部调研图从专用 OpenAI/Symphony 语义修正为通用 external search/research：支持 URL、repo、docs、论文、wiki、新闻、市场/财务数据、dataset、issue/search direction。\n- 移除 project graph 与 external/research-output skills 中的 OpenAI/Symphony/Blackboard 专属默认值或描述；parent graph `research-to-iteration-draft` 的 external child 已指向通用 `external-research`，默认 primary-urls 改为空数组。\n- 启动真实运行 `run-20260521-103210-81f5c27a`：输入为 NVDA 最近财报、AI芯片/数据中心新闻、股价/市场表现驱动与风险；primary sources 为 NVIDIA investor relations、Yahoo Finance、NVIDIA newsroom。\n- 运行成功：Planner 生成 4 个动态 scout，`llm_mutation` 在 superstep 6 应用 topology mutation，新增 4 个 scout node 与对应汇聚边；四个 Pi scout、schema gates、synthesize、system_write_output、end 均 succeeded。\n- 最终报告由 system_write_output 写入 `wiki/research/2026-05-21-external-search-nvda-proof.md`，大小约 19KB，报告标题为 `NVIDIA (NVDA) 外部调研报告`，包含 59 个 URL source anchors。\n## 验证了什么\n- `POST /api/projects/blackboard/task-graph-runs` 启动 `external-research` v1：created run `run-20260521-103210-81f5c27a`。\n- `GET /api/projects/blackboard/task-graph-runs/run-20260521-103210-81f5c27a`：最终 `status=succeeded`，`current_superstep=11`，`current_graph_revision=1`，...",
+        "cleanup reason: content explicitly describes modifying external-research system graph (removing OpenAI/Symphony semantics, updating skills), running TaskGraph with topology mutation, Pi scouts, schema gates; core TaskGraph runtime execution for 000060"
+      ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-taskgraph-run-lifecycle-consistency-fix.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-taskgraph-run-lifecycle-consistency-fix.md",
+        "# 2026-05-21 Codex TaskGraph run lifecycle 一致性修复与单 run 验证\n时间: 2026-05-21 17:52 Asia/Shanghai\n来源: codex\n项目: blackboard\n## 做了什么\n- 修复 run terminal lifecycle：`update_run_status` 在 succeeded/failed/cancelled 终态清空 `active_nodes`。\n- 新增 `fail_run_active_nodes`：runner/coordinator fast-fail 时将 run 标记 failed，并把仍处于 idle/queued/running/paused 的 active node 投影收敛为 failed，保留 runtime/agent/model/session 字段。\n- 修复 coordinator dispatch error 路径：`execute_ready_nodes` 返回 Err 时不再只向外抛导致半状态，而是通过 `fail_run` 统一收口并记录 `run_failed` 事件。\n- 修复 reducer：同一 superstep 中遇到 failed outcome 不再提前返回，先处理完整 outcome 列表，避免后续节点结果不落盘。\n- 修复 executor：并行 node thread panic 不再 `expect` 直接 panic，而是转成 `ValidationFailed(parallel_node_panicked)` 交给 lifecycle 失败收口。\n- 重启后端到新构建，发起单条真实 run `run-20260521-094715-3bec4c35`，图为 `task-coordinator-l2-resource-bundle@v2`，prompt 为“帮我调研下bb系统是怎么做task graph系统的，核心是用了什么”。\n## 验证了什么\n- `cargo fmt`: 通过。\n- `cargo test -p bb_core test_fail_run_active_nodes_reconciles_running_nodes`: 通过，1 passed。\n- `cargo test -p bb_core task_graph::tests::runner`: 通过，43 passed。\n- `cargo build -p bb_cli`: 通过。\n- 后端重启：停止旧 PID 363188，启动新 PID 366488，`GET /healthz`: ok。\n- 真实单 run `run-20260521-094715-3bec4c35`: succeeded，superstep=...",
+        "cleanup reason: content explicitly describes TaskGraph run lifecycle consistency fixes: terminal lifecycle, fail_run_active_nodes, coordinator dispatch error path, reducer outcome processing, executor parallel panic handling; core runtime kernel fixes for 000060"
+      ]
     }
   ],
   "attachments": [
@@ -145,7 +244,7 @@
   ],
   "status": "done",
   "created_at": "2026-05-14",
-  "updated_at": "2026-05-18",
+  "updated_at": "2026-05-22",
   "extra": {
     "area": "TaskGraph",
     "assignee": "codex",

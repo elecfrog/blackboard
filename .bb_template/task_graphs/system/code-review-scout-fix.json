@@ -1,0 +1,340 @@
+{
+  "schema_version": 1,
+  "id": "code-review-scout-fix",
+  "scope": "system",
+  "title": "Code Review Scout Fix",
+  "description": "基于 code review 报告的保守修复管线：确定性收集 review ResourceBundle，Pi/MiniMax 先验证 finding 再做小范围修复，随后审计 Agent 写入边界、运行代码质量验证并由系统写出 runtime 内部修复报告。",
+  "version": 5,
+  "readonly": false,
+  "metadata": {
+    "tags": [
+      "system",
+      "code-review",
+      "scout-fix",
+      "pi",
+      "resource-bundle",
+      "code-quality",
+      "write-scope-audit"
+    ],
+    "owner": "blackboard",
+    "created_by": "codex",
+    "updated_by": "codex",
+    "run_policy": {
+      "allow_concurrent_runs": false,
+      "max_concurrent_runs": 1,
+      "queue_enabled": true,
+      "max_queue_wait_ms": 7200000,
+      "queue_timeout_retry_enabled": true,
+      "max_queue_timeout_retries": 5
+    }
+  },
+  "inputs": [
+    {
+      "id": "input",
+      "label": "Fix Prompt",
+      "type": "string",
+      "default": "请基于 code review 报告做 scout fix：先验证 finding，只默认修 critical/high/medium 的高置信、低风险、小范围问题。low/info/nit 只记录不修，除非本输入明确点名要求修。不要修误报，不要回退无关改动。",
+      "description": "本次 scout fix 的任务描述。"
+    },
+    {
+      "id": "source-root",
+      "label": "Source Root",
+      "type": "string",
+      "default": "{{env.root}}/..",
+      "description": "代码根目录。"
+    },
+    {
+      "id": "review-report-path",
+      "label": "Review Report Path",
+      "type": "string",
+      "default": "{{env.workspace}}/runtime/nightly/internal/reviews/code-review.md",
+      "description": "rust-vue-code-review 产出的内部 Markdown 报告。"
+    },
+    {
+      "id": "validation-timeout-seconds",
+      "label": "Validation Timeout Seconds",
+      "type": "number",
+      "default": 900,
+      "min": 60,
+      "max": 3600
+    },
+    {
+      "id": "output-slug",
+      "label": "Output Slug",
+      "type": "string",
+      "default": "code-review-scout-fix",
+      "description": "内部 Markdown 文件名，写入 runtime/nightly/internal/reviews/{output-slug}.md。"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": 40,
+        "y": 220
+      },
+      "config": {}
+    },
+    {
+      "id": "collect-fix-context",
+      "type": "shell",
+      "label": "Collect Fix ResourceBundle",
+      "description": "确定性读取 review 报告、抽取 finding、收集 git 状态，stdout_json 即 ResourceBundle。",
+      "position": {
+        "x": 390,
+        "y": 220
+      },
+      "config": {
+        "command": "python",
+        "args": [
+          "{{env.scripts_dir}}/collect_code_review_fix_resource_bundle.py",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--source-root",
+          "{{inputs.source-root}}",
+          "--review-report-path",
+          "{{inputs.review-report-path}}",
+          "--fix-input",
+          "{{inputs.input}}",
+          "--max-report-chars",
+          "50000",
+          "--max-findings",
+          "20"
+        ],
+        "permission": "read_only",
+        "expected_exit_codes": [
+          0
+        ],
+        "timeout_ms": 300000,
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
+        }
+      }
+    },
+    {
+      "id": "scout-fix",
+      "type": "llm",
+      "label": "Pi Scout Fix",
+      "description": "Pi LLM 节点：把 review finding 当成线索，验证后只做高置信小修复，并输出 Markdown 修复报告。",
+      "position": {
+        "x": 760,
+        "y": 220
+      },
+      "config": {
+        "runtime": "pi",
+        "agent": "native",
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "skills": [
+          "code-review-scout-fix"
+        ],
+        "inputs": {
+          "resource_bundle": "{{nodes.collect-fix-context.output.stdout_json}}"
+        },
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "retry": {
+          "enabled": true,
+          "max_attempts": 2,
+          "backoff_ms": 2000
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 Blackboard code-review-scout-fix 增强 LLM 节点。\n\n你必须使用 code-review-scout-fix skill。\n\n核心规则：\n1. review 报告只是线索，不是事实。每个 finding 必须先读源码验证。\n2. 默认只允许修 critical/high/medium 严重度的高置信、低风险、小范围问题；最多 3 个小修复。\n3. low/info/nit/residual-risk-only 只写入 skipped，不要修改代码，除非 inputs.input 明确点名要求修这个具体问题。\n4. 只允许编辑源码/脚本：bb_backend/**、bb_web/**、bb_desktop/**、scripts/**。\n5. 严禁创建或编辑仓库治理/配置文件，例如 .gitattributes、.gitignore、.editorconfig、.prettierrc*、.eslintrc*、.github/**。\n6. 严禁写入或编辑任何 .bb_template/** 文件，尤其是 .bb_template/task_graphs/**、.bb_template/skills/**、.bb_template/projects/**、.bb_template/wiki/**、.bb_template/runtime/**。\n7. 严禁使用 write 工具生成报告。修复报告只能作为本次回答的 Markdown 文本返回，由 system_write_output 节点写入 runtime 内部目录，不写入 wiki。\n8. 不要回退或清理无关 dirty work；如果发现并发改动冲突，跳过并说明。\n9. 如果 finding 是误报、过期、太宽泛、样式/换行类问题或需要产品判断，写入 skipped。\n\nResourceBundle JSON：\n{{inputs.resource_bundle}}\n\n请执行 scout fix。最后只返回中文 Markdown 报告，不要把报告写到任何文件。"
+        },
+        "tool_policy": {
+          "allowed_tools": [
+            "read",
+            "grep",
+            "find",
+            "ls",
+            "edit"
+          ],
+          "write_roots": [
+            "{{env.root}}/../bb_backend",
+            "{{env.root}}/../bb_web",
+            "{{env.root}}/../bb_desktop",
+            "{{env.root}}/../scripts"
+          ]
+        },
+        "resource_bundle": {
+          "input": "resource_bundle",
+          "required": true
+        },
+        "output_contract": {
+          "artifact_type": "markdown",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "audit-write-scope",
+      "type": "shell",
+      "label": "Audit Agent Write Scope",
+      "description": "确定性审计 scout-fix agent session 的 edit/write 工具调用，确保未写入 graph、skill、project data、runtime 或其他禁止路径。",
+      "position": {
+        "x": 1130,
+        "y": 220
+      },
+      "config": {
+        "command": "python",
+        "args": [
+          "{{env.scripts_dir}}/task_graph_agent_write_scope_audit.py",
+          "--workspace-root",
+          "{{env.workspace}}",
+          "--project",
+          "blackboard",
+          "--graph-id",
+          "code-review-scout-fix",
+          "--rule",
+          "scout-fix::bb_backend,bb_web,bb_desktop,scripts::.bb_template,.git,target,node_modules,bb_web/dist"
+        ],
+        "permission": "read_only",
+        "expected_exit_codes": [
+          0
+        ],
+        "timeout_ms": 300000,
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
+        }
+      }
+    },
+    {
+      "id": "verify-after-fix",
+      "type": "shell",
+      "label": "Code Quality Verify",
+      "description": "运行现有代码质量验证脚本，输出 stdout_json。脚本始终 exit 0，用 has_issues 表达质量检查结果。",
+      "position": {
+        "x": 1500,
+        "y": 220
+      },
+      "config": {
+        "command": "python",
+        "args": [
+          "{{env.scripts_dir}}/task_graph_code_monitor_verify.py",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--frontend-workspace",
+          "bb_web",
+          "--rust-workspace",
+          "bb_backend",
+          "--timeout-seconds",
+          "{{inputs.validation-timeout-seconds}}"
+        ],
+        "permission": "project_write",
+        "expected_exit_codes": [
+          0
+        ],
+        "timeout_ms": 2400000,
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
+        }
+      }
+    },
+    {
+      "id": "system-write-output",
+      "type": "system_write_output",
+      "label": "System Write Fix Report",
+      "description": "把 scout fix 报告、写域审计和 deterministic validation 摘要写入 runtime 内部目录。",
+      "position": {
+        "x": 1870,
+        "y": 220
+      },
+      "config": {
+        "inputs": {
+          "fix_report": "{{data.scout-fix.output}}",
+          "write_scope_audit": "{{nodes.audit-write-scope.output.stdout_json}}",
+          "validation": "{{nodes.verify-after-fix.output.stdout_json}}"
+        },
+        "output_path": "{{env.workspace}}/runtime/nightly/internal/reviews/{{inputs.output-slug}}.md",
+        "content": "{{inputs.fix_report}}\n\n---\n\n## Agent Write Scope Audit\n\n```json\n{{inputs.write_scope_audit}}\n```\n\n## Deterministic Code Quality Check\n\n```json\n{{inputs.validation}}\n```\n",
+        "artifact_type": "markdown",
+        "create_parent_dirs": true,
+        "overwrite": true
+      }
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 2210,
+        "y": 220
+      },
+      "config": {
+        "result": "succeeded"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-start-collect",
+      "from": "start",
+      "to": "collect-fix-context",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-collect-fix",
+      "from": "collect-fix-context",
+      "to": "scout-fix",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-fix-audit",
+      "from": "scout-fix",
+      "to": "audit-write-scope",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-audit-verify",
+      "from": "audit-write-scope",
+      "to": "verify-after-fix",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-verify-write",
+      "from": "verify-after-fix",
+      "to": "system-write-output",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-fix-write-data",
+      "from": "scout-fix",
+      "to": "system-write-output",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "content"
+    },
+    {
+      "id": "e-write-end",
+      "from": "system-write-output",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "scale": 1
+    }
+  }
+}

@@ -116,8 +116,7 @@ pub fn read_latest_superstep_checkpoint(
 ) -> Result<Option<SuperstepCheckpoint>, TaskGraphError> {
     Ok(list_superstep_checkpoints(workspace_root, project, run_id)?
         .into_iter()
-        .filter(|checkpoint| checkpoint.pregel_checkpoint.is_some())
-        .last())
+        .rfind(|checkpoint| checkpoint.pregel_checkpoint.is_some()))
 }
 
 pub fn read_pregel_checkpoint_tuple(
@@ -145,7 +144,7 @@ pub fn read_pregel_checkpoint_tuple(
                 let parent_config = Some(checkpoint_config(
                     run_id,
                     checkpoint_ns,
-                    saved_checkpoint.id.clone(),
+                    saved_checkpoint.id,
                 ));
                 return Ok(Some(checkpoint_tuple(
                     run_id,
@@ -254,6 +253,7 @@ pub fn clear_pending_pregel_writes(
     fs::remove_file(&path).map_err(|source| TaskGraphError::Io { path, source })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn append_run_event(
     workspace_root: &Path,
     project: &str,
@@ -272,12 +272,21 @@ pub fn append_run_event(
 
     let path = run_events_path(&dir);
     let seq = count_event_lines(&path)? + 1;
+    let kind = kind.into();
+    let mut payload = payload;
+    if kind.starts_with("tool_") {
+        if let Some(payload) = payload.as_object_mut() {
+            payload
+                .entry("sequence".to_string())
+                .or_insert_with(|| serde_json::json!(seq));
+        }
+    }
     let event = RunEvent {
-        id: format!("evt-{:06}", seq),
+        id: format!("evt-{seq:06}"),
         seq,
         run_id: run_id.to_string(),
         superstep,
-        kind: kind.into(),
+        kind,
         node_id,
         message: message.into(),
         payload,

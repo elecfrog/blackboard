@@ -56,7 +56,7 @@ pub struct SuperstepPlan {
     pub pregel_loop_status: PregelLoopStatus,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControlDirective {
     Goto {
         target: String,
@@ -77,9 +77,9 @@ impl ControlDirective {
 
 // ─── Side Effect ─────────────────────────────────────────────────────────────
 
-/// 节点执行过程中产生的副作用，由 Reducer 统一应用到 RunState。
+/// 节点执行过程中产生的副作用，由 Reducer 统一应用到 `RunState`。
 ///
-/// `execute_node` 不直接写全局状态，而是将需要写入的变更封装为 SideEffect 返回。
+/// `execute_node` 不直接写全局状态，而是将需要写入的变更封装为 `SideEffect` 返回。
 #[derive(Debug, Clone)]
 pub enum SideEffect {
     /// Branch 节点的分支决策记录。
@@ -92,10 +92,10 @@ pub enum SideEffect {
     LoopFramePush(LoopFrame),
 
     /// 从 Loop body 返回时弹出的 continuation frame。
-    /// 值为 loop_node_id。
+    /// 值为 `loop_node_id`。
     LoopFramePop(String),
 
-    /// HumanGate 暂停元数据。
+    /// `HumanGate` 暂停元数据。
     RunPaused(RunPaused),
 }
 
@@ -103,8 +103,8 @@ pub enum SideEffect {
 
 /// 节点执行的完整结果。
 ///
-/// `execute_node` 返回此结构体，Coordinator 的 Reducer 负责将其归并到 RunState。
-/// **核心原则**：execute_node 不写全局状态，只返回 NodeOutcome。
+/// `execute_node` 返回此结构体，Coordinator 的 Reducer 负责将其归并到 `RunState`。
+/// **核心原则**：`execute_node` 不写全局状态，只返回 `NodeOutcome`。
 #[derive(Debug, Clone)]
 pub struct NodeOutcome {
     /// 执行的节点 ID。
@@ -113,16 +113,16 @@ pub struct NodeOutcome {
     /// 节点最终状态（Succeeded / Failed / Paused）。
     pub status: NodeRunStatus,
 
-    /// 节点输出数据（写入 node_outputs/{node_id}.json）。
+    /// 节点输出数据（写入 `node_outputs/{node_id}.json`）。
     pub output: Option<serde_json::Value>,
 
-    /// 完整的节点状态快照（写入 nodes/{node_id}.json）。
+    /// 完整的节点状态快照（写入 `nodes/{node_id}.json`）。
     pub node_state: TaskGraphRunNode,
 
     /// 需要写入 run context 的副作用列表。
     pub side_effects: Vec<SideEffect>,
 
-    /// SubGraph 节点产生的子 run ID。
+    /// `SubGraph` 节点产生的子 run ID。
     pub child_run_id: Option<String>,
 
     /// 是否为 End 节点完成（携带 end result: "succeeded" / "failed"）。
@@ -139,7 +139,7 @@ pub struct NodeOutcome {
 
 /// Reducer 归并后产生的状态变更描述。
 ///
-/// 用于描述一轮调度后 RunState 应该如何变化。
+/// 用于描述一轮调度后 `RunState` 应该如何变化。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReduceAction {
     /// 继续执行。

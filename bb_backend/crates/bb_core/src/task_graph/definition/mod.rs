@@ -1,4 +1,4 @@
-//! TaskGraph definition layer: schema, storage, upgrades, and pins.
+//! `TaskGraph` definition layer: schema, storage, upgrades, and pins.
 
 pub mod pins;
 pub mod store;

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "title": "Codex handoff: 高频不一致组件审计",
+  "time": "2026-05-23T13:54:31Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "frontend-design-component-audit",
+  "done": [
+    "审计 bb_web/src/components、bb_web/src/views、bb_web/src/styles.css 中高频 UI 组件族。",
+    "交互元素频率最高的文件集中在 TaskGraphNodeInspector.vue(56)、TaskGraphLlmNodeForm.vue(48)、TaskGraphEditorPanel.vue(16)、TicketDetailPanel.vue(16)、TaskGraphCatalogSidebar.vue(15)、TicketStructuredDocument.vue(14)、BoardView.vue(11)、TaskGraphSchedulePanel.vue(11)、LaneManager.vue(11)。",
+    "识别出下一批最值得产品化的组件原语：button/action、dense form field/row、modal/dialog、status badge/pill、empty/error/banner、card/panel。",
+    "未修改代码；本轮产出为设计审计和下一步建议。"
+  ],
+  "validation": [
+    "本地代码检索完成：rg + PowerShell 统计。",
+    "未执行构建：本轮没有代码变更。"
+  ],
+  "next_step": [
+    "建议下一步先产品化 BbButton/BbIconButton/BbMiniButton，收益最大且风险最低。",
+    "第二步产品化 BbField/BbDenseRow，覆盖 TaskGraph 与 Agent 表单密集区。",
+    "第三步收敛 BbDialog/BbAlertDialog，再统一 status pill 与 empty/error。"
+  ],
+  "related_locations": [
+    "bb_web/src/styles.css",
+    "bb_web/src/components/task-graph/TaskGraphNodeInspector.vue",
+    "bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue",
+    "bb_web/src/components/TicketDetailPanel.vue",
+    "bb_web/src/components/TicketStructuredDocument.vue",
+    "bb_web/src/components/AgentWorkbench.vue",
+    "bb_web/src/components/LaneManager.vue",
+    "bb_web/src/components/task-graph/TaskGraphSchedulePanel.vue"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

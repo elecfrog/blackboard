@@ -22,7 +22,7 @@ enum KbPlanMode {
     WriterPlan,
 }
 
-pub(crate) fn execute_kb_plan_node(
+pub fn execute_kb_plan_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
     run: &TaskGraphRun,
@@ -278,8 +278,10 @@ fn manifest_kb_output_dir(
         .get("staging")
         .and_then(|staging| staging.get("kb_output_dir"))
         .and_then(Value::as_str)
-        .map(|raw| kb_staging::resolve_path(raw, workspace_root))
-        .unwrap_or_else(|| workspace_root.join(".bb_template/runtime/kb-wiki-output"))
+        .map_or_else(
+            || workspace_root.join(".bb_template/runtime/kb-wiki-output"),
+            |raw| kb_staging::resolve_path(raw, workspace_root),
+        )
 }
 
 fn document_refs(manifest_input: &Value) -> Vec<Value> {
@@ -318,7 +320,7 @@ fn document_refs(manifest_input: &Value) -> Vec<Value> {
     refs
 }
 
-fn mode_name(mode: KbPlanMode) -> &'static str {
+const fn mode_name(mode: KbPlanMode) -> &'static str {
     match mode {
         KbPlanMode::WikiPlan => "wiki_plan",
         KbPlanMode::WriterPlan => "writer_plan",

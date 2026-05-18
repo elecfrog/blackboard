@@ -1,7 +1,7 @@
 //! Runtime graph topology mutation support.
 //!
 //! This module models Pregel-style topology mutations as barrier-applied
-//! requests. It deliberately does not perform disk I/O; run_state owns
+//! requests. It deliberately does not perform disk I/O; `run_state` owns
 //! persistence, while coordinator owns the barrier lifecycle.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -95,6 +95,7 @@ pub struct GraphMutationApply {
     pub graph: Option<TaskGraphDefinition>,
 }
 
+#[must_use]
 pub fn mutation_batch_id(superstep: u64) -> String {
     format!("mutation-batch-{superstep:06}")
 }
@@ -128,15 +129,12 @@ pub fn graph_mutations_from_output(
                 .cloned()
                 .or_else(|| item.get("mutation").cloned())
                 .unwrap_or_else(|| item.clone());
-            let Some(op) = parse_graph_mutation_op(&op_value, item) else {
-                return None;
-            };
+            let op = parse_graph_mutation_op(&op_value, item)?;
             Some(GraphMutationRequest {
-                id: item
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned)
-                    .unwrap_or_else(|| format!("{source_task_id}-mutation-{index}")),
+                id: item.get("id").and_then(Value::as_str).map_or_else(
+                    || format!("{source_task_id}-mutation-{index}"),
+                    ToOwned::to_owned,
+                ),
                 source_task_id: source_task_id.to_string(),
                 source_node_id: source_node_id.to_string(),
                 op,
@@ -329,6 +327,7 @@ fn string_field(value: &Value, key: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+#[must_use]
 pub fn apply_mutation_requests(
     base_graph: &TaskGraphDefinition,
     base_revision: u64,
@@ -465,6 +464,7 @@ pub fn merge_patch(target: &mut Value, patch: &Value) {
     }
 }
 
+#[must_use]
 pub fn conflict_validation_error(conflict: &GraphMutationConflict) -> TaskGraphValidationError {
     TaskGraphValidationError {
         path: conflict
@@ -483,6 +483,7 @@ pub fn conflict_validation_error(conflict: &GraphMutationConflict) -> TaskGraphV
     }
 }
 
+#[must_use]
 pub fn migrate_checkpoint_channels(
     old_compiled: &CompiledGraph,
     new_compiled: &CompiledGraph,
@@ -610,10 +611,9 @@ fn channel_is_available(
         Some(CompiledChannelClass::NamedBarrierValue) => {
             value.get("ready").and_then(Value::as_bool).unwrap_or(false)
         }
-        Some(CompiledChannelClass::Topic { .. }) => value
-            .as_array()
-            .map(|items| !items.is_empty())
-            .unwrap_or(false),
+        Some(CompiledChannelClass::Topic { .. }) => {
+            value.as_array().is_some_and(|items| !items.is_empty())
+        }
         Some(_) => true,
         None => false,
     }
@@ -778,7 +778,7 @@ fn detect_conflicts(
         detect_patch_path_conflicts(node_id, requests_for_node, &mut conflicts);
     }
 
-    let mut candidate_nodes = node_ids.clone();
+    let mut candidate_nodes = node_ids;
     for node_id in remove_nodes.keys() {
         candidate_nodes.remove(node_id);
     }

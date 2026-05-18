@@ -143,6 +143,7 @@ fn parallel_fork_join_basic() {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),
@@ -163,15 +164,15 @@ fn parallel_fork_join_basic() {
     // Verify both LLM nodes executed.
     let detail = run_state::read_run_detail(root, "test-project", &run.id).unwrap();
     let llm_a_state = detail.nodes.iter().find(|n| n.node_id == "llm-a");
-    let llm_b_state = detail.nodes.iter().find(|n| n.node_id == "llm-b");
+    let llm_b_node = detail.nodes.iter().find(|n| n.node_id == "llm-b");
     assert!(llm_a_state.is_some(), "LLM-A node state should exist");
-    assert!(llm_b_state.is_some(), "LLM-B node state should exist");
+    assert!(llm_b_node.is_some(), "LLM-B node state should exist");
     assert_eq!(
         llm_a_state.unwrap().status,
         run_state::NodeRunStatus::Succeeded
     );
     assert_eq!(
-        llm_b_state.unwrap().status,
+        llm_b_node.unwrap().status,
         run_state::NodeRunStatus::Succeeded
     );
 }
@@ -332,6 +333,7 @@ fn parallel_fork_join_intermediate_node() {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),
@@ -456,6 +458,7 @@ fn parallel_single_branch_backward_compatible() {
         codebuddy_path: "codebuddy".to_string(),
         opencode_path: "opencode".to_string(),
         opencode_config_content: None,
+        pi_path: "pi".to_string(),
         model: None,
         node_timeout: std::time::Duration::from_secs(10),
         run_timeout: std::time::Duration::from_secs(300),

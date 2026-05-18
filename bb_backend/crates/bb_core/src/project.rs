@@ -15,6 +15,7 @@ pub(crate) const LANE_STATUSES: [&str; 2] = ["active", "archived"];
 
 impl Blackboard {
     /// Path to this project's `__project__.json`.
+    #[must_use]
     pub fn project_meta_path(&self) -> std::path::PathBuf {
         self.root().join("__project__.json")
     }
@@ -84,7 +85,7 @@ impl Blackboard {
         })
     }
 
-    /// Persist BoardView preferences in `__project__.json`.
+    /// Persist `BoardView` preferences in `__project__.json`.
     pub fn update_board_view(
         &self,
         settings: ProjectBoardViewSettings,
@@ -167,7 +168,7 @@ pub fn validate_board_view_settings(
     let hidden_statuses = crate::ticket::TICKET_STATUSES
         .iter()
         .filter(|status| hidden.contains(**status))
-        .map(|status| status.to_string())
+        .map(std::string::ToString::to_string)
         .collect();
 
     Ok(ProjectBoardViewSettings { hidden_statuses })

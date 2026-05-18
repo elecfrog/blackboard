@@ -101,12 +101,21 @@
         "2026-05-18-codex-ticket-bdd-cleanup-and-audit-validation.md",
         "2026-05-18-codex-mcp-tool-profile-gating.md"
       ]
+    },
+    {
+      "at": "2026-05-22",
+      "summary": "Consolidated inbox note `2026-05-21-codex-inbox-batch-cleanup-重构为-system-tool.md`.",
+      "evidence": [
+        "inbox/2026-05-21-codex-inbox-batch-cleanup-重构为-system-tool.md",
+        "# inbox-batch-cleanup 已重构并隔离跑通\n时间: 2026-05-21T10:18:30Z\n来源: codex\n项目: blackboard\n## 做了什么\n- 将 `.bb_template/task_graphs/system/inbox-batch-cleanup.json` 从旧 `llm/bb-pm` 节点改为 `shell` 系统工具节点，并升级到 version 4。\n- 新增 `schema_validate` 节点 `inbox-output-validate`，loop condition 改为读取 `$.nodes.inbox-output-validate.output.data.continue`。\n- `scripts/cleanup_inbox_batch.py` 作为确定性工具：只沉淀明确命中单一 active ticket id 的 inbox note；ambiguous、archived、no-id note 保留。\n- 补充 ticket index 重建：删除 inbox note 并更新 ticket 后，同时重建 `__inbox__.json` 和 `__tickets__.json`。\n## 验证了什么\n- `python -m json.tool .bb_template/task_graphs/system/inbox-batch-cleanup.json`：通过。\n- `python -m py_compile scripts/cleanup_inbox_batch.py`：通过。\n- 主后端 API `GET /api/projects/blackboard/task-graphs/system/inbox-batch-cleanup` 返回 version 4：通过。\n- 隔离真实 bb-server 跑 `inbox-batch-cleanup`，batch-count=1/max-iterations=5：run-20260521-101631-0c638bab succeeded，2 轮 loop，沉淀并删除 2 条高置信 note，保留 ambiguous/archived/no-id 3 条，schema_validate valid=true。\n- `cargo test -p bb_core shell_node_exposes_stdout_json_when_stdout_is_json`（bb_backend）：通过。\n- `cargo test -p bb_core schema_validate`（bb_backend）：通过。\n- `python scripts/check_ticket_ids.py --project blackboard`：通...",
+        "cleanup reason: content describes inbox-batch-cleanup graph refactor to shell/system tool node,确定性 cleanup tool, schema_validate loop, stdout_json structured output; directly matches Ticket 073 ticket BDD schema cleanup pipeline scope"
+      ]
     }
   ],
   "attachments": [],
   "status": "in_progress",
   "created_at": "2026-05-18",
-  "updated_at": "2026-05-18",
+  "updated_at": "2026-05-22",
   "extra": {
     "area": "Ticket",
     "assignee": "codex",

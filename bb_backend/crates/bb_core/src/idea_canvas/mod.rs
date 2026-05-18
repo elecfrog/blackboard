@@ -1,7 +1,7 @@
 //! Idea Canvas CRUD and sticky note persistence for a single project.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{SecondsFormat, Utc};
 
@@ -270,7 +270,7 @@ impl Blackboard {
         Ok(self.idea_canvas_dir()?.join(format!("{id}.json")))
     }
 
-    fn read_canvas_file(&self, path: &PathBuf) -> Result<IdeaCanvasDetail, InboxError> {
+    fn read_canvas_file(&self, path: &Path) -> Result<IdeaCanvasDetail, InboxError> {
         let dir = self.idea_canvas_dir()?;
         let canonical = crate::canonicalize(path)?;
         if !canonical.starts_with(&dir) {
@@ -355,7 +355,7 @@ impl Blackboard {
             },
             checks: CONSISTENCY_CHECKS
                 .iter()
-                .map(|check| check.to_string())
+                .map(std::string::ToString::to_string)
                 .collect(),
             errors,
         }

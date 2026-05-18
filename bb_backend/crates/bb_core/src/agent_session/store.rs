@@ -136,7 +136,7 @@ pub fn finalize_session(
     session_id: &str,
     status: AgentSessionStatus,
     provider_session_id: Option<String>,
-    stats: FinalizeStats,
+    finalize_stats: FinalizeStats,
 ) -> Result<AgentSession, AgentSessionError> {
     let completed_at = Utc::now().to_rfc3339();
     let session = update_session(workspace_root, project, session_id, |session| {
@@ -145,11 +145,11 @@ pub fn finalize_session(
             session.provider_session_id = provider_session_id;
         }
         session.completed_at = Some(completed_at.clone());
-        session.event_count = stats.event_count;
-        session.tool_count = stats.tool_count;
-        session.usage = stats.usage.clone();
+        session.event_count = finalize_stats.event_count;
+        session.tool_count = finalize_stats.tool_count;
+        session.usage = finalize_stats.usage.clone();
     })?;
-    write_usage(workspace_root, project, session_id, &stats.usage)?;
+    write_usage(workspace_root, project, session_id, &finalize_stats.usage)?;
     Ok(session)
 }
 
@@ -210,7 +210,7 @@ pub fn read_events(
                 path: path.clone(),
                 message: err.to_string(),
             })?;
-        if since.map(|seq| event.seq > seq).unwrap_or(true) {
+        if since.is_none_or(|seq| event.seq > seq) {
             events.push(event);
         }
     }
@@ -236,10 +236,12 @@ pub fn write_usage(
     })
 }
 
+#[must_use]
 pub fn session_summary(session: &AgentSession) -> AgentSessionSummary {
     AgentSessionSummary::from(session)
 }
 
+#[must_use]
 pub fn session_dir(workspace_root: &Path, project: &str, session_id: &str) -> PathBuf {
     sessions_root(workspace_root, project).join(session_id)
 }

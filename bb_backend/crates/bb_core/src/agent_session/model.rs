@@ -2,6 +2,105 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentToolPolicyMode {
+    Off,
+    #[default]
+    Block,
+    Ask,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentBashToolPolicy {
+    /// Regex allow rules kept for compatibility with existing graphs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allow: Vec<String>,
+    /// Regex deny rules kept for compatibility with existing graphs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deny: Vec<String>,
+    /// Shell-style wildcard allow rules, for example `cargo clippy*`.
+    #[serde(
+        default,
+        alias = "white_list",
+        alias = "allowlist",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub whitelist: Vec<String>,
+    /// Shell-style wildcard deny rules. Deny/blacklist rules always win.
+    #[serde(
+        default,
+        alias = "black_list",
+        alias = "denylist",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub blacklist: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentMcpToolPolicy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deny: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentToolPolicy {
+    #[serde(default)]
+    pub mode: AgentToolPolicyMode,
+    /// `None` leaves Pi's active tool set unchanged; `Some([])` disables all tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_tools: Option<Vec<String>>,
+    /// Write/edit roots accepted by the Blackboard Pi policy extension.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub write_roots: Vec<String>,
+    /// Write/edit roots always denied by the Blackboard Pi policy extension.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub write_deny_roots: Vec<String>,
+    #[serde(default, skip_serializing_if = "AgentBashToolPolicy::is_empty")]
+    pub bash: AgentBashToolPolicy,
+    #[serde(default, skip_serializing_if = "AgentMcpToolPolicy::is_empty")]
+    pub mcp: AgentMcpToolPolicy,
+}
+
+impl Default for AgentToolPolicy {
+    fn default() -> Self {
+        Self {
+            mode: AgentToolPolicyMode::Block,
+            allowed_tools: None,
+            write_roots: Vec::new(),
+            write_deny_roots: Vec::new(),
+            bash: AgentBashToolPolicy::default(),
+            mcp: AgentMcpToolPolicy::default(),
+        }
+    }
+}
+
+impl AgentBashToolPolicy {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.allow.is_empty()
+            && self.deny.is_empty()
+            && self.whitelist.is_empty()
+            && self.blacklist.is_empty()
+    }
+}
+
+impl AgentMcpToolPolicy {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.allow.is_none() && self.deny.is_empty()
+    }
+}
+
+impl AgentToolPolicy {
+    #[must_use]
+    pub fn is_off(&self) -> bool {
+        self.mode == AgentToolPolicyMode::Off
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentSessionStatus {
@@ -49,14 +148,15 @@ pub struct TokenUsage {
 }
 
 impl TokenUsage {
-    pub fn add_assign(&mut self, other: &TokenUsage) {
+    pub const fn add_assign(&mut self, other: &Self) {
         self.input_tokens += other.input_tokens;
         self.output_tokens += other.output_tokens;
         self.cache_read_tokens += other.cache_read_tokens;
         self.cache_write_tokens += other.cache_write_tokens;
     }
 
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.input_tokens == 0
             && self.output_tokens == 0
             && self.cache_read_tokens == 0

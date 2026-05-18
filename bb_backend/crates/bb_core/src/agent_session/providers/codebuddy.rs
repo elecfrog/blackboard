@@ -12,7 +12,7 @@ use super::super::AgentSessionError;
 const TOOL_OUTPUT_LIMIT: usize = 8192;
 
 #[derive(Debug, Clone)]
-pub(crate) struct CodeBuddyObserver {
+pub struct CodeBuddyObserver {
     pub workspace_root: PathBuf,
     pub project: String,
     pub session_id: String,
@@ -20,7 +20,7 @@ pub(crate) struct CodeBuddyObserver {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CodeBuddyCapture {
+pub struct CodeBuddyCapture {
     pub stdout: Vec<u8>,
     pub text_output: String,
     pub result_output: Option<String>,
@@ -50,9 +50,9 @@ impl Default for CodeBuddyCapture {
     }
 }
 
-pub(crate) fn read_codebuddy_json_pipe_to_end(
+pub fn read_codebuddy_json_pipe_to_end(
     pipe: impl Read,
-    observer: CodeBuddyObserver,
+    observer: &CodeBuddyObserver,
 ) -> CodeBuddyCapture {
     let mut reader = BufReader::new(pipe);
     let mut capture = CodeBuddyCapture::default();
@@ -75,32 +75,29 @@ pub(crate) fn read_codebuddy_json_pipe_to_end(
             continue;
         }
 
-        match serde_json::from_str::<Value>(line) {
-            Ok(event) => {
-                if let Err(err) =
-                    handle_codebuddy_event(&observer, &event, &mut capture, &mut call_id_to_tool)
-                {
-                    log_lines.push(format!("AgentSession persist error: {err}"));
-                }
+        if let Ok(event) = serde_json::from_str::<Value>(line) {
+            if let Err(err) =
+                handle_codebuddy_event(observer, &event, &mut capture, &mut call_id_to_tool)
+            {
+                log_lines.push(format!("AgentSession persist error: {err}"));
             }
-            Err(_) => {
-                let stripped = strip_ansi_codes(line);
-                log_lines.push(stripped.clone());
-                let _ = append_event(
-                    &observer,
-                    &mut capture,
-                    AgentEventType::Log,
-                    Some(stripped),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some("runtime".to_string()),
-                    None,
-                    BTreeMap::new(),
-                );
-            }
+        } else {
+            let stripped = strip_ansi_codes(line);
+            log_lines.push(stripped.clone());
+            let _ = append_event(
+                observer,
+                &mut capture,
+                AgentEventType::Log,
+                Some(stripped),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some("runtime".to_string()),
+                None,
+                BTreeMap::new(),
+            );
         }
     }
 
@@ -118,7 +115,7 @@ fn handle_codebuddy_event(
 ) -> Result<(), AgentSessionError> {
     match string_field(event, "type").as_deref() {
         Some("system") => handle_system_event(observer, event, capture),
-        Some("assistant") | Some("user") => {
+        Some("assistant" | "user") => {
             handle_message_event(observer, event, capture, call_id_to_tool)
         }
         Some("result") => handle_result_event(observer, event, capture),
@@ -262,7 +259,7 @@ fn handle_message_event(
                     }
                 }
             }
-            Some("thinking") | Some("reasoning") | Some("redacted_thinking") => {
+            Some("thinking" | "reasoning" | "redacted_thinking") => {
                 let text = string_field(item, "thinking")
                     .or_else(|| string_field(item, "text"))
                     .or_else(|| string_field(item, "content"))
@@ -284,7 +281,7 @@ fn handle_message_event(
                     )?;
                 }
             }
-            Some("tool_use") | Some("server_tool_use") => {
+            Some("tool_use" | "server_tool_use") => {
                 let raw_tool = string_field(item, "name")
                     .or_else(|| string_field(item, "tool"))
                     .unwrap_or_else(|| "unknown".to_string());
@@ -382,8 +379,7 @@ fn handle_result_event(
         .unwrap_or(false)
         || string_field(event, "subtype")
             .as_deref()
-            .map(|subtype| subtype == "error" || subtype == "failed")
-            .unwrap_or(false);
+            .is_some_and(|subtype| subtype == "error" || subtype == "failed");
     if is_error {
         let message = event_error_message(event)
             .or_else(|| string_field(event, "result"))
@@ -429,7 +425,8 @@ fn append_text_event(
     )
 }
 
-pub(crate) fn append_event(
+#[allow(clippy::too_many_arguments)]
+pub fn append_event(
     observer: &CodeBuddyObserver,
     capture: &mut CodeBuddyCapture,
     event_type: AgentEventType,
@@ -504,11 +501,10 @@ fn event_log_message(value: &Value) -> Option<String> {
 }
 
 fn normalize_json_payload(value: &Value) -> Value {
-    if let Some(text) = value.as_str() {
-        serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string()))
-    } else {
-        value.clone()
-    }
+    value.as_str().map_or_else(
+        || value.clone(),
+        |text| serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string())),
+    )
 }
 
 fn tool_result_output(value: &Value) -> String {
@@ -612,7 +608,7 @@ plain runtime line
             long_output
         );
 
-        let capture = read_codebuddy_json_pipe_to_end(stdout.as_bytes(), observer);
+        let capture = read_codebuddy_json_pipe_to_end(stdout.as_bytes(), &observer);
 
         assert_eq!(capture.provider_session_id.as_deref(), Some("cb-1"));
         assert_eq!(capture.text_output, "hello");

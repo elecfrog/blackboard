@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::task_graph::definition::types::*;
+use crate::task_graph::definition::types::{
+    NodeType, TaskGraphDefinition, TaskGraphNode, TaskGraphValidationError,
+};
 
 // ─── Cycle detection ─────────────────────────────────────────────────────────
 

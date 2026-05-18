@@ -70,6 +70,7 @@
 - 如果 active ticket 检索不充分、有歧义，或者请求里出现很可能有历史上下文的关键词，再用 `bb_search_notes`、`bb_list_inbox_notes`、`bb_read_inbox_note` 搜对应 project 的 inbox。不要扫本地 `projects/*` 目录来替代 MCP 检索。
 - Blackboard 是协作上下文事实。找到相关 ticket 时按其范围推进工作。
 - 工作结束后，通过 `bb_create_inbox_note` 在对应 project 写一份简洁交接。
+- Inbox 的权威形态是 JSON document，由 `bb_create_inbox_note` / `create_inbox_note` 写入 `schema_version=1` 的结构化 note；读取时以工具返回的 `document` 字段为准，`content` 只是给人读的展示投影。不要手写 Markdown inbox，不要把 `.md` 当作有效 inbox note。
 - inbox 笔记要简洁：只写已经完成的工作流水、实际验证、相关 ticket/tool/context。风险、决策、下一步和阻塞优先进 ticket，不把 handoff 写成小型 ticket。
 - 仅当请求纯粹是对话式回答、或是不会产生任何长期 project 上下文的一次性小命令时，才可以跳过 inbox 笔记。
 

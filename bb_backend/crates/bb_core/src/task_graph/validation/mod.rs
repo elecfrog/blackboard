@@ -12,7 +12,9 @@ mod pre_run;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::task_graph::definition::types::*;
+use crate::task_graph::definition::types::{
+    NodeType, TaskGraphDefinition, TaskGraphEdge, TaskGraphNode, TaskGraphValidationError,
+};
 
 pub use decode::{
     decode_graph_value_at, parse_json_source, prefix_validation_errors, validate_graph_source,
@@ -23,6 +25,7 @@ pub use pre_run::validate_pre_run;
 /// Validate a task graph definition against the MVP contract rules.
 ///
 /// Returns an empty vec if valid; otherwise a list of structured errors.
+#[must_use]
 pub fn validate_graph(def: &TaskGraphDefinition) -> Vec<TaskGraphValidationError> {
     let mut errors = Vec::new();
 
@@ -47,7 +50,7 @@ pub fn validate_graph(def: &TaskGraphDefinition) -> Vec<TaskGraphValidationError
     for (i, node) in def.nodes.iter().enumerate() {
         if !config::is_valid_node_id(&node.id) {
             errors.push(TaskGraphValidationError {
-                path: format!("nodes[{}].id", i),
+                path: format!("nodes[{i}].id"),
                 code: "invalid_format".to_string(),
                 message: format!("Node id '{}' contains invalid characters", node.id),
             });
@@ -89,7 +92,7 @@ pub fn validate_graph(def: &TaskGraphDefinition) -> Vec<TaskGraphValidationError
     for (i, edge) in def.edges.iter().enumerate() {
         if !node_ids.contains(edge.from.as_str()) {
             errors.push(TaskGraphValidationError {
-                path: format!("edges[{}].from", i),
+                path: format!("edges[{i}].from"),
                 code: "endpoint_not_found".to_string(),
                 message: format!(
                     "Edge '{}' references non-existent from node '{}'",
@@ -99,7 +102,7 @@ pub fn validate_graph(def: &TaskGraphDefinition) -> Vec<TaskGraphValidationError
         }
         if !node_ids.contains(edge.to.as_str()) {
             errors.push(TaskGraphValidationError {
-                path: format!("edges[{}].to", i),
+                path: format!("edges[{i}].to"),
                 code: "endpoint_not_found".to_string(),
                 message: format!(
                     "Edge '{}' references non-existent to node '{}'",
@@ -170,6 +173,11 @@ pub fn validate_graph(def: &TaskGraphDefinition) -> Vec<TaskGraphValidationError
             config::validate_llm_config(node, i, &mut errors);
         }
     }
+    for (i, node) in def.nodes.iter().enumerate() {
+        if node.node_type == NodeType::LlmCoordinator {
+            config::validate_llm_coordinator_config(node, i, &mut errors);
+        }
+    }
 
     // ── Rule 13: scope/readonly consistency ──────────────────────────────────
     // (Handled at API layer: system graph writes are rejected by store.)
@@ -188,6 +196,7 @@ pub fn validate_graph(def: &TaskGraphDefinition) -> Vec<TaskGraphValidationError
 // ─── Graph ID validation ─────────────────────────────────────────────────────
 
 /// Graph id must match `^[a-z][a-z0-9-]{1,63}$`.
+#[must_use]
 pub fn is_valid_graph_id(id: &str) -> bool {
     if id.len() < 2 || id.len() > 64 {
         return false;

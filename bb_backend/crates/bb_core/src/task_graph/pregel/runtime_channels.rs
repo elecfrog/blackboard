@@ -28,6 +28,7 @@ pub(super) fn is_reserved_runtime_channel(channel: &str) -> bool {
     RESERVED_RUNTIME_CHANNELS.contains(&channel)
 }
 
+#[must_use]
 pub fn reserved_runtime_channels() -> Vec<&'static str> {
     RESERVED_RUNTIME_CHANNELS.to_vec()
 }

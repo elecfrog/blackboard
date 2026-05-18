@@ -78,7 +78,7 @@ pub(super) fn execute_subgraph(
                         message: format!("Failed to load child graph '{}': {}", config.graph_id, e),
                     }),
                     output_artifact: None,
-                    log_tail: Some(format!("Load error: {}", e)),
+                    log_tail: Some(format!("Load error: {e}")),
                     child_run_id: None,
                     runtime: None,
                     agent: None,
@@ -168,6 +168,7 @@ pub(super) fn execute_subgraph(
         codebuddy_path: opts.codebuddy_path.clone(),
         opencode_path: opts.opencode_path.clone(),
         opencode_config_content: opts.opencode_config_content.clone(),
+        pi_path: opts.pi_path.clone(),
         model: opts.model.clone(),
         node_timeout: opts.node_timeout,
         run_timeout: opts.run_timeout,
@@ -192,10 +193,10 @@ pub(super) fn execute_subgraph(
             Ok(NodeOutcome {
                 node_id: node.id.clone(),
                 status: NodeRunStatus::Succeeded,
-                output: if !child_output.is_null() {
-                    Some(child_output)
-                } else {
+                output: if child_output.is_null() {
                     None
+                } else {
+                    Some(child_output)
                 },
                 node_state: TaskGraphRunNode {
                     node_id: node.id.clone(),
@@ -207,7 +208,7 @@ pub(super) fn execute_subgraph(
                     exit_code: Some(0),
                     error: None,
                     output_artifact: None,
-                    log_tail: Some(format!("Child run {} succeeded", child_run_id)),
+                    log_tail: Some(format!("Child run {child_run_id} succeeded")),
                     child_run_id: Some(child_run_id.clone()),
                     runtime: None,
                     agent: None,
@@ -245,7 +246,7 @@ pub(super) fn execute_subgraph(
                     ),
                 }),
                 output_artifact: None,
-                log_tail: Some(format!("Child run {} failed: {}", child_run_id, message)),
+                log_tail: Some(format!("Child run {child_run_id} failed: {message}")),
                 child_run_id: Some(child_run_id.clone()),
                 runtime: None,
                 agent: None,
@@ -276,8 +277,7 @@ pub(super) fn execute_subgraph(
                 error: None,
                 output_artifact: None,
                 log_tail: Some(format!(
-                    "Child run {} paused at node '{}'",
-                    child_run_id, paused_node
+                    "Child run {child_run_id} paused at node '{paused_node}'"
                 )),
                 child_run_id: Some(child_run_id.clone()),
                 runtime: None,
@@ -309,7 +309,7 @@ pub(super) fn execute_subgraph(
                     message: format!("Child graph '{}' was cancelled", config.graph_id),
                 }),
                 output_artifact: None,
-                log_tail: Some(format!("Child run {} cancelled", child_run_id)),
+                log_tail: Some(format!("Child run {child_run_id} cancelled")),
                 child_run_id: Some(child_run_id.clone()),
                 runtime: None,
                 agent: None,

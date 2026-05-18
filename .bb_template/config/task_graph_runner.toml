@@ -1,0 +1,16 @@
+# Workspace-level defaults for Task Graph execution.
+# CLI/HTTP overrides take precedence over these values.
+codex_command = "codex"
+codebuddy_command = "codebuddy"
+opencode_command = "opencode"
+pi_command = "pi"
+
+node_timeout_secs = 900
+run_timeout_secs = 1800
+
+# Strict runtime-level process concurrency across all TaskGraph runs in this
+# bb-server process. Parent graph concurrency still controls run admission;
+# this guard also covers dynamic fanout scouts.
+[runtime_max_concurrency]
+opencode = 3
+pi = 3

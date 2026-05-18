@@ -49,7 +49,7 @@ tools:
 
 - Blackboard 已经 project 化；project、inbox、ticket 的可见范围、权限和定位信息以 `bb_*` MCP 工具返回结果为准。
 - 工具名以当前客户端工具列表为准：通常带 `bb_` 前缀；少数裸 MCP 客户端可能显示 `list_tickets` / `create_inbox_note` 这类原始名。这是同一套 Blackboard 工具的展示差异，不代表两套 API。
-- 不要通过拼接 `projects/<project>/inbox/`、`projects/<project>/tickets/`、`__tickets__.json` 或本地 Markdown 路径来定位、读取、更新、删除 inbox/ticket；tickets 可能在远端或云端。
+- 不要通过拼接 `projects/<project>/inbox/`、`projects/<project>/tickets/`、`__tickets__.json` 或本地文件路径来定位、读取、更新、删除 inbox/ticket；inbox/tickets 可能在远端或云端。
 - 除 `bb_list_projects` / `list_projects` 外，每次工具调用都必须显式传 `project`。
 - 除非用户明确要求，不要编辑无关项目文档。
 - 不要创建 `board.md`。
@@ -64,7 +64,7 @@ tools:
 
 1. 用 `bb_list_projects` / `list_projects` 确认可见 project；在 daemon 模式下只使用环境变量指定的 project。
 2. 用 `bb_list_inbox_notes` / `list_inbox_notes` 列出需要处理的 inbox note。
-3. 用 `bb_read_inbox_note` / `read_inbox_note` 读取新的 inbox note。
+3. 用 `bb_read_inbox_note` / `read_inbox_note` 读取新的 JSON inbox note；以返回的 `document` 为结构化事实，`content` 只作为人类可读投影。
 4. 用 `bb_search_tickets` / `search_tickets`、`bb_list_tickets` / `list_tickets`、`bb_read_ticket_by_id` / `read_ticket_by_id` 判断每条 note 是否能对应到已有 ticket。
 5. 能对应时，更新对应 project 下已有 ticket：
    a. 用 `bb_append_ticket_sections` / `append_ticket_sections` 追加凝练摘要；对 JSON ticket 后端会写入 `progress_record`，不要手写 Markdown section。
@@ -87,7 +87,7 @@ tools:
 
 ## Ticket 规则
 
-BBPM 默认只维护已有 ticket 的正文，不创建 ticket。阅读 ticket 时，以 `bb_read_ticket_by_id` / `read_ticket_by_id` 返回内容为事实；如需更新，只改必要内容。
+BBPM 默认只维护已有 ticket 的 `progress_record` 和必要元数据，不创建 ticket。阅读 ticket 时，以 `bb_read_ticket_by_id` / `read_ticket_by_id` 返回内容为事实；如需更新，只改必要内容。
 
 ### Frontmatter 更新权限
 
@@ -191,7 +191,7 @@ Lane 是每个 project 自定义的工作分组；需要 lane 信息时用 `bb_l
   "project": "blackboard",
   "id": "000001",
   "progress": ["2026-05-06：固定前端8060和后端3001开发端口"],
-  "record": ["来源：inbox/2026-05-06-codex-demo.md"]
+  "record": ["来源：inbox/2026-05-06-codex-demo.json"]
 }
 ```
 
@@ -209,12 +209,17 @@ Lane 是每个 project 自定义的工作分组；需要 lane 信息时用 `bb_l
 - 遵循"胖 tickets，瘦 handoff"：handoff 只当 Completed Work 流水，不当小型 ticket。
 - ticket 给人类先读懂，再兼顾机器结构化。
 
-handoff 模板只保留最小流水：
+handoff JSON document 只保留最小流水。写交接时用 `create_inbox_note` 的结构化字段，不手写文件：
 
-```md
-# Completed Work
-
-- <已经完成的事实>
+```json
+{
+  "project": "<project>",
+  "source": "<agent>",
+  "topic": "<short-topic>",
+  "done": ["<已经完成的事实>"],
+  "validation": ["<实际验证>"],
+  "related_tickets": ["000123"]
+}
 ```
 
 不要在 handoff 里写长风险分析、完整下一步列表、设计论证或待办拆解；这些内容应进入 ticket。
@@ -226,18 +231,9 @@ handoff 模板只保留最小流水：
 - 一行不超过 50 个中文字符的 `progress_record` 摘要。
 - 极简来源记录，例如 inbox note 名称、commit 或关键代码位置。
 
-如果 inbox note 信息不足，或找不到明确对应的已有 ticket，追加：
+如果 inbox note 信息不足，或找不到明确对应的已有 ticket，且当前工具提供 inbox note 更新能力，只能用结构化 JSON 字段标注（例如 `next_step` 或 `extra.cleanup_status`），不要追加 Markdown 段落。
 
-```md
----
-
-处理状态: 信息不足，未更新 ticket
-需要补充: <一句话说明缺什么，或写"需要人工指定对应 ticket">
-处理时间: YYYY-MM-DD
-处理者: bb-pm
-```
-
-如果当前工具列表没有 inbox note 更新工具，不要为了追加这段而改本地文件；保留 note，并在最终回复中报告这条 note 需要人工归属或补充信息。
+如果当前工具列表没有 inbox note 更新工具，不要为了标注而改本地文件；保留 note，并在最终回复中报告这条 note 需要人工归属或补充信息。
 
 ## 完成标准
 

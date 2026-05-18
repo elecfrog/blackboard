@@ -1,5 +1,6 @@
 //! Task Graph domain types — mirrors the MVP contract.
 
+use crate::agent_session::model::AgentToolPolicy;
 use crate::agents_registry::McpServerConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -70,7 +71,7 @@ pub struct GraphMetadata {
     /// Optional LangGraph-style interruptAfter nodes. Use ["*"] for all visible nodes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interrupt_after: Option<Vec<String>>,
-    /// Graph-run admission policy. This controls whole TaskRun concurrency,
+    /// Graph-run admission policy. This controls whole `TaskRun` concurrency,
     /// not Pregel superstep node parallelism.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_policy: Option<TaskGraphRunPolicy>,
@@ -86,6 +87,10 @@ pub struct TaskGraphRunPolicy {
     pub queue_enabled: bool,
     #[serde(default = "default_max_queue_wait_ms")]
     pub max_queue_wait_ms: u64,
+    #[serde(default)]
+    pub queue_timeout_retry_enabled: bool,
+    #[serde(default = "default_max_queue_timeout_retries")]
+    pub max_queue_timeout_retries: u32,
 }
 
 impl TaskGraphRunPolicy {
@@ -94,7 +99,11 @@ impl TaskGraphRunPolicy {
     pub const MIN_QUEUE_WAIT_MS: u64 = 60_000;
     pub const DEFAULT_MAX_QUEUE_WAIT_MS: u64 = 30 * 60 * 1_000;
     pub const MAX_QUEUE_WAIT_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+    pub const DEFAULT_MAX_QUEUE_TIMEOUT_RETRIES: u32 = 5;
+    pub const MIN_QUEUE_TIMEOUT_RETRIES: u32 = 1;
+    pub const MAX_QUEUE_TIMEOUT_RETRIES: u32 = 20;
 
+    #[must_use]
     pub fn effective_max_concurrent_runs(&self) -> u32 {
         if self.allow_concurrent_runs {
             self.max_concurrent_runs
@@ -112,16 +121,22 @@ impl Default for TaskGraphRunPolicy {
             max_concurrent_runs: Self::DEFAULT_MAX_CONCURRENT_RUNS,
             queue_enabled: false,
             max_queue_wait_ms: Self::DEFAULT_MAX_QUEUE_WAIT_MS,
+            queue_timeout_retry_enabled: false,
+            max_queue_timeout_retries: Self::DEFAULT_MAX_QUEUE_TIMEOUT_RETRIES,
         }
     }
 }
 
-fn default_max_concurrent_runs() -> u32 {
+const fn default_max_concurrent_runs() -> u32 {
     TaskGraphRunPolicy::DEFAULT_MAX_CONCURRENT_RUNS
 }
 
-fn default_max_queue_wait_ms() -> u64 {
+const fn default_max_queue_wait_ms() -> u64 {
     TaskGraphRunPolicy::DEFAULT_MAX_QUEUE_WAIT_MS
+}
+
+const fn default_max_queue_timeout_retries() -> u32 {
+    TaskGraphRunPolicy::DEFAULT_MAX_QUEUE_TIMEOUT_RETRIES
 }
 
 /// User-configurable graph-level input exposed before a run starts.
@@ -132,11 +147,11 @@ pub struct TaskGraphInputParam {
     pub label: Option<String>,
     #[serde(rename = "type")]
     pub value_type: String,
-    /// Optional StateGraph-style reducer. Supported values: append, merge_object, sum.
+    /// Optional StateGraph-style reducer. Supported values: append, `merge_object`, sum.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reducer: Option<String>,
-    /// Optional explicit channel class. Supported values: last_value, any_value,
-    /// topic, topic_unique, topic_accumulate, topic_unique_accumulate.
+    /// Optional explicit channel class. Supported values: `last_value`, `any_value`,
+    /// topic, `topic_unique`, `topic_accumulate`, `topic_unique_accumulate`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_class: Option<String>,
     #[serde(default, rename = "default")]
@@ -210,7 +225,7 @@ pub enum PinValueType {
 /// 节点上的一个 Pin 声明
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodePin {
-    /// Pin 唯一 ID（节点内唯一，如 "exec_in", "exec_out", "output", "rule:yes"）
+    /// Pin 唯一 ID（节点内唯一，如 "`exec_in`", "`exec_out`", "output", "rule:yes"）
     pub id: String,
     /// 显示标签
     pub label: String,
@@ -258,14 +273,18 @@ pub enum NodeType {
     Start,
     End,
     Llm,
+    /// LLM runtime node with an isolated subgraph planning/execution tool surface.
+    LlmCoordinator,
     /// 通用结构化 plan 节点：由 LLM/Agent 生成 JSON，并落盘为 artifact。
     Plan,
     HumanGate,
     Branch,
     Loop,
     Shell,
-    /// 输入变量节点：从 graph inputs 中读取一个变量值并输出到 node_outputs。
+    /// 输入变量节点：从 graph inputs 中读取一个变量值并输出到 `node_outputs`。
     InputVar,
+    /// Literal/template data node: emits a typed data value into the graph.
+    DataValue,
     /// 子图调用节点：触发另一个 task graph 的执行。
     #[serde(alias = "sub_pipeline")]
     SubGraph,
@@ -279,6 +298,8 @@ pub enum NodeType {
     ManifestMerge,
     /// 通用 JSON schema 校验节点。
     SchemaValidate,
+    /// Deterministically writes rendered node output to a workspace-scoped file.
+    SystemWriteOutput,
 }
 
 // ─── Typed Node Configs (for validation) ─────────────────────────────────────
@@ -292,6 +313,19 @@ pub struct StartConfig {}
 pub struct InputVarConfig {
     /// The graph input param id to read from (e.g. "ticket-refs").
     pub input_id: String,
+}
+
+/// Data value node config — emits a literal or template-resolved value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataValueConfig {
+    #[serde(default = "default_data_value_type")]
+    pub value_type: PinValueType,
+    #[serde(default)]
+    pub value: serde_json::Value,
+}
+
+const fn default_data_value_type() -> PinValueType {
+    PinValueType::String
 }
 
 /// End node config.
@@ -326,10 +360,128 @@ pub struct LlmConfig {
     pub skills: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mcp_servers: Vec<McpServerConfig>,
+    #[serde(
+        default,
+        alias = "capabilities",
+        alias = "tool_capabilities",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub toolkits: Vec<LlmToolkitConfig>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub custom_env: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_policy: Option<AgentToolPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_bundle: Option<LlmResourceBundleConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_contract: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<serde_json::Value>,
+    #[serde(default)]
+    pub retry: LlmRetryConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum LlmToolkitConfig {
+    Id(String),
+    Spec(LlmToolkitSpec),
+}
+
+impl LlmToolkitConfig {
+    #[must_use]
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Id(id) => id,
+            Self::Spec(spec) => &spec.id,
+        }
+    }
+
+    #[must_use]
+    pub fn exposure(&self) -> Option<&str> {
+        match self {
+            Self::Id(_) => None,
+            Self::Spec(spec) => spec
+                .exposure
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty()),
+        }
+    }
+
+    #[must_use]
+    pub fn tools(&self) -> &[String] {
+        match self {
+            Self::Id(_) => &[],
+            Self::Spec(spec) => &spec.tools,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LlmToolkitSpec {
+    pub id: String,
+    #[serde(default, alias = "mode", skip_serializing_if = "Option::is_none")]
+    pub exposure: Option<String>,
+    #[serde(
+        default,
+        alias = "direct_tools",
+        alias = "allowed_tools",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub tools: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LlmResourceBundleConfig {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub input: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LlmRetryConfig {
+    #[serde(default = "default_llm_retry_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_llm_retry_max_attempts")]
+    pub max_attempts: u32,
+    #[serde(default = "default_llm_retry_backoff_ms")]
+    pub backoff_ms: u64,
+}
+
+impl LlmRetryConfig {
+    pub const DEFAULT_ENABLED: bool = true;
+    pub const DEFAULT_MAX_ATTEMPTS: u32 = 3;
+    pub const MAX_ATTEMPTS: u32 = 5;
+    pub const DEFAULT_BACKOFF_MS: u64 = 1_000;
+    pub const MAX_BACKOFF_MS: u64 = 30_000;
+
+    #[must_use]
+    pub fn effective_max_attempts(&self) -> u32 {
+        if self.enabled {
+            self.max_attempts.clamp(1, Self::MAX_ATTEMPTS)
+        } else {
+            1
+        }
+    }
+
+    #[must_use]
+    pub fn effective_backoff_ms(&self) -> u64 {
+        self.backoff_ms.min(Self::MAX_BACKOFF_MS)
+    }
+}
+
+impl Default for LlmRetryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: Self::DEFAULT_ENABLED,
+            max_attempts: Self::DEFAULT_MAX_ATTEMPTS,
+            backoff_ms: Self::DEFAULT_BACKOFF_MS,
+        }
+    }
 }
 
 /// Local shell/tool node config.
@@ -352,7 +504,36 @@ pub struct ShellConfig {
     pub capture: ShellCaptureConfig,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Deterministic file writer node config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemWriteOutputConfig {
+    #[serde(default)]
+    pub inputs: Option<serde_json::Value>,
+    #[serde(default, alias = "path", alias = "artifact_path")]
+    pub output_path: String,
+    #[serde(default)]
+    pub content: String,
+    #[serde(default = "default_system_write_artifact_type")]
+    pub artifact_type: String,
+    #[serde(default = "default_system_write_create_parent_dirs")]
+    pub create_parent_dirs: bool,
+    #[serde(default = "default_system_write_overwrite")]
+    pub overwrite: bool,
+}
+
+fn default_system_write_artifact_type() -> String {
+    "markdown".to_string()
+}
+
+const fn default_system_write_create_parent_dirs() -> bool {
+    true
+}
+
+const fn default_system_write_overwrite() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ShellPermission {
     ReadOnly,
@@ -382,11 +563,11 @@ fn default_shell_cwd() -> String {
     ".".to_string()
 }
 
-fn default_shell_timeout_ms() -> u64 {
+const fn default_shell_timeout_ms() -> u64 {
     600_000
 }
 
-fn default_shell_permission() -> ShellPermission {
+const fn default_shell_permission() -> ShellPermission {
     ShellPermission::ReadOnly
 }
 
@@ -394,11 +575,11 @@ fn default_shell_expected_exit_codes() -> Vec<i32> {
     vec![0]
 }
 
-fn default_shell_capture_max_bytes() -> usize {
+const fn default_shell_capture_max_bytes() -> usize {
     1_048_576
 }
 
-fn default_shell_capture_strip_ansi() -> bool {
+const fn default_shell_capture_strip_ansi() -> bool {
     true
 }
 
@@ -417,12 +598,28 @@ pub enum LlmRunAs {
     Agent,
 }
 
-fn default_llm_run_as() -> LlmRunAs {
+const fn default_llm_run_as() -> LlmRunAs {
     LlmRunAs::Llm
 }
 
 fn default_llm_agent() -> String {
     "native".to_string()
+}
+
+const fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+const fn default_llm_retry_enabled() -> bool {
+    LlmRetryConfig::DEFAULT_ENABLED
+}
+
+const fn default_llm_retry_max_attempts() -> u32 {
+    LlmRetryConfig::DEFAULT_MAX_ATTEMPTS
+}
+
+const fn default_llm_retry_backoff_ms() -> u64 {
+    LlmRetryConfig::DEFAULT_BACKOFF_MS
 }
 
 fn default_llm_prompt_mode() -> String {
@@ -456,8 +653,65 @@ pub struct SubGraphConfig {
 /// Backward-compatible alias.
 pub type SubPipelineConfig = SubGraphConfig;
 
-fn default_sub_graph_scope() -> TaskGraphScope {
+const fn default_sub_graph_scope() -> TaskGraphScope {
     TaskGraphScope::Project
+}
+
+/// LLM Coordinator node config.
+///
+/// This intentionally reuses the LLM invocation surface and adds a narrow
+/// isolated-subgraph execution contract. Unknown extra fields remain tolerated
+/// by serde so draft configs can evolve without breaking older graphs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmCoordinatorConfig {
+    #[serde(flatten)]
+    pub llm: LlmConfig,
+    #[serde(default)]
+    pub coordinator: LlmCoordinatorPolicy,
+    /// Optional static subgraph draft used for tests and deterministic MVP
+    /// fixtures. Production usage normally leaves this empty and lets the LLM
+    /// return the draft JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub static_subgraph: Option<serde_json::Value>,
+    /// Input passed to the generated subgraph run. Values may use the same
+    /// template syntax as `sub_graph.input_bindings`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_bindings: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmCoordinatorPolicy {
+    #[serde(default = "default_coordinator_max_nodes")]
+    pub max_nodes: usize,
+    #[serde(default = "default_coordinator_max_edges")]
+    pub max_edges: usize,
+    #[serde(default = "default_coordinator_max_repair_attempts")]
+    pub max_repair_attempts: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_node_types: Vec<NodeType>,
+}
+
+impl Default for LlmCoordinatorPolicy {
+    fn default() -> Self {
+        Self {
+            max_nodes: default_coordinator_max_nodes(),
+            max_edges: default_coordinator_max_edges(),
+            max_repair_attempts: default_coordinator_max_repair_attempts(),
+            allowed_node_types: Vec::new(),
+        }
+    }
+}
+
+const fn default_coordinator_max_nodes() -> usize {
+    32
+}
+
+const fn default_coordinator_max_edges() -> usize {
+    64
+}
+
+const fn default_coordinator_max_repair_attempts() -> usize {
+    5
 }
 
 /// Human gate node config.
@@ -518,10 +772,10 @@ pub struct TaskGraphEdge {
     pub kind: EdgeKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
-    /// 源节点的 OutPin ID（新格式）
+    /// 源节点的 `OutPin` ID（新格式）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from_pin: Option<String>,
-    /// 目标节点的 InPin ID（新格式）
+    /// 目标节点的 `InPin` ID（新格式）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to_pin: Option<String>,
     /// 旧格式兼容字段（保留用于向后兼容）
@@ -558,10 +812,60 @@ pub struct TaskGraphSummary {
     pub origin: Option<GraphOrigin>,
     pub node_count: usize,
     pub edge_count: usize,
+    pub updated_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<String>,
+    #[serde(default)]
+    pub favorite: bool,
+    #[serde(default)]
+    pub sort_order: i64,
     /// When a graph JSON file fails to parse, this field carries the error message
     /// so the catalog can still list the broken graph instead of failing entirely.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compile_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskGraphCatalogGroupKind {
+    System,
+    Project,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskGraphCatalogGroup {
+    pub id: String,
+    pub title: String,
+    pub kind: TaskGraphCatalogGroupKind,
+    #[serde(default)]
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskGraphCatalogEntry {
+    pub scope: TaskGraphScope,
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<String>,
+    #[serde(default)]
+    pub favorite: bool,
+    #[serde(default)]
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskGraphCatalogIndex {
+    pub schema_version: u32,
+    #[serde(default)]
+    pub groups: Vec<TaskGraphCatalogGroup>,
+    #[serde(default)]
+    pub entries: Vec<TaskGraphCatalogEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskGraphCatalog {
+    pub graphs: Vec<TaskGraphSummary>,
+    pub groups: Vec<TaskGraphCatalogGroup>,
 }
 
 // ─── Validation Error ────────────────────────────────────────────────────────
@@ -619,7 +923,7 @@ pub enum TaskGraphError {
 
 // ─── Known runtimes for MVP ──────────────────────────────────────────────────
 
-pub const KNOWN_RUNTIMES: &[&str] = &["codex", "opencode", "codebuddy"];
+pub const KNOWN_RUNTIMES: &[&str] = &["codex", "opencode", "codebuddy", "pi"];
 
 /// Valid end node result values.
 pub const VALID_END_RESULTS: &[&str] = &["succeeded", "failed", "cancelled"];

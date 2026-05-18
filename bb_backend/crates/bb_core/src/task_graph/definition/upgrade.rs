@@ -3,9 +3,9 @@
 use super::pins::default_pins_for;
 use super::types::TaskGraphDefinition;
 
-/// 将旧格式的 TaskGraphDefinition 升级为新格式：
+/// 将旧格式的 `TaskGraphDefinition` 升级为新格式：
 /// 1. 为没有 pins 的 node 自动填充默认 pins
-/// 2. 为没有 from_pin/to_pin 的 edge 根据 source_handle/target_handle 自动映射
+/// 2. 为没有 `from_pin/to_pin` 的 edge 根据 `source_handle/target_handle` 自动映射
 pub fn upgrade_graph(graph: &mut TaskGraphDefinition) {
     upgrade_nodes(graph);
     upgrade_edges(graph);
@@ -20,7 +20,7 @@ fn upgrade_nodes(graph: &mut TaskGraphDefinition) {
     }
 }
 
-/// 为没有 from_pin/to_pin 的 edge 根据 source_handle/target_handle 自动映射。
+/// 为没有 `from_pin/to_pin` 的 edge 根据 `source_handle/target_handle` 自动映射。
 fn upgrade_edges(graph: &mut TaskGraphDefinition) {
     for edge in &mut graph.edges {
         // 升级 from_pin
@@ -34,18 +34,18 @@ fn upgrade_edges(graph: &mut TaskGraphDefinition) {
     }
 }
 
-/// 将旧的 source_handle 映射为新的 from_pin ID。
+/// 将旧的 `source_handle` 映射为新的 `from_pin` ID。
 ///
 /// 映射规则：
-/// - None / "pin:xxx" → "exec_out"
+/// - None / "pin:xxx" → "`exec_out`"
 /// - "body" → "body"
 /// - "exit" → "exit"
 /// - "rule:xxx" → "rule:xxx"
 /// - 其他 → 原值
 fn map_source_handle_to_from_pin(source_handle: Option<&str>) -> String {
-    match source_handle {
-        None => "exec_out".to_string(),
-        Some(handle) => {
+    source_handle.map_or_else(
+        || "exec_out".to_string(),
+        |handle| {
             if handle.starts_with("pin:") {
                 // 旧的四向自由 pin 格式，映射为默认 exec_out
                 "exec_out".to_string()
@@ -53,28 +53,28 @@ fn map_source_handle_to_from_pin(source_handle: Option<&str>) -> String {
                 // "body", "exit", "rule:xxx" 等直接保留
                 handle.to_string()
             }
-        }
-    }
+        },
+    )
 }
 
-/// 将旧的 target_handle 映射为新的 to_pin ID。
+/// 将旧的 `target_handle` 映射为新的 `to_pin` ID。
 ///
 /// 映射规则：
-/// - None / "pin:xxx" → "exec_in"
+/// - None / "pin:xxx" → "`exec_in`"
 /// - "return" → "return"（legacy Loop return target，解释器会作为隐藏 frame return 兼容）
 /// - 其他 → 原值
 fn map_target_handle_to_to_pin(target_handle: Option<&str>) -> String {
-    match target_handle {
-        None => "exec_in".to_string(),
-        Some(handle) => {
+    target_handle.map_or_else(
+        || "exec_in".to_string(),
+        |handle| {
             if handle.starts_with("pin:") {
                 "exec_in".to_string()
             } else {
                 // "return" 等直接保留
                 handle.to_string()
             }
-        }
-    }
+        },
+    )
 }
 
 #[cfg(test)]

@@ -1,6 +1,13 @@
 # bb_backend
 
-`bb_backend` 是 Blackboard 的本地多 project 服务 MVP。Desktop/产品运行时以用户级 `~/.bb` 为全局 root，并通过 `~/.bb/projects/__projects__.json` 注册所有打开过的 folder workspace project；源码开发态的 `scripts/dev.py` 默认使用 repo 根目录 `.bb_template`，方便维护 Blackboard 自身产品化记录并隔离运行态 `.bb`。bb_backend 在其上提供低摩擦的 Web REST、stdio MCP 与 remote `/mcp` 接口。
+`bb_backend` 是 Blackboard 的本地多 project 服务 MVP。Desktop/产品运行时以用户级 `~/.bb` 为全局 root，并通过 `~/.bb/projects/__projects__.json` 注册所有打开过的 folder workspace project；源码开发态的 `scripts/dev.py` 默认使用 repo 根目录 `.bb_template`，方便维护 Blackboard 自身产品化记录并隔离运行态 `.bb`。
+
+运行时拆成三层：
+
+- `bb_core`：领域模型、存储、事务、权限、TaskGraph engine 和 service。
+- `bb_daemon` / `bb-daemon`：本机权威常驻进程，承载 MCP、Web REST、scheduler、TaskGraph run dispatcher。
+- `bb_server` / `bb-server`：本地 Web/API facade，只代理 `/api/**` 与 `/mcp/**` 到 daemon，不直接写 workspace。
+- `bb_cli` / `bb`：人类命令入口；除 `init` 外兼容命令会转发到同目录 `bb-daemon`。
 
 ## 仓库布局
 
@@ -15,13 +22,12 @@ blackboard/
     ├── agents/
     ├── task_graphs/
     ├── schemas/
-    ├── templates/
     └── projects/
         ├── <project>/
         │   ├── __project__.json        # project 元数据：name / type / repos / description / lanes
         │   ├── __tickets__.json        # 机器生成：ticket 索引 + current_counter
         │   ├── __inbox__.json          # 机器生成：inbox note 索引
-        │   ├── inbox/                  # Markdown 交接文件（人类/Agent 编辑）
+        │   ├── inbox/                  # JSON inbox handoff（通过工具创建/读取）
         │   └── tickets/                # JSON ticket；旧 Markdown 仅作为迁移输入
         └── ...
 ```
@@ -38,20 +44,19 @@ blackboard/
 
 ```bash
 cargo run -p bb_cli -- --help
-cargo run -p bb_cli -- --root ~/.bb stdio
-cargo run -p bb_cli -- --root ~/.bb http --addr 127.0.0.1:3001
-cargo run -p bb_cli -- --root ~/.bb http --addr 127.0.0.1:3001 --static-dir ../bb_web/dist
+cargo run -p bb_daemon -- --root ~/.bb stdio
+cargo run -p bb_daemon -- --root ~/.bb serve --addr 127.0.0.1:3001
+cargo run -p bb_server -- --addr 127.0.0.1:3002 --daemon-url http://127.0.0.1:3001
 cargo run -p bb_cli -- --root ~/.bb init --seed /app/resources/home-template
-cargo run -p bb_cli -- http --addr 127.0.0.1:3001
 cargo run -p bb_schema -- generate --root .bb_template
 cargo run -p bb_schema -- check --root .bb_template
 ```
 
-启动时会在 stderr 打印发现的 project 列表。设置 `--static-dir` 后，非 `/api/**` 和非 `/mcp` 路径会从该目录服务前端静态资源，并对 SPA 路由回退到 `index.html`。`GET /healthz` 用于 Desktop sidecar readiness probe。
+开发态推荐直接运行 `python scripts/dev.py`，它会启动 `bb_daemon`(3001)、`bb_server`(3002) 与 Vite(8060)。`GET /healthz` 用于 readiness probe。
 
 ## REST API
 
-HTTP 同时提供 Web REST API 与 remote MCP 入口。Web 运行时把 bb_backend 当作正常 C/S API 使用；ticket 的富写入仍以 MCP 工具为主，HTTP REST 只开放前端需要的结构化写入：inbox note 创建、lane 管理、以及按 ID 更新 ticket 的 status/lane/assignee/depends_on（不接受 raw Markdown 或任意原文 patch）。
+HTTP 同时提供 Web REST API 与 remote MCP 入口。Web 开发态访问 `bb_server`，由它代理到权威 `bb_daemon`；Desktop 单进程 sidecar 可直接使用 `bb-daemon serve`。ticket 的富写入仍以 MCP 工具为主，HTTP REST 只开放前端需要的结构化写入：inbox note 创建、lane 管理、以及按 ID 更新 ticket 的 status/lane/assignee/depends_on（不接受 raw Markdown 或任意原文 patch）。
 
 Remote MCP：
 
@@ -60,9 +65,9 @@ Remote MCP：
 - 响应格式由客户端 `Accept` 协商，可为 `application/json` 或 `text/event-stream`；`DELETE /mcp` 携带 session id 可终止会话。
 
 - `GET /api/projects` 列出所有识别到的 project 及其 `__project__.json` 元数据（含 `lanes`）。
-- `GET /api/projects/{project}/inbox/notes` 列出该 project 的 inbox 文件名。
-- `GET /api/projects/{project}/inbox/notes/{name}` 返回一条 inbox note 的 Markdown 内容；路径穿越和越界访问返回 JSON 错误。
-- `POST /api/projects/{project}/inbox/notes` 接受结构化字段（`source`、`topic`、可选 `title`/`time`/`done`/`validation`/`next_step`/`related_locations`），并在该 project 的 inbox 中创建一个防冲突的 `YYYY-MM-DD-source-topic.md`。路由里的 `project` 会覆盖 body 中任何 `project` 字段。
+- `GET /api/projects/{project}/inbox/notes` 列出该 project 的 JSON inbox note 索引。
+- `GET /api/projects/{project}/inbox/notes/{name}` 返回一条 JSON inbox note 的 `document` 与展示投影 `content`；路径穿越和越界访问返回 JSON 错误。
+- `POST /api/projects/{project}/inbox/notes` 接受结构化字段（`source`、`topic`、可选 `title`/`time`/`done`/`validation`/`next_step`/`related_locations`/`related_tickets`/`attachments`/`extra`），并在该 project 的 inbox 中创建一个防冲突的 `YYYY-MM-DD-source-topic.json`。路由里的 `project` 会覆盖 body 中任何 `project` 字段。
 - `GET /api/projects/{project}/board/summary` 返回 `BoardSummary` JSON（含 `total`/`by_status`/`by_lane`/metadata diagnostics）。
 - `GET /api/projects/{project}/tickets` 返回 ticket 索引列表（不含正文 content），供 web 看板渲染结构化字段。
 - `GET /api/projects/{project}/tickets/{id}/content` 返回单个 ticket 源内容；JSON ticket 原样返回，legacy Markdown 会去除 frontmatter 后返回正文。
@@ -79,14 +84,14 @@ Remote MCP：
 
 ## stdio API
 
-`bb_backend stdio` 使用 `rmcp` stdio transport 在 stdin/stdout 上讲 MCP 协议。stdout 仅用于协议响应，日志和诊断写入 stderr。
+`bb-daemon stdio` 使用 `rmcp` stdio transport 在 stdin/stdout 上讲 MCP 协议。stdout 仅用于协议响应，日志和诊断写入 stderr。
 
 核心 ticket/inbox 工具（完整清单以 `tools/list` 返回为准；project 级工具都要求 `project` 必填）：
 
 - `list_projects`
 - `list_inbox_notes` `{ project }`
 - `read_inbox_note` `{ project, name }`
-- `create_inbox_note` `{ project, source, topic, [title], [time], [done], [validation], [next_step], [related_locations] }`
+- `create_inbox_note` `{ project, source, topic, [title], [time], [done], [validation], [next_step], [related_locations], [related_tickets], [attachments], [extra] }` — 新建权威文件是 `YYYY-MM-DD-source-topic.json`，内容是 `schema_version=1` 的 JSON inbox document；读取接口返回 `document` 与展示投影 `content`。
 - `list_tickets` `{ project }`
 - `read_ticket` `{ project, name }`
 - `read_ticket_by_id` `{ project, id }`
@@ -97,7 +102,7 @@ Remote MCP：
 - `list_lanes` `{ project }` — 列出所有 lane 定义（含 archived），与 HTTP 路由同源。
 - `upsert_lane` `{ project, id, label, [color], [description], [status] }` — 创建或更新 lane；id 决定是否替换已有项。
 - `archive_lane` `{ project, id }` — 把 lane 标为 archived，返回 `{ lane, affected_ticket_count }`。
-- `search_notes` `{ project, query }`
+- `search_notes` `{ project, query }` — 搜索 JSON inbox document 的展示投影。
 - `search_tickets` `{ project, query }`
 
 `project` 命名必须匹配正则 `^[a-z0-9][a-z0-9-]{0,63}$`；`lane` id 必须匹配 `^[a-z][a-z0-9-]{1,31}$`。

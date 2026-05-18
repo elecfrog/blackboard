@@ -2,11 +2,9 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
-// Dev server proxies /api to the locally running bb-server HTTP listener
-// (cargo run -p bb-server -- ... http --addr 127.0.0.1:3001). The front end
-// always talks to relative paths like `/api/projects/...`; in production the
-// same URL is expected to be reverse-proxied by whatever static host is used.
-const apiTarget = process.env.BLACKBOARD_API_TARGET ?? 'http://127.0.0.1:3001'
+// Dev server proxies /api to bb_server. bb_daemon stays on 3001 for local MCP,
+// while bb_server serves the web/API facade on 3002.
+const apiTarget = process.env.BLACKBOARD_API_TARGET ?? 'http://127.0.0.1:3002'
 
 function manualChunks(id: string) {
   const normalized = id.replace(/\\/g, '/')

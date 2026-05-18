@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "title": "继续收敛前端共享 UI primitives：summary chip 与 dense row",
+  "time": "2026-05-23T15:29:28Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "frontend-shared-ui-primitives-fourth-pass",
+  "done": [
+    "新增 `BbSummaryChip`，把 Task Graph editor/preview 的 summary toggle 统一到公共组件，并将对应 close 控件迁到 `BbButton`。",
+    "新增 `BbDenseRow` 与 `bb-dense-*` 共享语法，迁移 `TaskGraphBindingList`、`TaskGraphInputsPanel`、`TaskGraphRunInputsPanel` 的 dense row chrome、label 与 control 基础样式。",
+    "更新 `bb_web/DESIGN.md`，明确 `BbSummaryChip`、`BbDenseRow`、`bb-dense-cell`、`bb-dense-control` 的使用边界。"
+  ],
+  "validation": [
+    "`npm run build --prefix bb_web`: 通过。",
+    "`git diff --check` 针对本轮相关前端文件：通过，仅有既有 CRLF 提示。",
+    "`rg` 检查旧 summary/segmented/reference 本地样式选择器：未命中。",
+    "Browser in-app smoke：当前 task graph URL 可加载且 console error 为 0；该 route 当前实际渲染 catalog shell，summary chip 未在 DOM 中出现，因此视觉验收以 build/selector 检查为主。"
+  ],
+  "next_step": [
+    "继续收敛剩余 dense editor row：branch rules、schedule inputs、node inspector 中仍有少量局部 field/control CSS。",
+    "找一个能稳定进入 TaskGraph editor panel 的前端 route 或测试 fixture，补一次真实视觉烟测。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/common/BbSummaryChip.vue",
+    "bb_web/src/components/common/BbDenseRow.vue",
+    "bb_web/src/components/common/index.ts",
+    "bb_web/src/styles.css",
+    "bb_web/src/components/TaskGraphEditorPanel.vue",
+    "bb_web/src/components/task-graph/TaskGraphPreviewPanel.vue",
+    "bb_web/src/components/task-graph/TaskGraphBindingList.vue",
+    "bb_web/src/components/task-graph/TaskGraphInputsPanel.vue",
+    "bb_web/src/components/task-graph/TaskGraphRunInputsPanel.vue",
+    "bb_web/DESIGN.md"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

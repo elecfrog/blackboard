@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "title": "继续收敛 metadata/info grid：SchedulePanel",
+  "time": "2026-05-23T00:00:00+08:00",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "frontend-shared-ui-primitives-eighth-pass",
+  "done": [
+    "新增共享组件 BbInfoGrid / BbInfoItem，用于统一紧凑 label/value metadata 展示。",
+    "迁移 TaskGraphSchedulePanel 的 schedule status / next run / last run 区块，去掉局部 dl/dt/dd 样式，改为共享 InfoGrid。",
+    "更新 common/index.ts 导出与 bb_web/src/styles.css 全局样式。",
+    "更新 DESIGN.md：明确 metadata grid 使用 BbInfoGrid/BbInfoItem，避免各页面继续局部重写。"
+  ],
+  "validation": [
+    "git diff --check -- bb_web/DESIGN.md bb_web/src/components/common/BbInfoGrid.vue bb_web/src/components/common/BbInfoItem.vue bb_web/src/components/common/index.ts bb_web/src/styles.css bb_web/src/components/task-graph/TaskGraphSchedulePanel.vue：通过，仅 CRLF warning。",
+    "npm run build --prefix bb_web：通过。",
+    "Browser smoke：打开 http://localhost:8060/#/projects/blackboard/task-graphs/project/general-code-search-mpbe2hb4/edit，页面可加载且无 console error；当前路由实际渲染 Task Graphs 列表壳，未覆盖 schedule panel 细节。"
+  ],
+  "next_step": [
+    "继续迁移 AgentConnectorRow / RuntimeConnectorPanel / TaskGraphPreviewPanel 等剩余 dl-style metadata 到 BbInfoGrid。",
+    "如果 metadata 场景出现明显分化，再给 BbInfoGrid 增加 columns/tone/density 的受控 props，而不是新增局部 CSS。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/common/BbInfoGrid.vue",
+    "bb_web/src/components/common/BbInfoItem.vue",
+    "bb_web/src/components/common/index.ts",
+    "bb_web/src/styles.css",
+    "bb_web/src/components/task-graph/TaskGraphSchedulePanel.vue",
+    "bb_web/DESIGN.md"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

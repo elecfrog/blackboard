@@ -4,13 +4,13 @@ use crate::task_graph::definition::types::{TaskGraphEdge, TaskGraphNode};
 
 // ─── Graph navigation helpers ────────────────────────────────────────────────
 
-/// Build a node lookup map: node_id → node.
+/// Build a node lookup map: `node_id` → node.
 #[allow(dead_code)]
 pub(super) fn build_node_map(nodes: &[TaskGraphNode]) -> HashMap<String, &TaskGraphNode> {
     nodes.iter().map(|n| (n.id.clone(), n)).collect()
 }
 
-/// Find outgoing edges for a node, optionally filtered by from_pin (or fallback to source_handle).
+/// Find outgoing edges for a node, optionally filtered by `from_pin` (or fallback to `source_handle`).
 pub(super) fn outgoing_edges<'a>(
     edge_map: &'a HashMap<String, Vec<&'a TaskGraphEdge>>,
     node_id: &str,
@@ -33,8 +33,7 @@ pub(super) fn outgoing_edges<'a>(
                 let old_pin_prefix = e
                     .source_handle
                     .as_deref()
-                    .map(|h| h.starts_with("pin:"))
-                    .unwrap_or(false);
+                    .is_some_and(|h| h.starts_with("pin:"));
                 dominated_by_from_pin && (has_from_pin || !old_pin_prefix)
             })
             .collect(),

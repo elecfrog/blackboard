@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "resource_bundle_version": "1.0",
+  "registry_version": "2026-05-23",
+  "builders": [
+    {
+      "id": "inbox.cleanup.v1",
+      "kind": "inbox_cleanup_resource_bundle",
+      "version": "1.0",
+      "script": "scripts/collect_inbox_resource_bundle.py",
+      "description": "Loads selected inbox notes and active ticket catalog for one inbox cleanup loop iteration.",
+      "output_contract": "JSON decisions over stable note_id values; no direct file mutation by the LLM."
+    },
+    {
+      "id": "code_review.rust_vue.v1",
+      "kind": "task_graph_code_review_resource_bundle",
+      "version": "1.0",
+      "script": "scripts/collect_code_review_resource_bundle.py",
+      "description": "Collects git diff, untracked samples, and optional Rust/Vue static check outputs for review.",
+      "output_contract": "Findings-first Markdown review written by a system_write_output node."
+    },
+    {
+      "id": "code_review.scout_fix.v1",
+      "kind": "task_graph_code_review_fix_resource_bundle",
+      "version": "1.0",
+      "script": "scripts/collect_code_review_fix_resource_bundle.py",
+      "description": "Collects a review report, extracted findings, and git context for conservative scout fix.",
+      "output_contract": "Markdown fix report; source edits constrained by LLM tool_policy."
+    }
+  ]
+}

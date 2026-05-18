@@ -4,7 +4,7 @@
   "scope": "system",
   "title": "前端冒烟（Computer Use）",
   "description": "前端冒烟（Computer Use）",
-  "version": 4,
+  "version": 5,
   "readonly": true,
   "metadata": {
     "tags": [
@@ -12,7 +12,8 @@
       "frontend",
       "smoke"
     ],
-    "owner": "blackboard"
+    "owner": "blackboard",
+    "updated_by": "codex"
   },
   "inputs": [],
   "nodes": [
@@ -21,7 +22,7 @@
       "type": "start",
       "label": "Start",
       "position": {
-        "x": -128.0,
+        "x": -128,
         "y": 101.84020348923563
       },
       "config": {},
@@ -40,7 +41,7 @@
       "type": "llm",
       "label": "前端交互式冒烟（实验，Computer Use）",
       "position": {
-        "x": 480.0,
+        "x": 480,
         "y": 101.84020348923563
       },
       "config": {
@@ -105,15 +106,15 @@
     {
       "id": "a5565339-6aca-4828-8075-f39c6780c57a",
       "type": "sub_graph",
-      "label": "明暗模式+i18n",
+      "label": "代码监控检查和修复",
       "position": {
         "x": 169.08304859010246,
         "y": 101.84020348923563
       },
       "config": {
         "input_bindings": {},
-        "pipeline_id": "frontend-light-dark-fix",
-        "pipeline_scope": "system"
+        "graph_id": "code-monitor-check-fix",
+        "graph_scope": "system"
       },
       "pins": [
         {

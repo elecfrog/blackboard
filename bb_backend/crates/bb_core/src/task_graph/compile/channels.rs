@@ -120,7 +120,7 @@ pub struct ArtifactRef {
     pub metadata: Map<String, Value>,
 }
 
-/// Version snapshot seen by each node: node_id -> channel_name -> version.
+/// Version snapshot seen by each node: `node_id` -> `channel_name` -> version.
 pub type VersionsSeen = BTreeMap<String, BTreeMap<String, u64>>;
 
 /// Apply pending channel writes and return the next immutable channel map.
@@ -189,6 +189,7 @@ pub fn mark_versions_seen(
 }
 
 /// Return channel names whose versions changed since `node_id` last observed them.
+#[must_use]
 pub fn changed_channels_for(
     node_id: &str,
     states: &BTreeMap<String, ChannelState>,
@@ -303,7 +304,7 @@ fn validate_channel_value(
     }
 }
 
-fn value_type_name(value_type: ChannelValueType) -> &'static str {
+const fn value_type_name(value_type: ChannelValueType) -> &'static str {
     match value_type {
         ChannelValueType::String => "string",
         ChannelValueType::Text => "text",

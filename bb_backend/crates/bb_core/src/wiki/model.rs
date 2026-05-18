@@ -9,7 +9,7 @@ pub struct WikiTreeNode {
     #[serde(rename = "kind")]
     pub kind: WikiNodeKind,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub children: Option<Vec<WikiTreeNode>>,
+    pub children: Option<Vec<Self>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -17,7 +17,7 @@ pub(super) fn read_wiki_dir_recursive(
     let mut dir_nodes: Vec<WikiTreeNode> = Vec::new();
     let mut file_nodes: Vec<WikiTreeNode> = Vec::new();
 
-    for entry in entries.filter_map(|e| e.ok()) {
+    for entry in entries.filter_map(std::result::Result::ok) {
         let name = entry.file_name().to_string_lossy().to_string();
 
         // Skip hidden dotfiles (including `.gitkeep`), OS noise, and the
@@ -39,7 +39,7 @@ pub(super) fn read_wiki_dir_recursive(
         let entry_rel = if rel_path.is_empty() {
             name.clone()
         } else {
-            format!("{}/{}", rel_path, name)
+            format!("{rel_path}/{name}")
         };
 
         if file_type.is_dir() {

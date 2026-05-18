@@ -1,6 +1,6 @@
-//! PregelLoop state object for TaskGraph.
+//! `PregelLoop` state object for `TaskGraph`.
 //!
-//! This is the Blackboard-shaped counterpart of LangGraph's `PregelLoop`.
+//! This is the Blackboard-shaped counterpart of `LangGraph`'s `PregelLoop`.
 //! It deliberately starts small: the loop owns the active checkpoint,
 //! recovered pending task writes, step preparation, and barrier commit. The
 //! coordinator still owns runtime execution and durable run files.
@@ -55,6 +55,7 @@ pub struct PregelLoop {
 }
 
 impl PregelLoop {
+    #[must_use]
     pub fn new(
         compiled: CompiledGraph,
         checkpoint: PregelCheckpoint,
@@ -63,6 +64,7 @@ impl PregelLoop {
         Self::with_stop(compiled, checkpoint, pending_writes, None)
     }
 
+    #[must_use]
     pub fn with_stop(
         compiled: CompiledGraph,
         checkpoint: PregelCheckpoint,
@@ -80,6 +82,7 @@ impl PregelLoop {
         )
     }
 
+    #[must_use]
     pub fn with_config(
         compiled: CompiledGraph,
         checkpoint: PregelCheckpoint,
@@ -100,14 +103,17 @@ impl PregelLoop {
         }
     }
 
-    pub fn compiled(&self) -> &CompiledGraph {
+    #[must_use]
+    pub const fn compiled(&self) -> &CompiledGraph {
         &self.compiled
     }
 
-    pub fn checkpoint(&self) -> &PregelCheckpoint {
+    #[must_use]
+    pub const fn checkpoint(&self) -> &PregelCheckpoint {
         &self.checkpoint
     }
 
+    #[must_use]
     pub fn pending_writes(&self) -> &[PregelWrite] {
         &self.pending_writes
     }
@@ -122,19 +128,23 @@ impl PregelLoop {
         self.checkpoint = checkpoint;
     }
 
-    pub fn checkpoint_previous_versions(&self) -> &BTreeMap<String, u64> {
+    #[must_use]
+    pub const fn checkpoint_previous_versions(&self) -> &BTreeMap<String, u64> {
         &self.checkpoint_previous_versions
     }
 
-    pub fn step(&self) -> u64 {
+    #[must_use]
+    pub const fn step(&self) -> u64 {
         self.step
     }
 
-    pub fn stop(&self) -> Option<u64> {
+    #[must_use]
+    pub const fn stop(&self) -> Option<u64> {
         self.stop
     }
 
-    pub fn status(&self) -> PregelLoopStatus {
+    #[must_use]
+    pub const fn status(&self) -> PregelLoopStatus {
         self.status
     }
 
@@ -214,7 +224,7 @@ impl PregelLoop {
 
         self.step = prepared.superstep;
         self.checkpoint = checkpoint.clone();
-        self.checkpoint_previous_versions = checkpoint.channel_versions.clone();
+        self.checkpoint_previous_versions = checkpoint.channel_versions;
         self.clear_committed_pending_writes(&completed_tasks);
         if should_interrupt(&self.checkpoint, &self.interrupt_after, &completed_tasks) {
             mark_interrupt_seen(&mut self.checkpoint);

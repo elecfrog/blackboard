@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { BbToolbar } from '@/components/common'
+import BbObjectItem from '@/components/common/BbObjectItem.vue'
+import InboxStructuredDocument from '@/components/InboxStructuredDocument.vue'
 import type { InboxNote, InboxNoteEntry } from '@/data/tickets'
 import { loadInboxNote, loadInboxNotes } from '@/data/tickets'
-import { locale, t } from '@/i18n'
-import { MarkdownRenderer } from '@/ui/markdown'
+import { t } from '@/i18n'
 
 const props = withDefaults(defineProps<{
   project: string
@@ -117,6 +119,14 @@ function formatTime(value?: string) {
   return value.replace('T', ' ').replace(/\.\d{3}Z$/, 'Z')
 }
 
+function noteTitle(note: InboxNoteEntry) {
+  return note.title || note.topic || note.name
+}
+
+function noteMeta(note: InboxNoteEntry) {
+  return [note.source, note.topic].filter(Boolean).join(' / ')
+}
+
 const rootSectionClass = computed(() =>
   props.variant === 'full' ? ['bb-workbench-workspace', 'bb-inbox-full'] : ['bb-inbox-panel', 'bb-inbox-panel--compact'],
 )
@@ -131,9 +141,11 @@ const rootSectionClass = computed(() =>
         <p v-if="variant === 'full'">{{ t('inboxFullSubtitle') }}</p>
         <p v-else>{{ t('inboxCompactCount', { count: notes.length }) }}</p>
       </div>
-      <div v-if="variant === 'full'" class="bb-workspace-head-actions">
-        <span class="bb-toolbar-count">{{ t('inboxToolbarNotes', { count: notes.length }) }}</span>
-      </div>
+      <BbToolbar v-if="variant === 'full'" class="bb-workspace-head-actions" variant="inline">
+        <template #meta>
+          <span class="bb-toolbar-count">{{ t('inboxToolbarNotes', { count: notes.length }) }}</span>
+        </template>
+      </BbToolbar>
     </header>
 
     <div class="bb-inbox-panel-body">
@@ -150,39 +162,44 @@ const rootSectionClass = computed(() =>
               </div>
               <span class="bb-inbox-pane-meta">{{ t('inboxSelectNote') }}</span>
             </header>
-            <ul class="bb-inbox-list bb-inbox-list--split">
+            <ul class="bb-object-list bb-inbox-list--split">
               <li
                 v-for="note in visibleNotes"
                 :key="note.name"
-                class="bb-inbox-item bb-inbox-item--selectable"
-                :class="{ 'is-active': openName === note.name }"
+                class="bb-object-list-row"
               >
-                <button
-                  type="button"
-                  class="bb-inbox-row"
-                  :aria-current="openName === note.name ? 'true' : undefined"
-                  @click="selectNote(note.name)"
+                <BbObjectItem
+                  :title="noteTitle(note)"
+                  :active="openName === note.name"
+                  @select="selectNote(note.name)"
                 >
-                  <span class="bb-inbox-name">{{ note.name }}</span>
-                  <ChevronRight class="bb-inbox-caret" aria-hidden="true" />
-                </button>
-                <p v-if="note.excerpt" class="bb-inbox-excerpt">{{ note.excerpt }}</p>
-                <span v-if="note.modified_at" class="bb-inbox-time bb-inbox-time--block">
-                  {{ formatTime(note.modified_at) }}
-                </span>
+                  <template #trailing>
+                    <ChevronRight />
+                  </template>
+                </BbObjectItem>
               </li>
             </ul>
           </aside>
           <article class="bb-inbox-reader">
+            <header class="bb-inbox-reader-head">
+              <div class="bb-inbox-reader-title-block">
+                <span class="bb-inbox-reader-kicker">{{ t('inboxReaderTitle') }}</span>
+                <h3 class="bb-inbox-reader-title">
+                  {{ selectedEntry ? noteTitle(selectedEntry) : t('inboxSelectNote') }}
+                </h3>
+              </div>
+              <span v-if="selectedEntry" class="bb-inbox-reader-file">
+                {{ selectedEntry.name }}
+              </span>
+            </header>
             <div class="bb-inbox-reader-body">
               <div v-if="selectedDetail?.loading" class="bb-empty">{{ t('inboxBodyLoading') }}</div>
               <div v-else-if="selectedDetail?.error" class="bb-inbox-offline">
                 {{ selectedDetail.error }}
               </div>
-              <MarkdownRenderer
+              <InboxStructuredDocument
                 v-else-if="selectedDetail?.note"
-                :content="selectedDetail.note.content"
-                :locale="locale"
+                :note="selectedDetail.note"
               />
               <div v-else class="bb-empty">{{ t('inboxSelectNote') }}</div>
             </div>
@@ -197,21 +214,25 @@ const rootSectionClass = computed(() =>
             :aria-expanded="openName === note.name"
             @click="toggle(note.name)"
           >
-            <span class="bb-inbox-name">{{ note.name }}</span>
-            <span v-if="note.modified_at" class="bb-inbox-time">{{ formatTime(note.modified_at) }}</span>
+            <span class="bb-inbox-name">{{ noteTitle(note) }}</span>
+            <span v-if="note.time || note.modified_at" class="bb-inbox-time">{{ formatTime(note.time || note.modified_at) }}</span>
             <component
               :is="openName === note.name ? ChevronDown : ChevronRight"
               class="bb-inbox-caret"
               aria-hidden="true"
             />
           </button>
+          <p v-if="noteMeta(note)" class="bb-inbox-meta">{{ noteMeta(note) }}</p>
           <p v-if="note.excerpt" class="bb-inbox-excerpt">{{ note.excerpt }}</p>
           <div v-if="openName === note.name" class="bb-inbox-detail">
             <div v-if="details[note.name]?.loading" class="bb-empty">{{ t('inboxBodyLoading') }}</div>
             <div v-else-if="details[note.name]?.error" class="bb-inbox-offline">
               {{ details[note.name]?.error }}
             </div>
-            <pre v-else-if="details[note.name]?.note" class="bb-inbox-body">{{ details[note.name]?.note?.content }}</pre>
+            <InboxStructuredDocument
+              v-else-if="details[note.name]?.note"
+              :note="details[note.name]?.note ?? null"
+            />
           </div>
         </li>
         <li v-if="variant === 'compact' && notes.length > visibleNotes.length" class="bb-inbox-more">

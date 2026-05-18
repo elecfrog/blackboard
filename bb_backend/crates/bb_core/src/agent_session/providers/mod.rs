@@ -1,3 +1,4 @@
-pub(crate) mod codebuddy;
-pub(crate) mod codex;
-pub(crate) mod opencode;
+pub mod codebuddy;
+pub mod codex;
+pub mod opencode;
+pub mod pi;

@@ -21,6 +21,7 @@ const headerHeight = 32
 const footerHeight = 26
 const footerY = computed(() => Math.max(headerHeight + 30, props.height - footerHeight))
 const statusBadgeWidth = computed(() => Math.min(108, Math.max(72, props.width - 24)))
+const isMutation = computed(() => props.node.kind === 'llm_mutation')
 const footerPath = computed(() => {
   const radius = 6
   const y = footerY.value
@@ -36,27 +37,40 @@ function truncateLabel(value: string, maxLength: number) {
 
 <template>
   <g class="task-graph-node-shape" :class="[`task-graph-node-shape-${node.kind}`]">
-    <rect class="task-graph-node-body" :width="width" :height="height" rx="6" />
-    <rect class="task-graph-node-header" :width="width" :height="headerHeight" rx="6" />
-    <rect class="task-graph-node-header-bottom" :width="width" y="24" height="8" />
-    <line class="task-graph-node-divider" x1="0" :y1="headerHeight" :x2="width" :y2="headerHeight" />
-    <circle class="task-graph-node-icon-disc" cx="18" cy="16" r="10" />
-    <text x="18" y="20" class="task-graph-node-icon-text">{{ visual.icon }}</text>
-    <text x="34" y="20" class="task-graph-node-title">{{ nodeLabel }}</text>
-    <text x="12" y="50" class="task-graph-node-meta">{{ nodeMeta }}</text>
-    <g class="task-graph-node-type-badge" :transform="`translate(${Math.max(82, width - 84)}, 8)`">
-      <rect width="72" height="17" rx="5" />
-      <text x="36" y="12">{{ visual.label }}</text>
-    </g>
-    <g v-if="statusLabel" class="task-graph-node-footer">
-      <path class="task-graph-node-footer-bg" :d="footerPath" />
-      <line class="task-graph-node-footer-divider" x1="0" :y1="footerY" :x2="width" :y2="footerY" />
-      <g class="task-graph-node-status-badge" :transform="`translate(12, ${footerY + 5})`">
-        <rect :width="statusBadgeWidth" height="16" rx="5" />
-        <circle cx="9" cy="8" r="3" />
-        <text x="18" y="11">{{ statusLabel }}</text>
+    <template v-if="isMutation">
+      <ellipse class="task-graph-node-body task-graph-node-mutation-body" :cx="width / 2" :cy="height / 2" :rx="width / 2 - 4" :ry="height / 2 - 4" />
+      <circle class="task-graph-node-icon-disc" :cx="width / 2" cy="24" r="12" />
+      <text :x="width / 2" y="28" class="task-graph-node-icon-text">{{ visual.icon }}</text>
+      <text :x="width / 2" :y="height / 2 - 4" class="task-graph-node-title task-graph-node-mutation-title">{{ nodeLabel }}</text>
+      <text :x="width / 2" :y="height / 2 + 16" class="task-graph-node-meta task-graph-node-mutation-meta">{{ nodeMeta }}</text>
+      <g class="task-graph-node-type-badge" :transform="`translate(${width / 2 - 36}, ${height - 28})`">
+        <rect width="72" height="17" rx="8" />
+        <text x="36" y="12">{{ visual.label }}</text>
       </g>
-    </g>
+    </template>
+    <template v-else>
+      <rect class="task-graph-node-body" :width="width" :height="height" rx="6" />
+      <rect class="task-graph-node-header" :width="width" :height="headerHeight" rx="6" />
+      <rect class="task-graph-node-header-bottom" :width="width" y="24" height="8" />
+      <line class="task-graph-node-divider" x1="0" :y1="headerHeight" :x2="width" :y2="headerHeight" />
+      <circle class="task-graph-node-icon-disc" cx="18" cy="16" r="10" />
+      <text x="18" y="20" class="task-graph-node-icon-text">{{ visual.icon }}</text>
+      <text x="34" y="20" class="task-graph-node-title">{{ nodeLabel }}</text>
+      <text x="12" y="50" class="task-graph-node-meta">{{ nodeMeta }}</text>
+      <g class="task-graph-node-type-badge" :transform="`translate(${Math.max(82, width - 84)}, 8)`">
+        <rect width="72" height="17" rx="5" />
+        <text x="36" y="12">{{ visual.label }}</text>
+      </g>
+      <g v-if="statusLabel" class="task-graph-node-footer">
+        <path class="task-graph-node-footer-bg" :d="footerPath" />
+        <line class="task-graph-node-footer-divider" x1="0" :y1="footerY" :x2="width" :y2="footerY" />
+        <g class="task-graph-node-status-badge" :transform="`translate(12, ${footerY + 5})`">
+          <rect :width="statusBadgeWidth" height="16" rx="5" />
+          <circle cx="9" cy="8" r="3" />
+          <text x="18" y="11">{{ statusLabel }}</text>
+        </g>
+      </g>
+    </template>
   </g>
 </template>
 
@@ -65,7 +79,7 @@ function truncateLabel(value: string, maxLength: number) {
   fill: color-mix(in srgb, var(--graph-status-color, var(--bb-text-muted)) 7%, var(--bb-surface));
   stroke: color-mix(in srgb, var(--graph-status-color, var(--bb-text-muted)) 26%, rgba(15, 23, 42, 0.16));
   stroke-width: 1.3;
-  filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.08));
+  filter: drop-shadow(0 10px 18px var(--bb-graph-node-shadow));
 }
 
 .task-graph-node-header,
@@ -132,5 +146,18 @@ function truncateLabel(value: string, maxLength: number) {
 
 .task-graph-node-status-badge circle {
   fill: var(--graph-status-color, var(--bb-text-muted));
+}
+
+.task-graph-node-shape-llm_mutation .task-graph-node-mutation-body {
+  fill: color-mix(in srgb, var(--graph-status-color, var(--bb-text-muted)) 6%, transparent);
+  stroke: color-mix(in srgb, var(--graph-status-color, var(--bb-text-muted)) 58%, var(--bb-border-warm));
+  stroke-width: 1.6;
+  stroke-dasharray: 6 4;
+  filter: drop-shadow(0 12px 20px var(--bb-graph-node-shadow-strong));
+}
+
+.task-graph-node-mutation-title,
+.task-graph-node-mutation-meta {
+  text-anchor: middle;
 }
 </style>

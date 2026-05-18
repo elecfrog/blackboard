@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "title": "继续收敛 toolbar 到 BbToolbar",
+  "time": "2026-05-24T00:00:00+08:00",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "frontend-shared-ui-primitives-eleventh-pass",
+  "done": [
+    "新增共享组件 BbToolbar，支持 bar/inline 两种形态、compact density、sticky topbar、search/meta/actions slots。",
+    "导出 BbToolbar，并在全局 bb-* grammar 中加入 .bb-toolbar、.bb-toolbar-search、.bb-toolbar-actions、.bb-toolbar-count 等共享样式。",
+    "迁移 BoardView 的 sticky workspace topbar：搜索、语言、主题、Lane 管理、刷新按钮现在由 BbToolbar 承载。",
+    "迁移 InboxPanel、AgentWorkbench、TaskGraphCatalogPanel、WikiPanel、IdeaCanvasPanel 的 workspace action group 到 BbToolbar inline。",
+    "简化 bb-workspace-head-actions，让它只作为 toolbar 宿主变量/布局约束，不再自己定义完整 flex toolbar grammar。",
+    "更新 DESIGN.md：明确搜索/操作/计数工具条使用 BbToolbar。"
+  ],
+  "validation": [
+    "rg fixed strings: bb-top-actions / <header class=\"bb-workspace-topbar\" / <div class=\"bb-workspace-head-actions\" under bb_web/src：均 no matches。",
+    "git diff --check -- 本轮相关 bb_web 文件：通过，仅 CRLF warning。",
+    "npm run build --prefix bb_web：通过。",
+    "Browser smoke：Tickets / Inbox / Agents / Task Graphs / Wiki / Idea Canvas 路由均可加载且无 console error；Tickets 渲染 1 个 bar toolbar，其他 workspace 渲染 1 个 bar toolbar + 1 个 inline toolbar。"
+  ],
+  "next_step": [
+    "下一轮可以收 BbActionGroup / BbIconCommand：统一小型图标按钮、primary/secondary command button 的 skin。",
+    "也可以继续收 Graph/Ticket viewbar 的 tabs + controls，但建议先收 action button 皮肤，收益更基础。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/common/BbToolbar.vue",
+    "bb_web/src/components/common/index.ts",
+    "bb_web/src/styles.css",
+    "bb_web/src/views/BoardView.vue",
+    "bb_web/src/components/InboxPanel.vue",
+    "bb_web/src/components/AgentWorkbench.vue",
+    "bb_web/src/components/TaskGraphCatalogPanel.vue",
+    "bb_web/src/components/WikiPanel.vue",
+    "bb_web/src/components/IdeaCanvasPanel.vue",
+    "bb_web/DESIGN.md"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

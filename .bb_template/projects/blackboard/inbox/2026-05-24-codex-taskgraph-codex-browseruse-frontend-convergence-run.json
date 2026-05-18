@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "title": "Codex + Browser Use 前端收敛试跑结果",
+  "time": "2026-05-24T18:12:00+08:00",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "taskgraph-codex-browseruse-frontend-convergence-run",
+  "done": [
+    "通过 TaskGraph HTTP 实跑 system/frontend-ui-convergence-codex@v5，两轮输入均使用 Codex gpt-5.5 medium；第一轮 run-20260524-094414-9012b0d8 succeeded，第二轮 run-20260524-095048-44c42863 在 interactive-smoke pending 后被取消。",
+    "将 interactive-smoke 节点配置为 toolkits=[blackboard_mcp,browser_use]，让 Browser Use 走 toolkit 注入而不是共享隐式配置。",
+    "第一轮由 Codex 收敛 bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue 的 LLM Toolkits 区域：改为 BbSectionHeader + BbDenseRow + BbCheckboxField，并在 bb_web/DESIGN.md 补充规范。",
+    "第一轮 Browser Use 已被注入并按要求尝试 node_repl / agent.browsers.get(\"iab\")，但返回 Browser is not available: iab；节点按规则报告 blocked，没有用 curl/shell 伪造 UI 验证。",
+    "修复 bb_backend/crates/bb_core/src/task_graph/tool_layer.rs 的 browser_use prompt prelude：从硬编码 iab 改成依次尝试 iab、chrome，并要求报告 globalThis.browserBackend。",
+    "第二轮验证 frontend Toolkits 区域时 Codex 判断无需继续修改，static validate 通过；interactive-smoke 创建 agent session 后停在 pending，event_count=0/tool_count=0，约 9 分钟后手动 cancel。取消后确认此前观测到的临时 codex/chrome PID 已不存在。"
+  ],
+  "validation": [
+    "cargo fmt --all：通过。",
+    "cargo test -p bb_core task_graph::tool_layer：8 passed。",
+    "npm run build --prefix bb_web：通过。",
+    "git diff --check -- bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue bb_web/DESIGN.md bb_backend/crates/bb_core/src/task_graph/tool_layer.rs .bb_template/task_graphs/system/frontend-ui-convergence-codex.json：通过。",
+    "run-20260524-094414-9012b0d8：graph succeeded，报告写入 .bb_template/runtime/frontend-ui-convergence/frontend-toolkits-browseruse-smoke-2026-05-24.md。",
+    "run-20260524-095048-44c42863：scan/codex-patch/static-validate succeeded，interactive-smoke pending 0 event/0 tool，已 cancel。"
+  ],
+  "next_step": [
+    "补 AgentSession 启动期 timeout：session pending 且 event_count=0 超过阈值时应失败/重试/释放进程，不能无限等。",
+    "给 browser_use toolkit 增加可观测 preflight：明确可用 backend 列表、启动失败错误、实际使用 iab/chrome；让 UI 冒烟节点失败定位更像正式 tool lifecycle。",
+    "Browser Use 启动稳定后，再跑第三轮完整 UI 冒烟，验证页面加载、console error 和视觉状态。"
+  ],
+  "related_locations": [
+    "C:/Dev/blackboard/.bb_template/task_graphs/system/frontend-ui-convergence-codex.json",
+    "C:/Dev/blackboard/bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue",
+    "C:/Dev/blackboard/bb_web/DESIGN.md",
+    "C:/Dev/blackboard/bb_backend/crates/bb_core/src/task_graph/tool_layer.rs",
+    "C:/Dev/blackboard/.bb_template/runtime/frontend-ui-convergence/frontend-toolkits-browseruse-smoke-2026-05-24.md"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

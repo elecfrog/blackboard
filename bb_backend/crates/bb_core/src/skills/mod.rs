@@ -6,8 +6,11 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
+
+use crate::fs_util::slug_segment;
 
 /// Metadata about a discovered skill.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -31,8 +34,15 @@ pub struct SkillContent {
     pub reference_files: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillSnapshot {
+    pub root: PathBuf,
+    pub skill_dirs: Vec<PathBuf>,
+}
+
 /// Discover all valid skills under `<bb_root>/skills/`.
 /// Returns an empty Vec if the directory does not exist.
+#[must_use]
 pub fn discover_skills(bb_root: &Path) -> Vec<SkillInfo> {
     let skills_dir = bb_root.join("skills");
     if !skills_dir.is_dir() {
@@ -79,6 +89,7 @@ pub fn discover_skills(bb_root: &Path) -> Vec<SkillInfo> {
 }
 
 /// Load a specific skill by name. Returns None if not found.
+#[must_use]
 pub fn load_skill(bb_root: &Path, skill_name: &str) -> Option<SkillContent> {
     let skill_dir = bb_root.join("skills").join(skill_name);
     let skill_md = skill_dir.join("SKILL.md");
@@ -119,6 +130,7 @@ pub fn inject_skills_for_runtime(
 
     let target_base = match runtime {
         "opencode" => cwd.join(".opencode").join("skills"),
+        "pi" => cwd.join(".pi").join("skills"),
         "codex" => {
             // Codex uses CODEX_HOME/skills or cwd/.codex/skills
             cwd.join(".codex").join("skills")
@@ -139,6 +151,60 @@ pub fn inject_skills_for_runtime(
     }
 
     Ok(())
+}
+
+/// Create an immutable skill snapshot with copy-on-write semantics.
+///
+/// The snapshot is first copied into a hidden staging directory and only becomes
+/// visible after a final rename into a unique committed directory. Providers
+/// should only receive the committed path, so failed or partial copies are never
+/// observed by concurrent readers.
+pub fn create_skill_snapshot(
+    bb_root: &Path,
+    skills: &[String],
+    snapshot_parent: &Path,
+    label: &str,
+) -> std::io::Result<SkillSnapshot> {
+    let label = slug_segment(label, "skills");
+    let txn = format!(
+        "{}-{}-{}",
+        label,
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let staging = snapshot_parent.join(format!(".{txn}.staging"));
+    let committed = snapshot_parent.join(txn);
+
+    fs::create_dir_all(snapshot_parent)?;
+    fs::create_dir_all(&staging)?;
+
+    let result = (|| {
+        let mut skill_dirs = Vec::new();
+        for skill_name in skills {
+            let source_dir = bb_root.join("skills").join(skill_name);
+            if !source_dir.is_dir() {
+                continue;
+            }
+            let target_dir = staging.join(skill_name);
+            copy_dir_recursive(&source_dir, &target_dir)?;
+            skill_dirs.push(committed.join(skill_name));
+        }
+
+        fs::rename(&staging, &committed)?;
+        Ok(SkillSnapshot {
+            root: committed,
+            skill_dirs,
+        })
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&staging);
+    }
+
+    result
 }
 
 // ── Internal helpers ──
@@ -162,33 +228,33 @@ fn parse_frontmatter_and_body(content: &str) -> (String, Option<String>, String)
     // Find the closing ---
     let after_first = &trimmed[3..];
     let rest = after_first.trim_start_matches(['\r', '\n']);
-    if let Some(end_idx) = rest.find("\n---") {
-        let frontmatter = &rest[..end_idx];
-        let body_start = end_idx + 4; // skip \n---
-        let body = rest[body_start..]
-            .trim_start_matches(['\r', '\n'])
-            .to_string();
+    rest.find("\n---").map_or_else(
+        || (String::new(), None, content.to_string()),
+        |end_idx| {
+            let frontmatter = &rest[..end_idx];
+            let body_start = end_idx + 4; // skip \n---
+            let body = rest[body_start..]
+                .trim_start_matches(['\r', '\n'])
+                .to_string();
 
-        let mut name = String::new();
-        let mut description: Option<String> = None;
+            let mut name = String::new();
+            let mut description: Option<String> = None;
 
-        for line in frontmatter.lines() {
-            let line = line.trim();
-            if let Some(val) = line.strip_prefix("name:") {
-                name = val.trim().trim_matches('"').trim_matches('\'').to_string();
-            } else if let Some(val) = line.strip_prefix("description:") {
-                let desc = val.trim().trim_matches('"').trim_matches('\'').to_string();
-                if !desc.is_empty() {
-                    description = Some(desc);
+            for line in frontmatter.lines() {
+                let line = line.trim();
+                if let Some(val) = line.strip_prefix("name:") {
+                    name = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                } else if let Some(val) = line.strip_prefix("description:") {
+                    let desc = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                    if !desc.is_empty() {
+                        description = Some(desc);
+                    }
                 }
             }
-        }
 
-        (name, description, body)
-    } else {
-        // No closing ---, treat entire content as body
-        (String::new(), None, content.to_string())
-    }
+            (name, description, body)
+        },
+    )
 }
 
 /// Collect reference file paths relative to the skill directory.
@@ -216,7 +282,8 @@ fn collect_reference_files(skill_dir: &Path) -> Vec<String> {
 /// Recursively copy a directory (idempotent: overwrites existing files).
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)?.flatten() {
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
         if src_path.is_dir() {
@@ -323,5 +390,31 @@ mod tests {
 
         let target = cwd.path().join(".opencode/skills/triage/SKILL.md");
         assert!(target.exists());
+    }
+
+    #[test]
+    fn create_skill_snapshot_commits_complete_snapshot() {
+        let tmp = TempDir::new().unwrap();
+        create_skill(tmp.path(), "triage", "name: triage", "# Triage");
+        let ref_dir = tmp.path().join("skills/triage/reference");
+        fs::create_dir_all(&ref_dir).unwrap();
+        fs::write(ref_dir.join("rules.md"), "# Rules").unwrap();
+
+        let parent = tmp.path().join("runtime/skill_snapshots");
+        let snapshot =
+            create_skill_snapshot(tmp.path(), &["triage".to_string()], &parent, "node:llm")
+                .unwrap();
+
+        assert!(snapshot.root.is_dir());
+        assert_eq!(snapshot.skill_dirs, vec![snapshot.root.join("triage")]);
+        assert!(snapshot.root.join("triage/SKILL.md").is_file());
+        assert!(snapshot.root.join("triage/reference/rules.md").is_file());
+
+        let staging_leftovers = fs::read_dir(&parent)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().contains(".staging"))
+            .count();
+        assert_eq!(staging_leftovers, 0);
     }
 }

@@ -42,6 +42,9 @@ fn input(topic: &str) -> InboxNoteInput {
         validation: vec!["cargo test".to_string()],
         next_step: vec!["review".to_string()],
         related_locations: vec!["blackboard/bb-server".to_string()],
+        related_tickets: Vec::new(),
+        attachments: Vec::new(),
+        extra: FrontmatterExtra::new(),
     }
 }
 
@@ -99,21 +102,23 @@ fn write_ticket_index_counter(board: &Blackboard, counter: &str) {
 }
 
 #[test]
-fn lists_and_reads_only_markdown_note_names() {
+fn lists_and_reads_only_json_note_names() {
     let (_temp, board) = fixture();
-    fs::write(board.inbox().join("2026-05-04-agent-topic.md"), "hello").unwrap();
+    let created = board.create_note(input("Agent Topic")).unwrap();
+    fs::write(board.inbox().join("2026-05-04-agent-topic.md"), "ignored").unwrap();
     fs::write(board.inbox().join("notes.txt"), "ignored").unwrap();
 
     let list = board.list_notes().unwrap();
-    assert_eq!(
-        list,
-        vec![InboxNoteEntry {
-            name: "2026-05-04-agent-topic.md".to_string()
-        }]
-    );
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].name, created.name);
+    assert_eq!(list[0].title, "Test Note");
+    assert_eq!(list[0].topic, "Agent Topic");
+    assert_eq!(list[0].source, "Codex Agent");
 
-    let note = board.read_note("2026-05-04-agent-topic.md").unwrap();
-    assert_eq!(note.content, "hello");
+    let note = board.read_note(&created.name).unwrap();
+    assert_eq!(note.document.title, "Test Note");
+    assert_eq!(note.document.topic, "Agent Topic");
+    assert!(note.content.contains("implemented something"));
 }
 
 #[test]
@@ -121,12 +126,16 @@ fn rejects_traversal_and_missing_note_names() {
     let (_temp, board) = fixture();
 
     assert!(matches!(
-        board.read_note("../tickets/x.md"),
+        board.read_note("../tickets/x.json"),
         Err(InboxError::InvalidName(_))
     ));
     assert!(matches!(
-        board.read_note("missing.md"),
+        board.read_note("missing.json"),
         Err(InboxError::NotFound(_))
+    ));
+    assert!(matches!(
+        board.read_note("legacy.md"),
+        Err(InboxError::InvalidName(_))
     ));
 }
 
@@ -147,21 +156,61 @@ fn deletes_inbox_note_and_rebuilds_index() {
 }
 
 #[test]
+fn archives_inbox_note_and_rebuilds_index() {
+    let (_temp, board) = fixture();
+    let created = board.create_note(input("Archive Me")).unwrap();
+    let archived = board.archive_note(&created.name).unwrap();
+
+    assert_eq!(archived.name, created.name);
+    assert_eq!(archived.original_path, format!("inbox/{}", created.name));
+    assert_eq!(
+        archived.archived_path,
+        format!("inbox/archive/{}", created.name)
+    );
+    assert!(!board.inbox().join(&created.name).exists());
+    assert!(board.inbox().join("archive").join(&created.name).is_file());
+    assert!(matches!(
+        board.read_note(&created.name),
+        Err(InboxError::NotFound(_))
+    ));
+
+    let index = board.read_inbox_index().unwrap();
+    assert!(index.notes.is_empty());
+}
+
+#[test]
+fn archives_inbox_note_without_overwriting_existing_archive() {
+    let (_temp, board) = fixture();
+    let first = board.create_note(input("Archive Collision")).unwrap();
+    let archived_first = board.archive_note(&first.name).unwrap();
+    assert_eq!(archived_first.archived_name, first.name);
+
+    let second = board.create_note(input("Archive Collision")).unwrap();
+    let archived_second = board.archive_note(&second.name).unwrap();
+    assert_ne!(archived_second.archived_name, archived_first.archived_name);
+    assert!(board
+        .inbox()
+        .join("archive")
+        .join(&archived_second.archived_name)
+        .is_file());
+}
+
+#[test]
 fn inbox_index_excerpt_truncates_unicode_safely() {
     let (_temp, board) = fixture();
-    let name = "2026-05-04-unicode-excerpt.md";
-    fs::write(
-        board.inbox().join(name),
-        format!(
-            "# Unicode\n\n- {}\n",
-            "完成 000034：抽取 GraphCanvas，把节点拖拽、连线、viewport fit 与布局保存入口沉到通用 Graph Canvas。"
-                .repeat(4)
-        ),
-    )
-    .unwrap();
+    let mut note = input("Unicode Excerpt");
+    note.done = vec![
+        "完成 000034：抽取 GraphCanvas，把节点拖拽、连线、viewport fit 与布局保存入口沉到通用 Graph Canvas。"
+            .repeat(4),
+    ];
+    let created = board.create_note(note).unwrap();
     board.rebuild_inbox_index().unwrap();
     let index = board.read_inbox_index().unwrap();
-    let entry = index.notes.iter().find(|entry| entry.name == name).unwrap();
+    let entry = index
+        .notes
+        .iter()
+        .find(|entry| entry.name == created.name)
+        .unwrap();
 
     assert!(entry.excerpt.ends_with("..."));
     assert!(entry.excerpt.chars().count() <= 143);
@@ -174,8 +223,8 @@ fn creates_collision_resistant_notes_without_overwrite() {
     let second = board.create_note(input("Same Topic!")).unwrap();
 
     assert_ne!(first.name, second.name);
-    assert!(first.name.ends_with("codex-agent-same-topic.md"));
-    assert!(second.name.ends_with("codex-agent-same-topic-1.md"));
+    assert!(first.name.ends_with("codex-agent-same-topic.json"));
+    assert!(second.name.ends_with("codex-agent-same-topic-1.json"));
     assert!(board.inbox().join(&first.name).exists());
     assert!(board.inbox().join(&second.name).exists());
 }
@@ -332,7 +381,7 @@ fn appends_ticket_sections_without_raw_markdown_patch() {
         .append_ticket_sections(AppendTicketSectionsInput {
             id: created.ticket.id.clone(),
             progress: vec!["完成 assignee 前端编辑".to_string()],
-            record: vec!["来源 inbox/2026-05-06-demo.md".to_string()],
+            record: vec!["来源 inbox/2026-05-06-demo.json".to_string()],
             next_step: vec!["人工验收 Dashboard".to_string()],
         })
         .unwrap();
@@ -346,7 +395,7 @@ fn appends_ticket_sections_without_raw_markdown_patch() {
         .any(|record| record["summary"] == "完成 assignee 前端编辑"));
     assert!(records
         .iter()
-        .any(|record| record["summary"] == "Record: 来源 inbox/2026-05-06-demo.md"));
+        .any(|record| record["summary"] == "Record: 来源 inbox/2026-05-06-demo.json"));
     assert!(records
         .iter()
         .any(|record| record["summary"] == "Next step: 人工验收 Dashboard"));
@@ -877,22 +926,26 @@ fn rejects_symlinked_tickets_dir() {
 #[test]
 fn searches_notes_with_utf8_and_ignores_out_of_scope_files() {
     let (_temp, board) = fixture();
+    let mut note = input("Search Topic");
+    note.done = vec!["中文 Context Hit".to_string()];
+    note.validation = vec!["alpha beta".to_string()];
+    let created = board.create_note(note).unwrap();
     fs::write(
         board.inbox().join("2026-05-04-agent-topic.md"),
-        "# Title\n  中文 Context Hit  \nalpha beta\nno match",
+        "Context Hit",
     )
     .unwrap();
     fs::write(board.inbox().join("notes.txt"), "Context Hit").unwrap();
-    fs::create_dir_all(board.inbox().join("nested.md")).unwrap();
+    fs::create_dir_all(board.inbox().join("nested.json")).unwrap();
 
     let result = board.search_notes("context").unwrap();
     assert_eq!(
         result.matches,
         vec![NoteSearchMatch {
-            filename: "2026-05-04-agent-topic.md".to_string(),
-            path: "inbox/2026-05-04-agent-topic.md".to_string(),
-            line: 2,
-            snippet: "中文 Context Hit".to_string(),
+            filename: created.name.clone(),
+            path: format!("inbox/{}", created.name),
+            line: 10,
+            snippet: "- 中文 Context Hit".to_string(),
         }]
     );
 
@@ -901,7 +954,7 @@ fn searches_notes_with_utf8_and_ignores_out_of_scope_files() {
         Err(InboxError::InvalidInput(_))
     ));
 
-    assert!(board.search_notes(" beta ").unwrap().matches.is_empty());
+    assert!(board.search_notes(" nomatch ").unwrap().matches.is_empty());
 }
 
 #[test]
@@ -1019,12 +1072,19 @@ fn workspace_init_from_seed_copies_assets_without_runtime() {
     fs::create_dir_all(seed_data.join("projects/blackboard/inbox")).unwrap();
     fs::create_dir_all(seed_data.join("projects/blackboard/tickets")).unwrap();
     fs::create_dir_all(seed_data.join("projects/blackboard/wiki")).unwrap();
+    fs::create_dir_all(seed_data.join("config")).unwrap();
     fs::create_dir_all(seed_data.join("task_graphs/system")).unwrap();
     fs::create_dir_all(seed_data.join("schemas")).unwrap();
     fs::create_dir_all(seed_data.join("templates")).unwrap();
     fs::create_dir_all(seed_data.join("runtime/task_graph_runs")).unwrap();
     fs::create_dir_all(seed_repo.join("scripts")).unwrap();
+    fs::write(
+        seed_data.join("config/task_graph_runner.toml"),
+        "node_timeout_secs = 900",
+    )
+    .unwrap();
     fs::write(seed_data.join("schemas/ticket.schema.json"), "{}").unwrap();
+    fs::write(seed_data.join("templates/legacy-template.json"), "{}").unwrap();
     fs::write(seed_data.join("runtime/seed-state.json"), "do not copy").unwrap();
     fs::write(seed_repo.join("scripts/check_ticket_ids.py"), "script").unwrap();
     fs::write(
@@ -1046,8 +1106,10 @@ fn workspace_init_from_seed_copies_assets_without_runtime() {
         crate::fs_util::canonicalize(&target.join(".bb")).unwrap()
     );
     assert!(target.join(".bb/schemas/ticket.schema.json").is_file());
+    assert!(target.join(".bb/config/task_graph_runner.toml").is_file());
     assert!(target.join(".bb/scripts/check_ticket_ids.py").is_file());
     assert!(target.join(".bb/projects/__projects__.json").is_file());
+    assert!(!target.join(".bb/templates").exists());
     assert!(target.join(".bb/runtime").is_dir());
     assert!(!target.join(".bb/runtime/seed-state.json").exists());
 }

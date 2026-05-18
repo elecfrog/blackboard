@@ -7,4 +7,5 @@ src-tauri/binaries/
 src-tauri/portable-target/
 src-tauri/sidecar-target/
 src-tauri/target/
+src-tauri/gen/
 dist/

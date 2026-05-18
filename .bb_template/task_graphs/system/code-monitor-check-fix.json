@@ -1,0 +1,1121 @@
+{
+  "schema_version": 1,
+  "id": "code-monitor-check-fix",
+  "scope": "system",
+  "title": "代码监控检查和修复",
+  "description": "内联系统管线：前端 i18n、前端明暗模式、Rust Clippy/Fmt 检查修复并发运行；前端与后端各自通过确定性工具编译验证闭环重试；前端并发 Agent 先经过写入边界审计，再汇总并通过 Pi MCP adapter 写入 Blackboard handoff。",
+  "version": 13,
+  "readonly": false,
+  "metadata": {
+    "tags": [
+      "system",
+      "code-health",
+      "frontend",
+      "i18n",
+      "theme",
+      "rust",
+      "clippy",
+      "pi",
+      "mcp",
+      "handoff",
+      "write-scope-audit",
+      "concurrency-hardening",
+      "isolated-cargo-target",
+      "rustfmt",
+      "deterministic-format"
+    ],
+    "owner": "blackboard",
+    "created_by": "codex",
+    "updated_by": "codex"
+  },
+  "inputs": [
+    {
+      "id": "project",
+      "label": "项目名",
+      "type": "string",
+      "default": "blackboard"
+    },
+    {
+      "id": "frontend-workspace",
+      "label": "前端工作区路径",
+      "type": "string",
+      "default": "bb_web",
+      "description": "前端项目路径，如 bb_web"
+    },
+    {
+      "id": "workspace",
+      "label": "Rust 工作区路径",
+      "type": "string",
+      "default": "bb_backend",
+      "description": "Rust 项目路径，如 bb_backend 或 bb_desktop/src-tauri"
+    },
+    {
+      "id": "package",
+      "label": "Rust 包名（可选）",
+      "type": "string",
+      "default": "",
+      "description": "指定包名，如 bb_cli。空则检查所有包"
+    },
+    {
+      "id": "max-iterations",
+      "label": "最大修复轮次",
+      "type": "number",
+      "default": 5,
+      "description": "每个闭环最多重试多少轮",
+      "min": 1.0,
+      "max": 20.0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": 20.991480688271196,
+        "y": 248.0
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "frontend-loop",
+      "type": "loop",
+      "label": "前端修复验证循环",
+      "position": {
+        "x": 340.0,
+        "y": 120.0
+      },
+      "config": {
+        "body_entry": "frontend-fanout",
+        "body_exit": "frontend-compile-verify",
+        "condition": {
+          "input_ref": "$.nodes.frontend-compile-verify.output",
+          "op": "equals",
+          "path": "$.stdout_json.has_issues",
+          "value": true
+        },
+        "max_iterations": 5,
+        "max_iterations_ref": "{{inputs.max-iterations}}",
+        "on_max_iterations": "fail"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "exit",
+          "label": "Exit",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "index",
+          "label": "Index",
+          "direction": "out",
+          "category": "data",
+          "value_type": "int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "frontend-fanout",
+      "type": "shell",
+      "label": "前端任务并发分发",
+      "position": {
+        "x": 672.0,
+        "y": 28.0
+      },
+      "config": {
+        "args": [
+          "{{env.scripts_dir}}/task_graph_code_monitor_verify.py",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--skip-frontend",
+          "--skip-rust"
+        ],
+        "capture": {
+          "max_bytes": 4096,
+          "strip_ansi": true
+        },
+        "command": "python",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "read_only",
+        "timeout_ms": 30000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "frontend-i18n",
+      "type": "llm",
+      "label": "前端 i18n 检查修复",
+      "position": {
+        "x": 992.0,
+        "y": -96.0
+      },
+      "config": {
+        "agent": "native",
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "file",
+          "template": "agents/prompts/frontend-i18n.md"
+        },
+        "runtime": "pi",
+        "tool_policy": {
+          "allowed_tools": [
+            "read",
+            "grep",
+            "find",
+            "ls",
+            "edit"
+          ],
+          "write_roots": [
+            "{{env.root}}/../bb_web/src/styles.css"
+          ]
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "frontend-theme",
+      "type": "llm",
+      "label": "前端明暗模式检查修复",
+      "position": {
+        "x": 992.0,
+        "y": 28.0
+      },
+      "config": {
+        "agent": "native",
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "file",
+          "template": "agents/prompts/frontend-dark-mode.md"
+        },
+        "runtime": "pi",
+        "tool_policy": {
+          "allowed_tools": [
+            "read",
+            "grep",
+            "find",
+            "ls",
+            "edit"
+          ],
+          "write_roots": [
+            "{{env.root}}/../bb_web/src"
+          ]
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "markdown",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "frontend-compile-verify",
+      "type": "shell",
+      "label": "前端工具编译验证",
+      "position": {
+        "x": 1625.0,
+        "y": -96.0
+      },
+      "config": {
+        "args": [
+          "{{env.scripts_dir}}/task_graph_code_monitor_verify.py",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--frontend-workspace",
+          "{{inputs.frontend-workspace}}",
+          "--rust-workspace",
+          "{{inputs.workspace}}",
+          "--package",
+          "{{inputs.package}}",
+          "--timeout-seconds",
+          "900",
+          "--skip-rust"
+        ],
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
+        },
+        "command": "python",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "project_write",
+        "timeout_ms": 1200000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "frontend-health-report",
+      "type": "llm",
+      "label": "前端汇总报告",
+      "position": {
+        "x": 672.0,
+        "y": 190.00000000000003
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "frontend_i18n_output": "{{nodes.frontend-i18n.output}}",
+          "frontend_theme_output": "{{nodes.frontend-theme.output}}",
+          "frontend_verify_output": "{{nodes.frontend-compile-verify.output.stdout_json}}",
+          "frontend_workspace": "{{inputs.frontend-workspace}}",
+          "project": "{{inputs.project}}"
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "生成前端代码监控检查和修复报告，输出中文 Markdown。不要创建、修改或删除任何工作区文件；只在最终回复中输出 Markdown，系统会把节点输出保存为 artifact。必须覆盖：\n1. i18n 检查/修复结果。\n2. 明暗模式检查/修复结果。\n3. 工具编译验证结果（npm build），包括是否仍有问题。\n4. 如仍有问题，列出需要人工关注的文件/错误摘要。\n5. 最终结论：前端状态是否可接受。\n\nproject={{inputs.project}}\nfrontend_workspace={{inputs.frontend_workspace}}\n\ni18n 输出：\n{{inputs.frontend_i18n_output}}\n\n明暗模式输出：\n{{inputs.frontend_theme_output}}\n\n工具验证输出：\n{{inputs.frontend_verify_output}}"
+        },
+        "runtime": "pi",
+        "tool_policy": {
+          "allowed_tools": []
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "markdown",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "rust-loop",
+      "type": "loop",
+      "label": "后端 Clippy 修复验证循环",
+      "position": {
+        "x": 340.0,
+        "y": 328.0
+      },
+      "config": {
+        "body_entry": "clippy-scan",
+        "body_exit": "rust-compile-verify",
+        "condition": {
+          "input_ref": "$.nodes.rust-compile-verify.output",
+          "op": "equals",
+          "path": "$.stdout_json.has_issues",
+          "value": true
+        },
+        "max_iterations": 5,
+        "max_iterations_ref": "{{inputs.max-iterations}}",
+        "on_max_iterations": "fail"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "body",
+          "label": "Body",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "exit",
+          "label": "Exit",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "index",
+          "label": "Index",
+          "direction": "out",
+          "category": "data",
+          "value_type": "int",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "clippy-scan",
+      "type": "llm",
+      "label": "Cargo Clippy 扫描",
+      "position": {
+        "x": 672.0,
+        "y": 564.7366878095605
+      },
+      "config": {
+        "agent": "native",
+        "custom_env": {
+          "CARGO_TARGET_DIR": "{{env.workspace}}/runtime/cargo-target/code-monitor-pi"
+        },
+        "inputs": {
+          "package": "{{inputs.package}}",
+          "workspace": "{{inputs.workspace}}"
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "执行 cargo clippy 扫描，报告所有警告详情（文件路径、行号、警告类型），不执行修复。\n\n必须使用当前环境变量 CARGO_TARGET_DIR，不要覆盖它；不要使用仓库默认 bb_backend/target 目录。\n\n严禁运行 cargo clean、删除 target/cache、git clean、git reset 或任何清理构建缓存的命令。扫描节点只允许读取与检查。"
+        },
+        "runtime": "pi",
+        "tool_policy": {
+          "allowed_tools": [
+            "bash",
+            "read",
+            "grep",
+            "find",
+            "ls"
+          ],
+          "bash": {
+            "blacklist": [
+              "*cargo clean*",
+              "*git checkout*",
+              "*git switch*",
+              "*git reset*",
+              "*git clean*",
+              "*git restore*",
+              "*git revert*",
+              "*rm -rf*",
+              "*Remove-Item* -Recurse*",
+              "*rd /s*",
+              "*rmdir /s*",
+              "*del /s*"
+            ],
+            "whitelist": [
+              "*cargo clippy*",
+              "*cargo check*",
+              "*cargo fmt*",
+              "echo",
+              "echo *",
+              "ls",
+              "ls *",
+              "pwd"
+            ]
+          }
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "markdown",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "clippy-fix",
+      "type": "llm",
+      "label": "自动修复 Clippy 警告",
+      "position": {
+        "x": 966.8430920120678,
+        "y": 564.7366878095605
+      },
+      "config": {
+        "agent": "native",
+        "custom_env": {
+          "CARGO_TARGET_DIR": "{{env.workspace}}/runtime/cargo-target/code-monitor-pi"
+        },
+        "inputs": {
+          "package": "{{inputs.package}}",
+          "workspace": "{{inputs.workspace}}"
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "根据 clippy 扫描结果，使用 cargo clippy --fix 或手动修改代码修复所有警告。修复后运行 cargo check 验证编译通过。报告修复了哪些警告。\n\n必须使用当前环境变量 CARGO_TARGET_DIR，不要覆盖它；不要使用仓库默认 bb_backend/target 目录，避免影响正在运行的 bb 后端二进制。\n\n严禁运行 cargo clean、删除 target/cache、git clean、git reset 或任何清理构建缓存的命令。只做必要源码修复和验证。"
+        },
+        "runtime": "pi",
+        "tool_policy": {
+          "allowed_tools": [
+            "bash",
+            "read",
+            "grep",
+            "find",
+            "ls",
+            "edit"
+          ],
+          "bash": {
+            "blacklist": [
+              "*cargo clean*",
+              "*git checkout*",
+              "*git switch*",
+              "*git reset*",
+              "*git clean*",
+              "*git restore*",
+              "*git revert*",
+              "*rm -rf*",
+              "*Remove-Item* -Recurse*",
+              "*rd /s*",
+              "*rmdir /s*",
+              "*del /s*"
+            ],
+            "whitelist": [
+              "*cargo clippy*",
+              "*cargo check*",
+              "*cargo fmt*",
+              "echo",
+              "echo *",
+              "ls",
+              "ls *",
+              "pwd"
+            ]
+          },
+          "write_roots": [
+            "{{env.root}}/../bb_backend"
+          ]
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "markdown",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "rust-format-fix",
+      "type": "shell",
+      "label": "Rust 格式化修复",
+      "description": "确定性执行 cargo fmt，避免把 Rust formatting 交给 LLM 或最终报告人工兜底。",
+      "position": {
+        "x": 1257.2071467637122,
+        "y": 564.7366878095605
+      },
+      "config": {
+        "args": [
+          "fmt"
+        ],
+        "capture": {
+          "max_bytes": 65536,
+          "strip_ansi": true
+        },
+        "command": "cargo",
+        "cwd": "{{inputs.workspace}}",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "project_write",
+        "timeout_ms": 300000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "rust-compile-verify",
+      "type": "shell",
+      "label": "后端工具编译验证",
+      "position": {
+        "x": 1555.0417194640513,
+        "y": 564.7366878095605
+      },
+      "config": {
+        "args": [
+          "{{env.scripts_dir}}/task_graph_code_monitor_verify.py",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--frontend-workspace",
+          "{{inputs.frontend-workspace}}",
+          "--rust-workspace",
+          "{{inputs.workspace}}",
+          "--package",
+          "{{inputs.package}}",
+          "--timeout-seconds",
+          "900",
+          "--skip-frontend"
+        ],
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
+        },
+        "command": "python",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "project_write",
+        "timeout_ms": 1200000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "rust-health-report",
+      "type": "llm",
+      "label": "后端汇总报告",
+      "position": {
+        "x": 672.0,
+        "y": 352.0
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "clippy_fix_output": "{{nodes.clippy-fix.output}}",
+          "clippy_scan_output": "{{nodes.clippy-scan.output}}",
+          "package": "{{inputs.package}}",
+          "rust_format_output": "{{nodes.rust-format-fix.output}}",
+          "rust_verify_output": "{{nodes.rust-compile-verify.output.stdout_json}}",
+          "workspace": "{{inputs.workspace}}"
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "生成后端/Rust 代码监控检查和修复报告，输出中文 Markdown。不要创建、修改或删除任何工作区文件；只在最终回复中输出 Markdown，系统会把节点输出保存为 artifact。必须覆盖：\n1. Clippy 扫描范围。\n2. 自动修复动作与结果。\n3. Rust 格式化修复结果（cargo fmt）。\n4. 工具编译验证结果（cargo clippy --all-targets），包括是否仍有问题。\n5. 如仍有问题，列出需要人工关注的文件/错误摘要。\n6. 最终结论：后端/Rust 状态是否可接受。\n\nworkspace={{inputs.workspace}}\npackage={{inputs.package}}\n\nClippy 扫描输出：\n{{inputs.clippy_scan_output}}\n\nClippy 修复输出：\n{{inputs.clippy_fix_output}}\n\n格式化输出：\n{{inputs.rust_format_output}}\n\n工具验证输出：\n{{inputs.rust_verify_output}}"
+        },
+        "runtime": "pi",
+        "tool_policy": {
+          "allowed_tools": []
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "markdown",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 1344.0,
+        "y": 270.0
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "mcp-handoff",
+      "type": "llm",
+      "label": "MCP 写 Handoff",
+      "position": {
+        "x": 1027.2071467637122,
+        "y": 270.0
+      },
+      "config": {
+        "agent": "native",
+        "custom_args": [
+          "--no-builtin-tools",
+          "--tools",
+          "mcp"
+        ],
+        "inputs": {
+          "frontend_report": "{{nodes.frontend-health-report.output}}",
+          "project": "{{inputs.project}}",
+          "rust_report": "{{nodes.rust-health-report.output}}"
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "json",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 Blackboard code-monitor-check-fix graph 的最终 handoff 节点。\n你只能使用 MCP adapter 的 mcp 工具；不要使用 bash/read/write/edit，也不要直接写文件。\n\n任务：根据前端汇总和后端汇总，调用 Blackboard MCP 工具 bb_create_inbox_note 写一份简洁 handoff。\n\n必须调用一次：\nmcp({ tool: \"bb_create_inbox_note\", args: \"<JSON string>\" })\n\nargs JSON 必须包含：\n- project: \"{{inputs.project}}\"\n- source: \"task-graph-code-monitor-check-fix\"\n- topic: \"code-monitor-check-fix-pi-mcp-handoff\"\n- title: \"代码监控检查和修复 graph handoff\"\n- done: 2 到 5 条，概括本次 graph 完成的检查、修复、汇总工作\n- validation: 2 到 5 条，概括前端/后端工具验证结果；如果有失败，明确写失败摘要\n- next_step: 0 到 3 条，只写仍需要人工关注的事项，没有就传 []\n- related_locations: 必须包含以下路径：\".bb_template/task_graphs/system/code-monitor-check-fix.json\", \"scripts/task_graph_code_monitor_verify.py\"\n\n前端汇总：\n{{inputs.frontend_report}}\n\n后端汇总：\n{{inputs.rust_report}}\n\nMCP 调用成功后，只输出严格 JSON，不要输出 Markdown：\n{\"ok\":true,\"handoff_written\":true,\"source\":\"task-graph-code-monitor-check-fix\",\"topic\":\"code-monitor-check-fix-pi-mcp-handoff\"}"
+        },
+        "runtime": "pi",
+        "tool_policy": {
+          "allowed_tools": [
+            "mcp"
+          ],
+          "mcp": {
+            "allow": [
+              "^(bb_)?create_inbox_note$"
+            ]
+          }
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "frontend-write-scope-audit",
+      "type": "shell",
+      "label": "前端写入边界审计",
+      "position": {
+        "x": 1312.0,
+        "y": -96.0
+      },
+      "config": {
+        "args": [
+          "{{env.scripts_dir}}/task_graph_agent_write_scope_audit.py",
+          "--graph-id",
+          "code-monitor-check-fix",
+          "--project",
+          "{{inputs.project}}",
+          "--rule",
+          "frontend-i18n::bb_web/src/i18n.ts,bb_web/src/components,bb_web/src/views::bb_web/src/styles.css,bb_web/src/theme.ts",
+          "--rule",
+          "frontend-theme::bb_web/src/styles.css::bb_web/src/i18n.ts,bb_web/src/theme.ts,bb_web/src/components,bb_web/src/views"
+        ],
+        "capture": {
+          "max_bytes": 65536,
+          "strip_ansi": true
+        },
+        "command": "python",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "read_only",
+        "timeout_ms": 30000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-start-frontend-loop",
+      "from": "start",
+      "to": "frontend-loop",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-start-rust-loop",
+      "from": "start",
+      "to": "rust-loop",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-frontend-loop-body",
+      "from": "frontend-loop",
+      "to": "frontend-fanout",
+      "kind": "exec",
+      "label": "Body",
+      "from_pin": "body",
+      "to_pin": "exec_in",
+      "source_handle": "body"
+    },
+    {
+      "id": "edge-frontend-fanout-i18n",
+      "from": "frontend-fanout",
+      "to": "frontend-i18n",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-frontend-fanout-theme",
+      "from": "frontend-fanout",
+      "to": "frontend-theme",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-frontend-loop-exit-report",
+      "from": "frontend-loop",
+      "to": "frontend-health-report",
+      "kind": "exec",
+      "label": "Exit",
+      "from_pin": "exit",
+      "to_pin": "exec_in",
+      "source_handle": "exit"
+    },
+    {
+      "id": "edge-rust-loop-body",
+      "from": "rust-loop",
+      "to": "clippy-scan",
+      "kind": "exec",
+      "label": "Body",
+      "from_pin": "body",
+      "to_pin": "exec_in",
+      "source_handle": "body"
+    },
+    {
+      "id": "edge-clippy-scan-fix",
+      "from": "clippy-scan",
+      "to": "clippy-fix",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-rust-loop-exit-report",
+      "from": "rust-loop",
+      "to": "rust-health-report",
+      "kind": "exec",
+      "label": "Exit",
+      "from_pin": "exit",
+      "to_pin": "exec_in",
+      "source_handle": "exit"
+    },
+    {
+      "id": "edge-frontend-report-handoff",
+      "from": "frontend-health-report",
+      "to": "mcp-handoff",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-rust-report-handoff",
+      "from": "rust-health-report",
+      "to": "mcp-handoff",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-mcp-handoff-end",
+      "from": "mcp-handoff",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-frontend-i18n-audit",
+      "from": "frontend-i18n",
+      "to": "frontend-write-scope-audit",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-frontend-theme-audit",
+      "from": "frontend-theme",
+      "to": "frontend-write-scope-audit",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-frontend-audit-verify",
+      "from": "frontend-write-scope-audit",
+      "to": "frontend-compile-verify",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-clippy-fix-format",
+      "from": "clippy-fix",
+      "to": "rust-format-fix",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "edge-rust-format-verify",
+      "from": "rust-format-fix",
+      "to": "rust-compile-verify",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0.0,
+      "y": 0.0,
+      "scale": 1.0
+    }
+  }
+}

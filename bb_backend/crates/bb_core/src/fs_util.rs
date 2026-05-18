@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::InboxError;
 
@@ -36,16 +37,29 @@ pub fn write_file_atomic(path: &Path, content: &str) -> Result<(), InboxError> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| InboxError::InvalidName(path.display().to_string()))?;
-    let tmp = parent.join(format!(".{file_name}.{}.tmp", std::process::id()));
-    fs::write(&tmp, content).map_err(|source| InboxError::Io {
-        path: tmp.clone(),
-        source,
-    })?;
-    fs::rename(&tmp, path).map_err(|source| InboxError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    Ok(())
+    let tmp = parent.join(format!(
+        ".{file_name}.{}.{}.tmp",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let result = (|| {
+        fs::write(&tmp, content).map_err(|source| InboxError::Io {
+            path: tmp.clone(),
+            source,
+        })?;
+        fs::rename(&tmp, path).map_err(|source| InboxError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// 规范化路径。
@@ -76,10 +90,18 @@ pub fn canonicalize_existing_dir(path: &Path) -> Result<std::path::PathBuf, std:
 /// Windows `std::fs::canonicalize` can produce extended-length paths such as
 /// `\\?\C:\...`. Those are useful for low-level Win32 APIs, but they should not
 /// leak into portable config files, API responses, or UI state.
+#[must_use]
 pub fn path_to_string(path: &Path) -> String {
     clean_path_string(&path.to_string_lossy())
 }
 
+/// Convert a path to a stable slash-separated string for templates, snapshots,
+/// and cross-platform assertions.
+pub fn resolve_slash(path: impl AsRef<Path>) -> String {
+    path_to_string(path.as_ref()).replace('\\', "/")
+}
+
+#[must_use]
 pub fn clean_path_string(value: &str) -> String {
     #[cfg(windows)]
     {
@@ -98,6 +120,7 @@ fn clean_path_buf(path: PathBuf) -> PathBuf {
 }
 
 /// 将字符串转为 URL-safe slug 片段。
+#[must_use]
 pub fn slug_segment(value: &str, fallback: &str) -> String {
     let mut slug = String::new();
     let mut last_was_dash = false;
@@ -119,5 +142,17 @@ pub fn slug_segment(value: &str, fallback: &str) -> String {
         fallback.to_string()
     } else {
         slug
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::resolve_slash;
+
+    #[test]
+    fn resolve_slash_normalizes_backslashes() {
+        assert_eq!(resolve_slash(Path::new(r"a\b\c")), "a/b/c");
     }
 }

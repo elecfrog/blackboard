@@ -5,4 +5,5 @@
 __pycache__/
 *.py[cod]
 .bb/
+.bb_template/.staging/
 .bb_template/runtime/

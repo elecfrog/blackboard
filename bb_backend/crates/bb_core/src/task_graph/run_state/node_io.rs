@@ -61,7 +61,7 @@ pub fn append_node_log(
             source,
         })?;
 
-    writeln!(file, "{}", line).map_err(|source| TaskGraphError::Io {
+    writeln!(file, "{line}").map_err(|source| TaskGraphError::Io {
         path: log_path,
         source,
     })?;
@@ -84,7 +84,7 @@ pub fn write_artifact(
         ArtifactContentType::Json => "json",
         ArtifactContentType::Text => "txt",
     };
-    let filename = format!("{}.{}", artifact_id, ext);
+    let filename = format!("{artifact_id}.{ext}");
     let artifact_path = artifacts_dir(&dir).join(&filename);
 
     if let Some(parent) = artifact_path.parent() {
@@ -101,7 +101,7 @@ pub fn write_artifact(
 
     Ok(OutputArtifact {
         id: artifact_id.to_string(),
-        path: format!("artifacts/{}", filename),
+        path: format!("artifacts/{filename}"),
         content_type,
     })
 }

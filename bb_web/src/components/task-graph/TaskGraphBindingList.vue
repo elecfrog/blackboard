@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Trash2 } from 'lucide-vue-next'
+import { BbButton, BbDenseRow, BbRefChip } from '@/components/common'
 import { t } from '@/i18n'
 
 const props = withDefaults(defineProps<{
@@ -42,63 +43,69 @@ function bindingValueString(value: unknown) {
 <template>
   <div class="task-graph-binding-list">
     <span>{{ title }}</span>
-    <div
+    <BbDenseRow
       v-for="(val, key) in bindings"
       :key="key"
+      :columns="(readonlyKeys || !removable) ? 'minmax(92px, 0.9fr) minmax(0, 1.1fr)' : 'minmax(82px, 0.85fr) minmax(0, 1.15fr) 28px'"
+      control-height="28px"
+      padding="6px"
       class="task-graph-binding-row"
-      :class="{ 'task-graph-binding-row-readonly': readonlyKeys || !removable }"
     >
-      <label class="task-graph-binding-cell task-graph-binding-cell-key">
-        <span>{{ t('taskGraphBindingKey') }}</span>
+      <label class="task-graph-binding-cell task-graph-binding-cell-key bb-dense-cell">
+        <span class="bb-dense-cell-label">{{ t('taskGraphBindingKey') }}</span>
         <input
+          class="bb-dense-control"
           :value="key"
           :disabled="readonly || readonlyKeys"
-          placeholder="key"
+          :placeholder="t('taskGraphPlaceholderKey')"
           @change="emit('rename', String(key), inputValue($event))"
         />
       </label>
-      <label class="task-graph-binding-cell task-graph-binding-cell-value">
-        <span>{{ t('taskGraphBindingValue') }}</span>
+      <label class="task-graph-binding-cell task-graph-binding-cell-value bb-dense-cell">
+        <span class="bb-dense-cell-label">{{ t('taskGraphBindingValue') }}</span>
         <input
+          class="bb-dense-control"
           :value="bindingValueString(val)"
           :disabled="readonly"
           :placeholder="valuePlaceholder"
           @input="emit('update', String(key), inputValue($event))"
         />
       </label>
-      <button
+      <BbButton
         v-if="removable"
-        type="button"
         class="task-graph-binding-remove"
+        size="mini"
+        variant="danger"
+        icon-only
         :title="t('taskGraphBindingRemove')"
         :disabled="readonly"
         @click="emit('remove', String(key))"
       >
         <Trash2 aria-hidden="true" />
-      </button>
+      </BbButton>
       <div v-if="inputIds.length > 0" class="task-graph-binding-actions">
-        <button
+        <BbRefChip
           v-for="inputId in inputIds"
           :key="inputId"
-          type="button"
-          class="task-graph-prompt-var-bind"
+          size="sm"
+          interactive
           :title="`${t('taskGraphBindingUseInput')}: ${inputId}`"
           :disabled="readonly"
           @click="emit('useInput', String(key), inputId)"
         >
           {{ inputId }}
-        </button>
+        </BbRefChip>
       </div>
-    </div>
-    <button
+    </BbDenseRow>
+    <BbButton
       v-if="addLabel"
-      type="button"
-      class="task-graph-inline-add"
+      size="sm"
+      variant="secondary"
       :disabled="readonly"
       @click="emit('add')"
     >
       {{ addLabel }}
-    </button>
+    </BbButton>
   </div>
 </template>
 
@@ -116,77 +123,12 @@ function bindingValueString(value: unknown) {
 }
 
 .task-graph-binding-row {
-  display: grid;
-  grid-template-columns: minmax(82px, 0.85fr) minmax(0, 1.15fr) 28px;
-  align-items: end;
-  gap: 6px;
-  min-width: 0;
-  padding: 6px;
-  border: 1px solid var(--bb-border-warm);
-  border-radius: 8px;
-  background: var(--bb-surface);
-}
-
-.task-graph-binding-row-readonly {
-  grid-template-columns: minmax(92px, 0.9fr) minmax(0, 1.1fr);
-}
-
-.task-graph-binding-cell {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.task-graph-binding-cell > span {
-  overflow: hidden;
-  color: var(--bb-text-muted);
-  font-size: 10px;
-  font-weight: 760;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-graph-binding-row input {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  height: 28px;
-  min-height: 28px;
-  padding: 5px 7px;
-  overflow: hidden;
-  border: 1px solid var(--bb-border-warm-medium-strong);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-strong);
-  font: inherit;
-  font-size: 11px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  --bb-dense-control-font-size: 11px;
 }
 
 .task-graph-binding-remove {
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  min-height: 28px;
+  --bb-icon-button-size: 28px;
   align-self: end;
-  padding: 0;
-  border: 1px solid var(--bb-border-warm-medium);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-muted);
-  cursor: pointer;
-}
-
-.task-graph-binding-remove svg {
-  width: 13px;
-  height: 13px;
 }
 
 .task-graph-binding-actions {
@@ -197,35 +139,4 @@ function bindingValueString(value: unknown) {
   min-width: 0;
 }
 
-.task-graph-binding-actions .task-graph-prompt-var-bind {
-  box-sizing: border-box;
-  max-width: 100%;
-  min-height: 24px;
-  padding: 3px 6px;
-  overflow: hidden;
-  border: 1px solid var(--task-graph-accent-border-light);
-  border-radius: 7px;
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
-  font-weight: 760;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.task-graph-inline-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 28px;
-  border: 1px solid var(--bb-border-warm-medium);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-muted);
-  cursor: pointer;
-}
 </style>

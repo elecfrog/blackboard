@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "bb": {
+      "args": [
+        "--root",
+        "C:\\Dev\\blackboard\\.bb_template",
+        "stdio"
+      ],
+      "command": "C:\\Dev\\blackboard\\bb_backend\\target\\debug\\bb-daemon.exe",
+      "directTools": [
+        "list_projects",
+        "create_inbox_note",
+        "read_ticket_by_id",
+        "search_tickets"
+      ],
+      "env": {
+        "BB_DAEMON": "1",
+        "BB_DAEMON_AGENT": "native"
+      },
+      "idleTimeout": 10,
+      "lifecycle": "lazy"
+    }
+  },
+  "settings": {
+    "directTools": false,
+    "idleTimeout": 10,
+    "toolPrefix": "server"
+  }
+}

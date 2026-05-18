@@ -293,6 +293,78 @@ mod tests {
     }
 
     #[test]
+    fn test_graph_catalog_persists_groups_and_normalizes_scope() {
+        let tmp = setup_workspace();
+        let graph = minimal_valid_graph();
+        save_project_graph(tmp.path(), "test-project", graph, None).unwrap();
+
+        let initial = list_graph_catalog(tmp.path(), "test-project").unwrap();
+        assert_eq!(initial.graphs.len(), 2);
+        assert!(tmp
+            .path()
+            .join("projects")
+            .join("test-project")
+            .join("__graphs__.json")
+            .exists());
+
+        let catalog = save_graph_catalog_index(
+            tmp.path(),
+            "test-project",
+            TaskGraphCatalogIndex {
+                schema_version: 1,
+                groups: vec![
+                    TaskGraphCatalogGroup {
+                        id: "system".to_string(),
+                        title: "System".to_string(),
+                        kind: TaskGraphCatalogGroupKind::System,
+                        sort_order: 0,
+                    },
+                    TaskGraphCatalogGroup {
+                        id: "project-code".to_string(),
+                        title: "代码调研".to_string(),
+                        kind: TaskGraphCatalogGroupKind::Project,
+                        sort_order: 1,
+                    },
+                ],
+                entries: vec![
+                    TaskGraphCatalogEntry {
+                        scope: TaskGraphScope::Project,
+                        id: "test-graph".to_string(),
+                        group_id: Some("project-code".to_string()),
+                        favorite: true,
+                        sort_order: 7,
+                    },
+                    TaskGraphCatalogEntry {
+                        scope: TaskGraphScope::System,
+                        id: "frontend-smoke".to_string(),
+                        group_id: Some("project-code".to_string()),
+                        favorite: true,
+                        sort_order: 9,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+
+        let project_graph = catalog
+            .graphs
+            .iter()
+            .find(|graph| graph.scope == TaskGraphScope::Project && graph.id == "test-graph")
+            .unwrap();
+        assert_eq!(project_graph.group_id.as_deref(), Some("project-code"));
+        assert!(project_graph.favorite);
+        assert_eq!(project_graph.sort_order, 7);
+
+        let system_graph = catalog
+            .graphs
+            .iter()
+            .find(|graph| graph.scope == TaskGraphScope::System && graph.id == "frontend-smoke")
+            .unwrap();
+        assert_eq!(system_graph.group_id.as_deref(), Some("system"));
+        assert!(system_graph.favorite);
+    }
+
+    #[test]
     fn test_delete_project_graph() {
         let tmp = setup_workspace();
         let graph = minimal_valid_graph();
@@ -324,6 +396,11 @@ mod tests {
             policy.max_queue_wait_ms,
             TaskGraphRunPolicy::DEFAULT_MAX_QUEUE_WAIT_MS
         );
+        assert!(!policy.queue_timeout_retry_enabled);
+        assert_eq!(
+            policy.max_queue_timeout_retries,
+            TaskGraphRunPolicy::DEFAULT_MAX_QUEUE_TIMEOUT_RETRIES
+        );
     }
 
     #[test]
@@ -343,6 +420,8 @@ mod tests {
                 max_concurrent_runs: 33,
                 queue_enabled: true,
                 max_queue_wait_ms: 59_000,
+                queue_timeout_retry_enabled: true,
+                max_queue_timeout_retries: 0,
             }),
         });
 
@@ -352,6 +431,10 @@ mod tests {
         }));
         assert!(errors.iter().any(|error| {
             error.path == "metadata.run_policy.max_queue_wait_ms" && error.code == "out_of_range"
+        }));
+        assert!(errors.iter().any(|error| {
+            error.path == "metadata.run_policy.max_queue_timeout_retries"
+                && error.code == "out_of_range"
         }));
     }
 
@@ -388,6 +471,63 @@ mod tests {
         let value = serde_json::to_value(minimal_valid_graph()).unwrap();
         let graph = validate_graph_value(value).unwrap();
         assert_eq!(graph.id, "test-graph");
+    }
+
+    #[test]
+    fn test_validate_graph_value_decodes_llm_coordinator_node() {
+        let value = serde_json::json!({
+            "schema_version": 1,
+            "id": "coordinator-graph",
+            "scope": "project",
+            "title": "Coordinator Graph",
+            "version": 1,
+            "readonly": false,
+            "nodes": [
+                {
+                    "id": "start",
+                    "type": "start",
+                    "label": "Start",
+                    "config": {}
+                },
+                {
+                    "id": "coordinator",
+                    "type": "llm_coordinator",
+                    "label": "Coordinator",
+                    "config": {
+                        "run_as": "llm",
+                        "runtime": "opencode",
+                        "agent": "native",
+                        "prompt": {
+                            "mode": "inline",
+                            "template": "return a subgraph"
+                        }
+                    }
+                },
+                {
+                    "id": "end-success",
+                    "type": "end",
+                    "label": "Success",
+                    "config": { "result": "succeeded" }
+                }
+            ],
+            "edges": [
+                {
+                    "id": "start__coordinator",
+                    "from": "start",
+                    "to": "coordinator",
+                    "kind": "exec"
+                },
+                {
+                    "id": "coordinator__end",
+                    "from": "coordinator",
+                    "to": "end-success",
+                    "kind": "exec"
+                }
+            ]
+        });
+
+        let graph = validate_graph_value(value).unwrap();
+        assert_eq!(graph.nodes[1].node_type, NodeType::LlmCoordinator);
     }
 
     // ─── Validation Tests: Invalid Graphs ────────────────────────────────────
@@ -1431,6 +1571,96 @@ mod run_state_tests {
         assert_eq!(start_node.status, NodeRunStatus::Failed);
         assert!(start_node.error.is_some());
         assert_eq!(start_node.error.as_ref().unwrap().code, "exec_failed");
+    }
+
+    #[test]
+    fn test_fail_run_active_nodes_reconciles_running_nodes() {
+        let tmp = TempDir::new().unwrap();
+        let run = create_test_run(&tmp);
+        update_run_status(tmp.path(), "test-project", &run.id, RunStatus::Running).unwrap();
+
+        let mut running_run = read_run(tmp.path(), "test-project", &run.id).unwrap();
+        running_run.active_nodes = vec!["start".to_string(), "end-success".to_string()];
+        write_run_json(tmp.path(), "test-project", &run.id, &running_run).unwrap();
+
+        update_node_state(
+            tmp.path(),
+            "test-project",
+            &run.id,
+            &TaskGraphRunNode {
+                node_id: "start".to_string(),
+                status: NodeRunStatus::Running,
+                started_at: Some("2026-05-09T01:00:00Z".to_string()),
+                completed_at: None,
+                duration_ms: None,
+                iteration: None,
+                exit_code: None,
+                error: None,
+                output_artifact: None,
+                log_tail: None,
+                child_run_id: None,
+                runtime: Some("pi".to_string()),
+                agent: Some("native".to_string()),
+                model: Some("minimax".to_string()),
+                agent_session_id: Some("as-test".to_string()),
+                agent_session: None,
+            },
+        )
+        .unwrap();
+
+        update_node_state(
+            tmp.path(),
+            "test-project",
+            &run.id,
+            &TaskGraphRunNode {
+                node_id: "end-success".to_string(),
+                status: NodeRunStatus::Succeeded,
+                started_at: Some("2026-05-09T01:01:00Z".to_string()),
+                completed_at: Some("2026-05-09T01:01:01Z".to_string()),
+                duration_ms: Some(1000),
+                iteration: None,
+                exit_code: None,
+                error: None,
+                output_artifact: None,
+                log_tail: None,
+                child_run_id: None,
+                runtime: None,
+                agent: None,
+                model: None,
+                agent_session_id: None,
+                agent_session: None,
+            },
+        )
+        .unwrap();
+
+        let failed = fail_run_active_nodes(
+            tmp.path(),
+            "test-project",
+            &run.id,
+            "dispatch_failed",
+            "executor returned an error",
+        )
+        .unwrap();
+
+        assert_eq!(failed.status, RunStatus::Failed);
+        assert!(failed.completed_at.is_some());
+        assert!(failed.active_nodes.is_empty());
+
+        let detail = read_run_detail(tmp.path(), "test-project", &run.id).unwrap();
+        let start_node = detail.nodes.iter().find(|n| n.node_id == "start").unwrap();
+        assert_eq!(start_node.status, NodeRunStatus::Failed);
+        assert_eq!(start_node.error.as_ref().unwrap().code, "dispatch_failed");
+        assert_eq!(start_node.runtime.as_deref(), Some("pi"));
+        assert_eq!(start_node.agent_session_id.as_deref(), Some("as-test"));
+        assert!(start_node.completed_at.is_some());
+        assert!(start_node.duration_ms.is_some());
+
+        let end_node = detail
+            .nodes
+            .iter()
+            .find(|n| n.node_id == "end-success")
+            .unwrap();
+        assert_eq!(end_node.status, NodeRunStatus::Succeeded);
     }
 
     // ── Log append ───────────────────────────────────────────────────────────

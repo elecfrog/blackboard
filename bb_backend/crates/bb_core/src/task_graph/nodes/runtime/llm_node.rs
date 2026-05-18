@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::io;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 
@@ -9,6 +10,7 @@ use crate::agent_session::{
     self, AgentResultStatus, AgentSessionParent, AgentSessionSummary, AgentTurnRequest,
     CreateAgentSession,
 };
+use crate::fs_util::resolve_slash;
 use crate::skills;
 use crate::task_graph::definition::types::{
     LlmConfig, TaskGraphEdge, TaskGraphError, TaskGraphNode,
@@ -20,13 +22,14 @@ use crate::task_graph::run_state::{
     self, NodeError, NodeRunStatus, TaskGraphRun, TaskGraphRunNode,
 };
 use crate::task_graph::runtime::{
-    artifact_content_for_llm_config, capture_runtime_output, run_is_cancelled, run_runtime_command,
-    runtime_failure_message, tail_str, try_parse_json_or_text, write_node_artifact,
+    artifact_content_for_llm_config, capture_runtime_output, output_value_for_llm_config,
+    run_is_cancelled, run_runtime_command, runtime_failure_message, tail_str, write_node_artifact,
 };
+use crate::task_graph::runtime_concurrency;
 
 // ─── LLM Node ────────────────────────────────────────────────────────────────
 
-pub(crate) fn execute_llm_node(
+pub fn execute_llm_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
     run: &TaskGraphRun,
@@ -42,7 +45,7 @@ pub(crate) fn execute_llm_node(
             source: e,
         })?;
 
-    let invocation = resolve_llm_invocation(opts, &config, &run.context)?;
+    let mut invocation = resolve_llm_invocation(opts, &config, &run.context)?;
     let exec_runtime = invocation.runtime.clone();
     let exec_agent = invocation.agent.clone();
     let exec_model = invocation.model.clone();
@@ -123,7 +126,40 @@ pub(crate) fn execute_llm_node(
         });
     }
 
-    inject_node_skills(ws, &invocation)?;
+    let _runtime_permit =
+        if let Some(limit) = runtime_concurrency::configured_limit(ws, &invocation.runtime) {
+            run_state::append_node_log(
+                ws,
+                project,
+                run_id,
+                &node.id,
+                &format!(
+                    "[{}] waiting for runtime concurrency permit: runtime={} limit={}",
+                    Utc::now().to_rfc3339(),
+                    invocation.runtime,
+                    limit
+                ),
+            )?;
+            let (permit, info) = runtime_concurrency::acquire(ws, &invocation.runtime, limit);
+            run_state::append_node_log(
+                ws,
+                project,
+                run_id,
+                &node.id,
+                &format!(
+                    "[{}] acquired runtime concurrency permit: runtime={} limit={} waited_ms={}",
+                    Utc::now().to_rfc3339(),
+                    invocation.runtime,
+                    info.limit,
+                    info.waited_ms
+                ),
+            )?;
+            Some(permit)
+        } else {
+            None
+        };
+
+    prepare_node_skills(opts, project, run_id, &node.id, &mut invocation)?;
 
     if runtime_uses_agent_session(&invocation.runtime) {
         return execute_agent_session_node(
@@ -149,7 +185,7 @@ pub(crate) fn execute_llm_node(
                     node_id: node.id.clone(),
                     status: NodeRunStatus::Failed,
                     started_at: Some(start_time),
-                    completed_at: Some(end_time.clone()),
+                    completed_at: Some(end_time),
                     duration_ms: Some(duration_ms),
                     iteration: None,
                     exit_code,
@@ -186,10 +222,7 @@ pub(crate) fn execute_llm_node(
                 project,
                 run_id,
                 &node.id,
-                &format!(
-                    "[{}] exit_code={:?} success={}",
-                    end_time, exit_code, success
-                ),
+                &format!("[{end_time}] exit_code={exit_code:?} success={success}"),
             )?;
             if !capture.log.trim().is_empty() {
                 run_state::append_node_log(
@@ -238,7 +271,8 @@ pub(crate) fn execute_llm_node(
             }
 
             // Success path
-            let output_value = try_parse_json_or_text(&capture.parse_source);
+            let output_value =
+                output_value_for_llm_config(&config, &capture.parse_source, &capture.artifact);
             let artifact_content =
                 artifact_content_for_llm_config(&config, &capture.artifact, &output_value);
 
@@ -329,120 +363,211 @@ fn execute_agent_session_node(
     let exec_runtime = invocation.runtime.clone();
     let exec_agent = invocation.agent.clone();
     let exec_model = invocation.model.clone();
+    let max_attempts = config.retry.effective_max_attempts();
+    let backoff_ms = config.retry.effective_backoff_ms();
+    let overall_started = Instant::now();
+    let mut attempt = 1;
 
-    let session = agent_session::create_session(
-        ws,
-        CreateAgentSession {
-            project: project.clone(),
-            title: Some(node.label.clone()),
-            runtime: exec_runtime.clone(),
-            agent: exec_agent.clone(),
-            model: exec_model.clone(),
-            variant: invocation.variant.clone(),
-            parent: Some(AgentSessionParent::TaskGraphNode {
-                run_id: run_id.clone(),
-                node_id: node.id.clone(),
-            }),
-        },
-    )
-    .map_err(agent_session_error)?;
+    loop {
+        let session_title = if max_attempts > 1 {
+            format!("{} (attempt {attempt}/{max_attempts})", node.label)
+        } else {
+            node.label.clone()
+        };
+        let session = agent_session::create_session(
+            ws,
+            CreateAgentSession {
+                project: project.clone(),
+                title: Some(session_title),
+                runtime: exec_runtime.clone(),
+                agent: exec_agent.clone(),
+                model: exec_model.clone(),
+                variant: invocation.variant.clone(),
+                parent: Some(AgentSessionParent::TaskGraphNode {
+                    run_id: run_id.clone(),
+                    node_id: node.id.clone(),
+                }),
+            },
+        )
+        .map_err(agent_session_error)?;
 
-    let mut running_state = TaskGraphRunNode {
-        node_id: node.id.clone(),
-        status: NodeRunStatus::Running,
-        started_at: Some(start_time.clone()),
-        completed_at: None,
-        duration_ms: None,
-        iteration: None,
-        exit_code: None,
-        error: None,
-        output_artifact: None,
-        log_tail: None,
-        child_run_id: None,
-        runtime: Some(exec_runtime.clone()),
-        agent: Some(exec_agent.clone()),
-        model: exec_model.clone(),
-        agent_session_id: Some(session.id.clone()),
-        agent_session: Some(agent_session::session_summary(&session)),
-    };
-    run_state::update_node_state(ws, project, run_id, &running_state)?;
+        run_state::append_node_log(
+            ws,
+            project,
+            run_id,
+            &node.id,
+            &format!(
+                "[{}] AgentSession attempt {}/{} session={}",
+                Utc::now().to_rfc3339(),
+                attempt,
+                max_attempts,
+                session.id
+            ),
+        )?;
 
-    let outcome = agent_session::run_turn(
-        AgentTurnRequest {
-            workspace_root: ws.clone(),
-            scripts_dir: opts.scripts_dir.clone(),
-            execution_root: ws.clone(),
-            project: project.clone(),
-            session_id: session.id.clone(),
-            runtime: exec_runtime.clone(),
-            agent: exec_agent.clone(),
-            model: exec_model.clone(),
-            variant: invocation.variant.clone(),
-            continue_provider_session_id: None,
-            prompt: invocation.prompt.clone(),
-            codex_path: opts.codex_path.clone(),
-            codex_config_args: invocation.codex_config_args.clone(),
-            codebuddy_path: opts.codebuddy_path.clone(),
-            codebuddy_mcp_config_content: invocation.codebuddy_mcp_config_content.clone(),
-            codebuddy_settings_json: invocation.codebuddy_settings_json.clone(),
-            opencode_path: opts.opencode_path.clone(),
-            opencode_config_content: invocation.opencode_config_content.clone(),
-            custom_env: invocation.custom_env.clone(),
-            custom_args: invocation.custom_args.clone(),
-            timeout: opts.node_timeout,
-        },
-        || run_is_cancelled(ws, project, run_id),
-    )
-    .map_err(agent_session_error)?;
-
-    let end_time = Utc::now().to_rfc3339();
-    let duration_ms = outcome.result.duration_ms;
-    let exit_code = outcome.exit_code;
-    let session_summary = outcome.session.clone();
-    running_state.agent_session = Some(session_summary.clone());
-
-    if run_is_cancelled(ws, project, run_id)
-        || outcome.result.status == AgentResultStatus::Cancelled
-    {
-        let node_state = node_state_with_session(
-            node,
-            NodeRunStatus::Failed,
-            start_time,
-            end_time,
-            duration_ms,
-            exit_code,
-            Some(NodeError {
-                code: "cancelled".to_string(),
-                message: "Run was cancelled during execution".to_string(),
-            }),
-            None,
-            Some("AgentSession cancelled".to_string()),
-            exec_runtime,
-            exec_agent,
-            exec_model,
-            session.id,
-            session_summary,
-        );
-        return Ok(NodeOutcome {
+        let running_state = TaskGraphRunNode {
             node_id: node.id.clone(),
-            status: NodeRunStatus::Failed,
-            output: None,
-            node_state,
-            side_effects: vec![],
+            status: NodeRunStatus::Running,
+            started_at: Some(start_time.clone()),
+            completed_at: None,
+            duration_ms: None,
+            iteration: None,
+            exit_code: None,
+            error: None,
+            output_artifact: None,
+            log_tail: Some(format!(
+                "AgentSession attempt {attempt}/{max_attempts}: runtime={exec_runtime}"
+            )),
             child_run_id: None,
-            end_result: None,
-            control: vec![],
-            graph_mutations: vec![],
-        });
-    }
+            runtime: Some(exec_runtime.clone()),
+            agent: Some(exec_agent.clone()),
+            model: exec_model.clone(),
+            agent_session_id: Some(session.id.clone()),
+            agent_session: Some(agent_session::session_summary(&session)),
+        };
+        run_state::update_node_state(ws, project, run_id, &running_state)?;
 
-    let success = outcome.result.status == AgentResultStatus::Completed;
-    if !success {
+        let outcome = agent_session::run_turn(
+            AgentTurnRequest {
+                workspace_root: ws.clone(),
+                scripts_dir: opts.scripts_dir.clone(),
+                execution_root: ws.clone(),
+                project: project.clone(),
+                session_id: session.id.clone(),
+                runtime: exec_runtime.clone(),
+                agent: exec_agent.clone(),
+                model: exec_model.clone(),
+                variant: invocation.variant.clone(),
+                continue_provider_session_id: None,
+                prompt: invocation.prompt.clone(),
+                codex_path: opts.codex_path.clone(),
+                codex_config_args: invocation.codex_config_args.clone(),
+                codebuddy_path: opts.codebuddy_path.clone(),
+                codebuddy_mcp_config_content: invocation.codebuddy_mcp_config_content.clone(),
+                codebuddy_settings_json: invocation.codebuddy_settings_json.clone(),
+                opencode_path: opts.opencode_path.clone(),
+                opencode_config_content: invocation.opencode_config_content.clone(),
+                pi_path: opts.pi_path.clone(),
+                pi_mcp_config_content: invocation.pi_mcp_config_content.clone(),
+                tool_policy: invocation.tool_policy.clone(),
+                custom_env: invocation.custom_env.clone(),
+                custom_args: invocation.custom_args.clone(),
+                timeout: opts.node_timeout,
+                startup_timeout: agent_session::effective_agent_startup_timeout(opts.node_timeout),
+            },
+            || run_is_cancelled(ws, project, run_id),
+        )
+        .map_err(agent_session_error)?;
+
+        let end_time = Utc::now().to_rfc3339();
+        let duration_ms = overall_started.elapsed().as_millis() as u64;
+        let exit_code = outcome.exit_code;
+        let session_summary = outcome.session.clone();
+
+        if run_is_cancelled(ws, project, run_id)
+            || outcome.result.status == AgentResultStatus::Cancelled
+        {
+            let node_state = node_state_with_session(
+                node,
+                NodeRunStatus::Failed,
+                start_time,
+                end_time,
+                duration_ms,
+                exit_code,
+                Some(NodeError {
+                    code: "cancelled".to_string(),
+                    message: "Run was cancelled during execution".to_string(),
+                }),
+                None,
+                Some("AgentSession cancelled".to_string()),
+                exec_runtime,
+                exec_agent,
+                exec_model,
+                session.id,
+                session_summary,
+            );
+            return Ok(NodeOutcome {
+                node_id: node.id.clone(),
+                status: NodeRunStatus::Failed,
+                output: None,
+                node_state,
+                side_effects: vec![],
+                child_run_id: None,
+                end_result: None,
+                control: vec![],
+                graph_mutations: vec![],
+            });
+        }
+
+        if outcome.result.status == AgentResultStatus::Completed {
+            let output_value =
+                output_value_for_llm_config(config, &outcome.parse_source, &outcome.artifact);
+            let artifact_content =
+                artifact_content_for_llm_config(config, &outcome.artifact, &output_value);
+            let artifact =
+                write_node_artifact(ws, project, run_id, &node.id, &artifact_content, config)?;
+
+            return Ok(NodeOutcome {
+                node_id: node.id.clone(),
+                status: NodeRunStatus::Succeeded,
+                output: Some(output_value),
+                node_state: node_state_with_session(
+                    node,
+                    NodeRunStatus::Succeeded,
+                    start_time,
+                    end_time,
+                    duration_ms,
+                    exit_code,
+                    None,
+                    artifact,
+                    None,
+                    exec_runtime,
+                    exec_agent,
+                    exec_model,
+                    session.id,
+                    session_summary,
+                ),
+                side_effects: vec![],
+                child_run_id: None,
+                end_result: None,
+                control: vec![],
+                graph_mutations: vec![],
+            });
+        }
+
         let message = outcome
             .result
             .error
             .clone()
             .unwrap_or_else(|| tail_str(&outcome.log, 2048));
+        if attempt < max_attempts && is_transient_agent_failure(outcome.result.status, &message) {
+            let sleep_ms = retry_backoff_ms(backoff_ms, attempt);
+            run_state::append_node_log(
+                ws,
+                project,
+                run_id,
+                &node.id,
+                &format!(
+                    "[{}] transient AgentSession failure on attempt {}/{}; retrying in {}ms: {}",
+                    Utc::now().to_rfc3339(),
+                    attempt,
+                    max_attempts,
+                    sleep_ms,
+                    tail_str(&message, 512)
+                ),
+            )?;
+            if sleep_ms > 0 {
+                thread::sleep(Duration::from_millis(sleep_ms));
+            }
+            attempt += 1;
+            continue;
+        }
+
+        let log_tail = if attempt > 1 {
+            format!("{message}\ntransient_retry_attempts={attempt}/{max_attempts}")
+        } else {
+            message.clone()
+        };
         let node_state = node_state_with_session(
             node,
             NodeRunStatus::Failed,
@@ -452,10 +577,10 @@ fn execute_agent_session_node(
             exit_code,
             Some(NodeError {
                 code: "runtime_failed".to_string(),
-                message: message.clone(),
+                message,
             }),
             None,
-            Some(message),
+            Some(log_tail),
             exec_runtime,
             exec_agent,
             exec_model,
@@ -474,38 +599,6 @@ fn execute_agent_session_node(
             graph_mutations: vec![],
         });
     }
-
-    let output_value = try_parse_json_or_text(&outcome.parse_source);
-    let artifact_content =
-        artifact_content_for_llm_config(config, &outcome.artifact, &output_value);
-    let artifact = write_node_artifact(ws, project, run_id, &node.id, &artifact_content, config)?;
-
-    Ok(NodeOutcome {
-        node_id: node.id.clone(),
-        status: NodeRunStatus::Succeeded,
-        output: Some(output_value),
-        node_state: node_state_with_session(
-            node,
-            NodeRunStatus::Succeeded,
-            start_time,
-            end_time,
-            duration_ms,
-            exit_code,
-            None,
-            artifact,
-            None,
-            exec_runtime,
-            exec_agent,
-            exec_model,
-            session.id,
-            session_summary,
-        ),
-        side_effects: vec![],
-        child_run_id: None,
-        end_result: None,
-        control: vec![],
-        graph_mutations: vec![],
-    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -545,29 +638,132 @@ fn node_state_with_session(
     }
 }
 
-fn inject_node_skills(
-    workspace_root: &std::path::Path,
-    invocation: &ResolvedLlmInvocation,
+fn prepare_node_skills(
+    opts: &RunnerOptions,
+    project: &str,
+    run_id: &str,
+    node_id: &str,
+    invocation: &mut ResolvedLlmInvocation,
 ) -> Result<(), TaskGraphError> {
+    if invocation.skills.is_empty() {
+        return Ok(());
+    }
+
+    if invocation.runtime == "pi" {
+        let snapshot_parent = opts
+            .workspace_root
+            .join("runtime")
+            .join("task_graph_runs")
+            .join(project)
+            .join(run_id)
+            .join("skill_snapshots");
+        let label = format!("{run_id}-{node_id}");
+        let snapshot = skills::create_skill_snapshot(
+            &opts.workspace_root,
+            &invocation.skills,
+            &snapshot_parent,
+            &label,
+        )
+        .map_err(|source| TaskGraphError::Io {
+            path: snapshot_parent,
+            source,
+        })?;
+
+        invocation.custom_args.push("--no-skills".to_string());
+        invocation.custom_args.push("--skill".to_string());
+        invocation.custom_args.push(resolve_slash(&snapshot.root));
+        return Ok(());
+    }
+
     skills::inject_skills_for_runtime(
-        workspace_root,
+        &opts.workspace_root,
         &invocation.runtime,
         &invocation.skills,
-        workspace_root,
+        &opts.workspace_root,
     )
     .map_err(|source| TaskGraphError::Io {
-        path: workspace_root.join("skills"),
+        path: opts.workspace_root.join("skills"),
         source,
     })
 }
 
 fn runtime_uses_agent_session(runtime: &str) -> bool {
-    matches!(runtime, "opencode" | "codex" | "codebuddy")
+    matches!(runtime, "opencode" | "codex" | "codebuddy" | "pi")
+}
+
+fn is_transient_agent_failure(status: AgentResultStatus, message: &str) -> bool {
+    if status == AgentResultStatus::Timeout {
+        return true;
+    }
+    if status != AgentResultStatus::Failed {
+        return false;
+    }
+
+    let lower = message.to_ascii_lowercase();
+    [
+        "api_error",
+        "output new_sensitive",
+        "rate limit",
+        "ratelimit",
+        "too many requests",
+        "temporarily",
+        "temporary",
+        "timeout",
+        "timed out",
+        "overloaded",
+        "busy",
+        "connection reset",
+        "connection refused",
+        "network",
+        "econnreset",
+        "etimedout",
+        "epipe",
+        "500",
+        "502",
+        "503",
+        "504",
+        "429",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
+fn retry_backoff_ms(base_ms: u64, attempt: u32) -> u64 {
+    base_ms.saturating_mul(u64::from(attempt))
 }
 
 fn agent_session_error(err: agent_session::AgentSessionError) -> TaskGraphError {
     TaskGraphError::Io {
         path: PathBuf::from("agent_session"),
         source: io::Error::other(err.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_transient_agent_failures() {
+        assert!(is_transient_agent_failure(
+            AgentResultStatus::Timeout,
+            "agent session timed out"
+        ));
+        assert!(is_transient_agent_failure(
+            AgentResultStatus::Failed,
+            r#"{"type":"api_error","message":"output new_sensitive (1027)"}"#
+        ));
+        assert!(is_transient_agent_failure(
+            AgentResultStatus::Failed,
+            "provider returned 503"
+        ));
+        assert!(!is_transient_agent_failure(
+            AgentResultStatus::Failed,
+            "schema validation failed"
+        ));
+        assert!(!is_transient_agent_failure(
+            AgentResultStatus::Cancelled,
+            "agent session was cancelled"
+        ));
     }
 }

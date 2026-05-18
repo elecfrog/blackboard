@@ -23,6 +23,7 @@ import {
   type AgentTool,
   type AgentToolList,
 } from '@/data/agentTools'
+import { BbButton, BbInfoGrid, BbInfoItem } from '@/components/common'
 import { t } from '@/i18n'
 import AgentConnectorRow from './AgentConnectorRow.vue'
 
@@ -215,15 +216,14 @@ async function handleInstallTool(id: string) {
         <h2>{{ t('agentConnectors') }}</h2>
         <p class="agent-panel-subtitle">{{ t('agentConnectorSubtitle') }}</p>
       </div>
-      <button
-        type="button"
-        class="btn btn-primary"
+      <BbButton
+        variant="primary"
         :disabled="!canSyncAll"
         @click="handleSyncAll"
       >
         {{ t('connectorSyncAll') }}
         <span v-if="driftCount > 0" class="badge">{{ driftCount }}</span>
-      </button>
+      </BbButton>
     </header>
 
     <p v-if="loading" class="banner banner-info">{{ t('connectorLoading') }}</p>
@@ -247,20 +247,15 @@ async function handleInstallTool(id: string) {
         <h3>{{ t('agentRegistry') }}</h3>
         <p>{{ t('agentRegistryDescription') }}</p>
       </div>
-      <dl>
-        <div>
-          <dt>{{ t('connectorAgents') }}</dt>
-          <dd>{{ agents.length }}</dd>
-        </div>
-        <div>
-          <dt>{{ project }} {{ t('connectorAssignable') }}</dt>
-          <dd>{{ assignableAgents.length }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('connectorOpenCodeDistributed') }}</dt>
-          <dd>{{ distributedCount }}</dd>
-        </div>
-      </dl>
+      <BbInfoGrid class="agent-registry-facts" columns="repeat(3, minmax(96px, 1fr))">
+        <BbInfoItem :label="t('connectorAgents')" :value="agents.length" variant="metric" />
+        <BbInfoItem
+          :label="`${project} ${t('connectorAssignable')}`"
+          :value="assignableAgents.length"
+          variant="metric"
+        />
+        <BbInfoItem :label="t('connectorOpenCodeDistributed')" :value="distributedCount" variant="metric" />
+      </BbInfoGrid>
     </section>
 
     <div v-if="!offline && !backendError && connectors.length > 0" class="connector-list">
@@ -315,37 +310,9 @@ async function handleInstallTool(id: string) {
 }
 
 .agent-panel-subtitle code {
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
+  font-family: var(--bb-font-mono);
   font-size: 12px;
   overflow-wrap: anywhere;
-}
-
-.btn {
-  font-size: 13px;
-  padding: 8px 16px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: background 0.15s ease;
-}
-
-.btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--bb-project-blackboard-bg);
-  color: var(--bb-project-blackboard-fg);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--bb-project-blackboard-bg) 86%, var(--bb-surface));
 }
 
 .badge {
@@ -365,9 +332,7 @@ async function handleInstallTool(id: string) {
 }
 
 .banner code {
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
+  font-family: var(--bb-font-mono);
 }
 
 .banner-info {
@@ -416,34 +381,14 @@ async function handleInstallTool(id: string) {
   overflow-wrap: anywhere;
 }
 
-.agent-registry-card dl {
-  display: flex;
-  gap: 10px;
-  margin: 0;
+.agent-registry-facts {
+  --bb-info-grid-gap: 10px;
+  --bb-info-item-padding: 8px 10px;
+  --bb-info-item-border: 1px solid var(--bb-hairline);
 }
 
-.agent-registry-card dl div {
-  min-width: 96px;
-  padding: 8px 10px;
-  border: 1px solid var(--bb-hairline);
-  border-radius: 8px;
-  background: var(--bb-surface-soft);
-}
-
-.agent-registry-card dt {
-  color: var(--bb-text-muted);
-  font-size: 11px;
-}
-
-.agent-registry-card dd {
-  margin: 2px 0 0;
-  color: var(--bb-text-strong);
-  font-size: 18px;
-  font-weight: 700;
-}
-
-:global(:root[data-theme='dark']) .agent-registry-card dl div {
-  background: var(--bb-surface-muted);
+:global(:root[data-theme='dark']) .agent-registry-facts {
+  --bb-info-item-bg: var(--bb-surface-muted);
 }
 
 @media (max-width: 860px) {
@@ -453,14 +398,9 @@ async function handleInstallTool(id: string) {
     flex-direction: column;
   }
 
-  .agent-registry-card dl {
-    display: grid;
+  .agent-registry-facts {
     grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
     width: 100%;
-  }
-
-  .agent-registry-card dl div {
-    min-width: 0;
   }
 }
 </style>

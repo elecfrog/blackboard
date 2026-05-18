@@ -3,15 +3,15 @@
 //! Supports three user-level configuration formats:
 //!
 //! - Codex CLI: `~/.codex/config.toml`   (TOML, `[mcp_servers.<id>]` subtable)
-//! - CodeBuddy: `~/.codebuddy/mcp.json`  (JSON, `mcpServers.<id>` key)
-//! - OpenCode:  `~/.config/opencode/opencode.json`  (JSON, `mcp.<id>` key)
+//! - `CodeBuddy`: `~/.codebuddy/mcp.json`  (JSON, `mcpServers.<id>` key)
+//! - `OpenCode`:  `~/.config/opencode/opencode.json`  (JSON, `mcp.<id>` key)
 //!
 //! All three are edited in place: other keys, tools, permissions, commands,
 //! plugins etc. are preserved verbatim so that inserting Blackboard's `bb`
 //! MCP server never disturbs the user's existing Agent configuration.
 //!
 //! This is only the on-disk Agent config editor. Blackboard's own MCP server
-//! protocol surface lives in `bb_cli`, not here.
+//! protocol surface lives in `bb_daemon`, not here.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
@@ -27,9 +27,9 @@ use crate::InboxError;
 pub enum AgentMcpConfigFormat {
     /// Codex `~/.codex/config.toml` — TOML with a `[mcp_servers.<id>]` subtable.
     CodexToml,
-    /// CodeBuddy `~/.codebuddy/mcp.json` — JSON with top-level `mcpServers`.
+    /// `CodeBuddy` `~/.codebuddy/mcp.json` — JSON with top-level `mcpServers`.
     CodebuddyJson,
-    /// OpenCode `~/.config/opencode/opencode.json` — JSON with top-level `mcp`.
+    /// `OpenCode` `~/.config/opencode/opencode.json` — JSON with top-level `mcp`.
     OpencodeJson,
 }
 
@@ -74,7 +74,7 @@ pub(super) fn inspect_server(
     target_path: &Path,
     desired: &AgentMcpServerConfig,
 ) -> Result<AgentMcpServerTarget, InboxError> {
-    let parent_exists = target_path.parent().map(|p| p.is_dir()).unwrap_or(false);
+    let parent_exists = target_path.parent().is_some_and(std::path::Path::is_dir);
 
     let content = match fs::read_to_string(target_path) {
         Ok(content) => Some(content),
@@ -346,7 +346,7 @@ fn render_json(value: &JsonValue) -> String {
     out
 }
 
-/// Build the JSON object representing the CodeBuddy `<id>` entry.
+/// Build the JSON object representing the `CodeBuddy` `<id>` entry.
 fn codebuddy_expected(desired: &AgentMcpServerConfig) -> JsonValue {
     let AgentMcpTransport::RemoteHttp { url } = &desired.transport;
     serde_json::json!({
@@ -357,7 +357,7 @@ fn codebuddy_expected(desired: &AgentMcpServerConfig) -> JsonValue {
     })
 }
 
-/// Build the JSON object representing the OpenCode `<id>` entry.
+/// Build the JSON object representing the `OpenCode` `<id>` entry.
 fn opencode_expected(desired: &AgentMcpServerConfig) -> JsonValue {
     let AgentMcpTransport::RemoteHttp { url } = &desired.transport;
     serde_json::json!({
@@ -440,7 +440,7 @@ fn summarize_json_value(value: &JsonValue) -> String {
     text
 }
 
-fn section_kind(value: &JsonValue) -> &'static str {
+const fn section_kind(value: &JsonValue) -> &'static str {
     match value {
         JsonValue::Null => "null",
         JsonValue::Bool(_) => "bool",

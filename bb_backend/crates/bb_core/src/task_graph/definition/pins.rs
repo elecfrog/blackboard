@@ -1,26 +1,32 @@
 //! 默认 Pin 生成逻辑 — 根据节点类型和配置生成标准 Pin 集合。
 
-use super::types::{BranchConfig, NodePin, NodeType, PinCategory, PinDirection, PinValueType};
+use super::types::{
+    BranchConfig, DataValueConfig, NodePin, NodeType, PinCategory, PinDirection, PinValueType,
+};
 
 /// 根据节点类型和配置生成默认的 Pin 集合。
 ///
 /// 当节点的 `pins` 字段为空时，调用此函数自动填充。
+#[must_use]
 pub fn default_pins_for(node_type: NodeType, config: &serde_json::Value) -> Vec<NodePin> {
     match node_type {
         NodeType::Start => pins_start(),
         NodeType::End => pins_end(),
         NodeType::Llm => pins_llm(),
+        NodeType::LlmCoordinator => pins_llm_coordinator(),
         NodeType::Plan => pins_plan(),
         NodeType::LlmMutation => pins_llm_mutation(),
         NodeType::IntentExtract
         | NodeType::KbPlan
         | NodeType::ManifestMerge
         | NodeType::SchemaValidate => pins_json_transform(),
+        NodeType::SystemWriteOutput => pins_system_write_output(),
         NodeType::Shell => pins_shell(),
         NodeType::Branch => pins_branch(config),
         NodeType::Loop => pins_loop(),
         NodeType::HumanGate => pins_human_gate(),
         NodeType::InputVar => pins_input_var(),
+        NodeType::DataValue => pins_data_value(config),
         NodeType::SubGraph => pins_sub_graph(),
     }
 }
@@ -74,6 +80,53 @@ fn pins_llm() -> Vec<NodePin> {
         NodePin {
             id: "output".into(),
             label: "Output".into(),
+            direction: PinDirection::Out,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Json),
+            required: false,
+        },
+    ]
+}
+
+// ─── LlmCoordinator ─────────────────────────────────────────────────────────
+
+fn pins_llm_coordinator() -> Vec<NodePin> {
+    vec![
+        NodePin {
+            id: "exec_in".into(),
+            label: "In".into(),
+            direction: PinDirection::In,
+            category: PinCategory::Exec,
+            value_type: None,
+            required: true,
+        },
+        NodePin {
+            id: "input".into(),
+            label: "Input".into(),
+            direction: PinDirection::In,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Any),
+            required: false,
+        },
+        NodePin {
+            id: "exec_out".into(),
+            label: "Out".into(),
+            direction: PinDirection::Out,
+            category: PinCategory::Exec,
+            value_type: None,
+            required: false,
+        },
+        NodePin {
+            id: "output".into(),
+            label: "Output".into(),
+            direction: PinDirection::Out,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Json),
+            required: false,
+        },
+        NodePin {
+            id: "subgraph_result".into(),
+            label: "Subgraph Result".into(),
             direction: PinDirection::Out,
             category: PinCategory::Data,
             value_type: Some(PinValueType::Json),
@@ -225,14 +278,24 @@ fn pins_shell() -> Vec<NodePin> {
 // ─── Branch ──────────────────────────────────────────────────────────────────
 
 fn pins_branch(config: &serde_json::Value) -> Vec<NodePin> {
-    let mut pins = vec![NodePin {
-        id: "exec_in".into(),
-        label: "In".into(),
-        direction: PinDirection::In,
-        category: PinCategory::Exec,
-        value_type: None,
-        required: true,
-    }];
+    let mut pins = vec![
+        NodePin {
+            id: "exec_in".into(),
+            label: "In".into(),
+            direction: PinDirection::In,
+            category: PinCategory::Exec,
+            value_type: None,
+            required: true,
+        },
+        NodePin {
+            id: "input".into(),
+            label: "Input".into(),
+            direction: PinDirection::In,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Any),
+            required: false,
+        },
+    ];
 
     // 尝试从 config 中解析 BranchConfig 获取 rules
     if let Ok(branch_config) = serde_json::from_value::<BranchConfig>(config.clone()) {
@@ -383,6 +446,61 @@ fn pins_input_var() -> Vec<NodePin> {
     ]
 }
 
+// ─── System Write Output ─────────────────────────────────────────────────────
+
+fn pins_system_write_output() -> Vec<NodePin> {
+    vec![
+        NodePin {
+            id: "exec_in".into(),
+            label: "In".into(),
+            direction: PinDirection::In,
+            category: PinCategory::Exec,
+            value_type: None,
+            required: true,
+        },
+        NodePin {
+            id: "content".into(),
+            label: "Content".into(),
+            direction: PinDirection::In,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Any),
+            required: false,
+        },
+        NodePin {
+            id: "exec_out".into(),
+            label: "Out".into(),
+            direction: PinDirection::Out,
+            category: PinCategory::Exec,
+            value_type: None,
+            required: false,
+        },
+        NodePin {
+            id: "output".into(),
+            label: "Output".into(),
+            direction: PinDirection::Out,
+            category: PinCategory::Data,
+            value_type: Some(PinValueType::Json),
+            required: false,
+        },
+    ]
+}
+
+// ─── DataValue ──────────────────────────────────────────────────────────────
+
+fn pins_data_value(config: &serde_json::Value) -> Vec<NodePin> {
+    let value_type = serde_json::from_value::<DataValueConfig>(config.clone())
+        .map(|config| config.value_type)
+        .unwrap_or(PinValueType::String);
+    vec![NodePin {
+        id: "value".into(),
+        label: "Value".into(),
+        direction: PinDirection::Out,
+        category: PinCategory::Data,
+        value_type: Some(value_type),
+        required: false,
+    }]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -491,11 +609,14 @@ mod tests {
             "default_rule_id": "no"
         });
         let pins = default_pins_for(NodeType::Branch, &config);
-        assert_eq!(pins.len(), 3); // exec_in + 2 rules
-        assert_eq!(pins[1].id, "rule:yes");
-        assert_eq!(pins[1].label, "Yes");
-        assert_eq!(pins[2].id, "rule:no");
-        assert_eq!(pins[2].label, "No");
+        assert_eq!(pins.len(), 4); // exec_in + input + 2 rules
+        assert_eq!(pins[1].id, "input");
+        assert_eq!(pins[1].category, PinCategory::Data);
+        assert_eq!(pins[1].value_type, Some(PinValueType::Any));
+        assert_eq!(pins[2].id, "rule:yes");
+        assert_eq!(pins[2].label, "Yes");
+        assert_eq!(pins[3].id, "rule:no");
+        assert_eq!(pins[3].label, "No");
     }
 
     #[test]

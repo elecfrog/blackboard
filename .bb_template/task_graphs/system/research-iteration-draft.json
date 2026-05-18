@@ -1,0 +1,479 @@
+{
+  "schema_version": 1,
+  "id": "research-iteration-draft",
+  "scope": "system",
+  "title": "内外调研到迭代草案",
+  "description": "父级系统管线：并行运行向内调研与向外调研两个子图，读取它们的 system-written 报告，再基于 ResourceBundle 合成当前项目的代码迭代草案并写入 wiki/research。",
+  "version": 1,
+  "readonly": false,
+  "metadata": {
+    "tags": [
+      "system",
+      "research",
+      "parent-pipeline",
+      "iteration-draft",
+      "pi",
+      "resource-bundle"
+    ],
+    "owner": "blackboard",
+    "created_by": "codex",
+    "updated_by": "codex",
+    "run_policy": {
+      "allow_concurrent_runs": false,
+      "max_concurrent_runs": 1,
+      "queue_enabled": true,
+      "max_queue_wait_ms": 7200000,
+      "queue_timeout_retry_enabled": true,
+      "max_queue_timeout_retries": 5
+    }
+  },
+  "inputs": [
+    {
+      "id": "input",
+      "label": "Iteration Goal",
+      "type": "string",
+      "default": "结合当前项目的内部代码调研、外部资料调研和已有文档，给出一份代码迭代 draft：说明要改什么、为什么、怎么分阶段落地、风险和验收标准。",
+      "description": "The parent synthesis goal for the final iteration draft."
+    },
+    {
+      "id": "internal-question",
+      "label": "Internal Research Question",
+      "type": "string",
+      "default": "调研当前项目中与父级目标相关的实现：数据结构、节点、运行时、输出契约、子图机制、已有能力、缺口和可迭代点。",
+      "description": "Question passed to the internal code research child graph."
+    },
+    {
+      "id": "external-question",
+      "label": "External Research Question",
+      "type": "string",
+      "default": "根据父级目标调研相关外部资料：可以包含 GitHub/GitLab 仓库、外部文章、论文、wiki、官方文档、issue、release notes、新闻、行业资料、市场/财务数据或其他来源；总结可借鉴设计、限制和风险。",
+      "description": "Question passed to the generic external search/research child graph."
+    },
+    {
+      "id": "source-root",
+      "label": "Internal Source Root",
+      "type": "string",
+      "default": "{{env.workspace}}",
+      "description": "Source root for internal code research."
+    },
+    {
+      "id": "primary-urls",
+      "label": "External Primary URLs",
+      "type": "json",
+      "default": [],
+      "description": "Optional primary external source hints for the external search/research child graph."
+    },
+    {
+      "id": "wiki-slice",
+      "label": "Context Wiki Slice",
+      "type": "string",
+      "default": "当前项目已有内部 code research graph、external search/research graph、ResourceBundle 增强 LLM 节点 契约、system_write_output 写入边界，以及 sub_graph child run 机制。",
+      "description": "Shared project context passed to child graphs."
+    },
+    {
+      "id": "run-marker",
+      "label": "Run Marker",
+      "type": "string",
+      "default": "research-iteration-draft",
+      "description": "Prefix for child outputs and staging files."
+    },
+    {
+      "id": "output-slug",
+      "label": "Output Slug",
+      "type": "string",
+      "default": "research-iteration-draft",
+      "description": "Final draft filename under wiki/research, without .md."
+    },
+    {
+      "id": "skills",
+      "label": "Parent Skills",
+      "type": "json",
+      "default": [
+        "code-research",
+        "external-research",
+        "research-output-contract"
+      ],
+      "description": "Skills injected into the parent synthesis 增强 LLM 节点."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": -760,
+        "y": -160
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "research-internal",
+      "type": "sub_graph",
+      "label": "向内调研",
+      "description": "Runs system child graph research-internal.",
+      "position": {
+        "x": -360,
+        "y": -320
+      },
+      "config": {
+        "graph_id": "research-internal",
+        "graph_scope": "system",
+        "input_bindings": {
+          "input": "{{inputs.internal-question}}\n\n父级迭代目标：{{inputs.input}}",
+          "source-root": "{{inputs.source-root}}",
+          "wiki-slice": "{{inputs.wiki-slice}}",
+          "skills": [
+            "code-research",
+            "research-output-contract"
+          ],
+          "run-marker": "{{inputs.run-marker}}-internal",
+          "output-slug": "{{inputs.run-marker}}-internal-research"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "research-external",
+      "type": "sub_graph",
+      "label": "向外调研",
+      "description": "Runs system child graph research-external.",
+      "position": {
+        "x": -360,
+        "y": 80
+      },
+      "config": {
+        "graph_id": "research-external",
+        "graph_scope": "system",
+        "input_bindings": {
+          "input": "{{inputs.external-question}}\n\n父级迭代目标：{{inputs.input}}",
+          "primary-urls": "{{inputs.primary-urls}}",
+          "wiki-slice": "{{inputs.wiki-slice}}",
+          "skills": [
+            "external-research",
+            "research-output-contract"
+          ],
+          "run-marker": "{{inputs.run-marker}}-external",
+          "output-slug": "{{inputs.run-marker}}-external-research"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "synthesize-draft",
+      "type": "llm",
+      "label": "Synthesize Iteration Draft",
+      "description": "Reads child research reports through a parent ResourceBundle and produces a current-project code iteration draft. It must not write files.",
+      "position": {
+        "x": 100,
+        "y": -120
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "resource_bundle": {
+            "schema_version": 1,
+            "kind": "task_graph_parent_research_bundle",
+            "task": {
+              "type": "research_to_iteration_draft",
+              "input": "{{inputs.input}}",
+              "run_marker": "{{inputs.run-marker}}",
+              "output_slug": "{{inputs.output-slug}}"
+            },
+            "data_sources": {
+              "source_root": "{{inputs.source-root}}",
+              "primary_urls": "{{inputs.primary-urls}}",
+              "wiki_slice": "{{inputs.wiki-slice}}"
+            },
+            "runtime": {
+              "project": "{{env.project}}",
+              "workspace": "{{env.workspace}}"
+            },
+            "skills": "{{inputs.skills}}",
+            "contracts": {
+              "source_policy": "Use child reports as primary facts. Internal child report covers source_root code facts; external child report covers external sources. Label every recommendation as internal fact, external fact, or inference.",
+              "write_policy": "Parent synthesizer must not write files. system_write_output writes the final iteration draft under wiki/research.",
+              "final_output_dir": "wiki/research",
+              "final_output_path": "{{env.workspace}}/wiki/research/{{inputs.output-slug}}.md",
+              "llm_input": "resource_bundle",
+              "child_output_policy": "Child sub_graph node raw outputs are advisory only. The canonical child reports are the deterministic system_write_output files declared in upstream_artifacts.internal_report_path and external_report_path."
+            },
+            "upstream_artifacts": {
+              "internal_child_output": "{{nodes.research-internal.output}}",
+              "external_child_output": "{{nodes.research-external.output}}",
+              "internal_report_path": "{{env.workspace}}/wiki/research/{{inputs.run-marker}}-internal-research.md",
+              "external_report_path": "{{env.workspace}}/wiki/research/{{inputs.run-marker}}-external-research.md",
+              "output_path": "{{env.workspace}}/wiki/research/{{inputs.output-slug}}.md"
+            }
+          }
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是当前项目的技术方案 synthesizer，目标是把“内部代码调研 + 外部资料调研 + 文档事实”合成为可执行的代码迭代 draft。\n\nParent ResourceBundle JSON：\n{{inputs.resource_bundle}}\n\n任务：\n1. 必须先读取 resource_bundle.upstream_artifacts.internal_report_path 和 external_report_path；这两个 system-written child 报告是主要事实源。\n2. upstream_artifacts.internal_child_output / external_child_output 只作为辅助定位，不要替代上述两个报告。\n3. 产出一份中文 Markdown 迭代 draft，不是最终实现代码。\n4. 必须覆盖：目标与非目标、内部现状事实、外部启发、拟改架构、Graph/Node/Runtime/Data Contract 改动、阶段计划、验收标准、风险与回滚策略。\n5. 对每个关键建议标注来源：内部事实 / 外部事实 / 推断。不要把推断写成事实。\n6. 方案应面向当前项目代码库，优先给出可小步落地的改动，不要泛泛而谈。\n7. 只输出最终 Markdown 内容。不要调用写文件工具，不要保存文件；最终落盘必须由 system_write_output 写入 resource_bundle.contracts.final_output_path，且路径必须位于 wiki/research。"
+        },
+        "run_as": "llm",
+        "runtime": "pi",
+        "skills": [
+          "code-research",
+          "external-research",
+          "research-output-contract"
+        ],
+        "resource_bundle": {
+          "input": "resource_bundle",
+          "required": true
+        },
+        "output_contract": {
+          "artifact_type": "markdown",
+          "required": true
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "internal_research",
+          "label": "Internal Research",
+          "direction": "in",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        },
+        {
+          "id": "external_research",
+          "label": "External Research",
+          "direction": "in",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "markdown",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "system-write-output",
+      "type": "system_write_output",
+      "label": "System Write Iteration Draft",
+      "description": "Writes the parent synthesized iteration draft to wiki/research.",
+      "position": {
+        "x": 520,
+        "y": -120
+      },
+      "config": {
+        "artifact_type": "markdown",
+        "content": "{{inputs.content}}",
+        "create_parent_dirs": true,
+        "inputs": {
+          "content": "{{data.synthesize-draft.output}}"
+        },
+        "output_path": "{{env.workspace}}/wiki/research/{{inputs.output-slug}}.md",
+        "overwrite": true
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "content",
+          "label": "Content",
+          "direction": "in",
+          "category": "data",
+          "value_type": "any",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Draft Saved",
+      "position": {
+        "x": 860,
+        "y": -120
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-start-internal",
+      "from": "start",
+      "to": "research-internal",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-start-external",
+      "from": "start",
+      "to": "research-external",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-internal-synthesize",
+      "from": "research-internal",
+      "to": "synthesize-draft",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-external-synthesize",
+      "from": "research-external",
+      "to": "synthesize-draft",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-internal-synthesize-data",
+      "from": "research-internal",
+      "to": "synthesize-draft",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "internal_research"
+    },
+    {
+      "id": "e-external-synthesize-data",
+      "from": "research-external",
+      "to": "synthesize-draft",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "external_research"
+    },
+    {
+      "id": "e-synthesize-writer",
+      "from": "synthesize-draft",
+      "to": "system-write-output",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-synthesize-writer-data",
+      "from": "synthesize-draft",
+      "to": "system-write-output",
+      "kind": "data",
+      "from_pin": "output",
+      "to_pin": "content"
+    },
+    {
+      "id": "e-writer-end",
+      "from": "system-write-output",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ]
+}

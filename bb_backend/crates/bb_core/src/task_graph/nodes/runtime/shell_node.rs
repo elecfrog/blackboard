@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -40,7 +40,7 @@ struct ShellCapture {
 }
 
 impl ShellCapture {
-    fn new(max_bytes: usize) -> Self {
+    const fn new(max_bytes: usize) -> Self {
         Self {
             bytes: Vec::new(),
             max_bytes,
@@ -83,7 +83,7 @@ struct ShellProcessResult {
     stderr_truncated: bool,
 }
 
-pub(crate) fn execute_shell_node(
+pub fn execute_shell_node(
     opts: &RunnerOptions,
     node: &TaskGraphNode,
     run: &TaskGraphRun,
@@ -226,6 +226,13 @@ pub(crate) fn execute_shell_node(
     command.args(&config.args);
     command.current_dir(&prepared.cwd);
     command.envs(&config.env);
+    command.env("BB_DAEMON", "1");
+    command.env("BB_DAEMON_PROJECT", project);
+    command.env("BB_DAEMON_AGENT", &node.id);
+    command.env("BB_TASK_GRAPH_RUN", run_id);
+    command.env("BB_WORKSPACE_ROOT", ws);
+    command.env("BB_PROJECT_ROOT", ws);
+    command.env("BB_SCRIPTS_DIR", &opts.scripts_dir);
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
 
@@ -257,9 +264,7 @@ pub(crate) fn execute_shell_node(
 
     let duration_ms = started.elapsed().as_millis() as u64;
     let exit_code = process_result.status.code();
-    let success = exit_code
-        .map(|code| config.expected_exit_codes.contains(&code))
-        .unwrap_or(false)
+    let success = exit_code.is_some_and(|code| config.expected_exit_codes.contains(&code))
         && !process_result.timed_out
         && !process_result.cancelled;
 
@@ -349,7 +354,7 @@ pub(crate) fn execute_shell_node(
         } else {
             ShellFailure {
                 code: "exit_code".to_string(),
-                message: format!("Shell command exited with code {:?}", exit_code),
+                message: format!("Shell command exited with code {exit_code:?}"),
             }
         };
         Ok(NodeOutcome {
@@ -421,7 +426,7 @@ fn prepare_shell(
     config: &ShellConfig,
 ) -> Result<PreparedShell, ShellFailure> {
     let cwd = PathBuf::from(config.cwd.trim());
-    if cwd.is_absolute() {
+    if cwd.is_absolute() || has_forbidden_cwd_component(&cwd) {
         return Err(ShellFailure {
             code: "invalid_cwd".to_string(),
             message: "Shell cwd must be relative to the workspace root".to_string(),
@@ -434,20 +439,61 @@ fn prepare_shell(
             code: "invalid_workspace".to_string(),
             message: source.to_string(),
         })?;
-    let joined = canonical_root.join(cwd);
-    let canonical_cwd = joined.canonicalize().map_err(|source| ShellFailure {
-        code: "invalid_cwd".to_string(),
-        message: source.to_string(),
-    })?;
+    let joined = canonical_root.join(&cwd);
+    let canonical_cwd = match joined.canonicalize() {
+        Ok(path) => {
+            if !path.starts_with(&canonical_root) {
+                return Err(ShellFailure {
+                    code: "invalid_cwd".to_string(),
+                    message: "Shell cwd escapes the workspace root".to_string(),
+                });
+            }
+            path
+        }
+        Err(source) => {
+            resolve_template_parent_cwd(&canonical_root, &cwd)?.ok_or_else(|| ShellFailure {
+                code: "invalid_cwd".to_string(),
+                message: source.to_string(),
+            })?
+        }
+    };
 
-    if !canonical_cwd.starts_with(&canonical_root) {
+    Ok(PreparedShell { cwd: canonical_cwd })
+}
+
+fn has_forbidden_cwd_component(cwd: &Path) -> bool {
+    cwd.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::Prefix(_) | Component::RootDir
+        )
+    })
+}
+
+fn resolve_template_parent_cwd(
+    canonical_root: &Path,
+    cwd: &Path,
+) -> Result<Option<PathBuf>, ShellFailure> {
+    if canonical_root.file_name().and_then(|name| name.to_str()) != Some(".bb_template") {
+        return Ok(None);
+    }
+
+    let Some(repo_root) = canonical_root.parent() else {
+        return Ok(None);
+    };
+    let joined = repo_root.join(cwd);
+    let Ok(canonical_cwd) = joined.canonicalize() else {
+        return Ok(None);
+    };
+
+    if !canonical_cwd.starts_with(repo_root) {
         return Err(ShellFailure {
             code: "invalid_cwd".to_string(),
-            message: "Shell cwd escapes the workspace root".to_string(),
+            message: "Shell cwd escapes the repository root".to_string(),
         });
     }
 
-    Ok(PreparedShell { cwd: canonical_cwd })
+    Ok(Some(canonical_cwd))
 }
 
 fn permission_failure(config: &ShellConfig) -> Option<ShellFailure> {
@@ -515,14 +561,21 @@ fn is_network_operation(command: &str, args: &[String]) -> bool {
         return true;
     }
 
-    match (command, first_arg(args)) {
-        ("git", Some("push" | "pull" | "fetch" | "clone" | "ls-remote")) => true,
-        ("npm" | "pnpm" | "yarn", Some("install" | "add" | "update" | "audit" | "publish")) => true,
-        ("pip" | "pip3", Some("install")) => true,
-        ("cargo", Some("install" | "publish" | "search" | "owner" | "login")) => true,
-        ("uv", Some("add" | "sync" | "pip")) => true,
-        _ => false,
-    }
+    matches!(
+        (command, first_arg(args)),
+        (
+            "git",
+            Some("push" | "pull" | "fetch" | "clone" | "ls-remote")
+        ) | (
+            "npm" | "pnpm" | "yarn",
+            Some("install" | "add" | "update" | "audit" | "publish")
+        ) | ("pip" | "pip3", Some("install"))
+            | (
+                "cargo",
+                Some("install" | "publish" | "search" | "owner" | "login")
+            )
+            | ("uv", Some("add" | "sync" | "pip"))
+    )
 }
 
 fn is_git_write_operation(command: &str, args: &[String]) -> bool {
@@ -606,7 +659,7 @@ fn wait_for_shell_process(
     let status = loop {
         if run_is_cancelled(&opts.workspace_root, &opts.project, &opts.run_id) {
             cancelled = true;
-            let _ = child.kill();
+            let _ = crate::platform::terminate_child_process_tree(&mut child);
             break child.wait().map_err(|source| TaskGraphError::Io {
                 path: opts.workspace_root.clone(),
                 source,
@@ -622,7 +675,7 @@ fn wait_for_shell_process(
 
         if Instant::now() >= deadline {
             timed_out = true;
-            let _ = child.kill();
+            let _ = crate::platform::terminate_child_process_tree(&mut child);
             break child.wait().map_err(|source| TaskGraphError::Io {
                 path: opts.workspace_root.clone(),
                 source,
@@ -706,22 +759,54 @@ fn shell_output_json(
     stdout_truncated: bool,
     stderr_truncated: bool,
 ) -> serde_json::Value {
-    serde_json::json!({
-        "ok": ok,
-        "command": &config.command,
-        "args": &config.args,
-        "cwd": cwd,
-        "exit_code": exit_code,
-        "duration_ms": duration_ms,
-        "timed_out": timed_out,
-        "cancelled": cancelled,
-        "stdout_tail": tail_str(stdout, OUTPUT_TAIL_CHARS),
-        "stderr_tail": tail_str(stderr, OUTPUT_TAIL_CHARS),
-        "stdout_truncated": stdout_truncated,
-        "stderr_truncated": stderr_truncated,
-    })
+    let (stdout_json, parse_error) = parse_stdout_json(stdout);
+    let mut map = serde_json::Map::from_iter([
+        ("ok".to_string(), serde_json::json!(ok)),
+        ("command".to_string(), serde_json::json!(&config.command)),
+        ("args".to_string(), serde_json::json!(&config.args)),
+        ("cwd".to_string(), serde_json::json!(cwd)),
+        ("exit_code".to_string(), serde_json::json!(exit_code)),
+        ("duration_ms".to_string(), serde_json::json!(duration_ms)),
+        ("timed_out".to_string(), serde_json::json!(timed_out)),
+        ("cancelled".to_string(), serde_json::json!(cancelled)),
+        (
+            "stdout_tail".to_string(),
+            serde_json::json!(tail_str(stdout, OUTPUT_TAIL_CHARS)),
+        ),
+        (
+            "stderr_tail".to_string(),
+            serde_json::json!(tail_str(stderr, OUTPUT_TAIL_CHARS)),
+        ),
+        ("stdout_json".to_string(), stdout_json),
+        (
+            "stdout_truncated".to_string(),
+            serde_json::json!(stdout_truncated),
+        ),
+        (
+            "stderr_truncated".to_string(),
+            serde_json::json!(stderr_truncated),
+        ),
+    ]);
+    if parse_error {
+        map.insert(
+            "stdout_json_parse_error".to_string(),
+            serde_json::json!(true),
+        );
+    }
+    serde_json::Value::Object(map)
 }
 
+fn parse_stdout_json(stdout: &str) -> (serde_json::Value, bool) {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return (serde_json::Value::Null, false);
+    }
+    serde_json::from_str(trimmed)
+        .map(|value| (value, false))
+        .unwrap_or((serde_json::Value::Null, true))
+}
+
+#[allow(clippy::too_many_arguments)]
 fn write_shell_artifact(
     ws: &Path,
     project: &str,
@@ -746,7 +831,7 @@ fn write_shell_artifact(
         ws,
         project,
         run_id,
-        &format!("{}-shell-output", node_id),
+        &format!("{node_id}-shell-output"),
         &content,
         ArtifactContentType::Json,
     )

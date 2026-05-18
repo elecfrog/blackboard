@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "title": "Frontend UI convergence third pass: ref chips and segmented controls",
+  "time": "2026-05-23",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "frontend-shared-ui-primitives-third-pass",
+  "done": [
+    "新增 BbRefChip，用于 {{inputs.xxx}} 引用展示和可点击 binding shortcut。",
+    "新增 BbSegmentedControl，用于 LLM/Agent 这类小型模式切换。",
+    "迁移 TaskGraphLlmNodeForm 的 LLM/Agent mode segmented 到 BbSegmentedControl。",
+    "迁移 TaskGraphBindingList、TaskGraphInputsPanel、TaskGraphRunInputsPanel、TaskGraphNodeInspector 的 reference chip / binding chip 到 BbRefChip。",
+    "清理 TaskGraphEditorPanel 中已无模板引用的旧 variable-list、segmented、mini-button、inline-list 等 scoped CSS。",
+    "从 shared CSS 移除已迁移完成的 task-graph-variable-chip / task-graph-prompt-var-bind compatibility selector。",
+    "更新 DESIGN.md：明确 reference chips 用 BbRefChip，small option switches 用 BbSegmentedControl。"
+  ],
+  "validation": [
+    "npm run build --prefix bb_web: 通过。",
+    "git diff --check（本轮相关前端文件）: 通过，仅 Windows LF/CRLF warning。",
+    "rg 检查 task-graph-segmented / task-graph-variable-chip / task-graph-prompt-var-bind / task-graph-run-inputs small: 无组件引用。",
+    "Browser iab TaskGraph/Agents 页面冒烟: 无 console error；当前路由未展开 affected editor controls，因此 DOM count 为 0 但旧类也为 0。"
+  ],
+  "next_step": [
+    "下一轮建议继续收敛 BbDenseFieldRow / BbSummaryChip，把 input rows、catalog/preview summary chips 这两类仍重复的布局语法拉到共享层。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/common/BbRefChip.vue",
+    "bb_web/src/components/common/BbSegmentedControl.vue",
+    "bb_web/src/components/common/index.ts",
+    "bb_web/src/styles.css",
+    "bb_web/DESIGN.md",
+    "bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue",
+    "bb_web/src/components/task-graph/TaskGraphBindingList.vue",
+    "bb_web/src/components/task-graph/TaskGraphInputsPanel.vue",
+    "bb_web/src/components/task-graph/TaskGraphRunInputsPanel.vue",
+    "bb_web/src/components/task-graph/TaskGraphNodeInspector.vue",
+    "bb_web/src/components/TaskGraphEditorPanel.vue"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

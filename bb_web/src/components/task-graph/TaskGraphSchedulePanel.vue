@@ -18,6 +18,7 @@ import {
   type TaskGraphScheduleKind,
   type TaskGraphSchedulePatchInput,
 } from '@/data/taskGraphs'
+import { BbActionGroup, BbButton, BbEmptyState, BbField, BbInfoGrid, BbInfoItem, BbInlineAlert, BbStatusPill } from '@/components/common'
 
 type SchedulePreset = '15m' | 'hourly' | 'daily' | 'weekly' | 'cron'
 type MessageKey = Parameters<typeof t>[0]
@@ -159,53 +160,54 @@ watch(
           <CalendarClock aria-hidden="true" />
           <span>{{ t('taskGraphSchedules') }}</span>
         </h4>
-        <small>{{ scheduleCountLabel }} · Asia/Shanghai</small>
+        <small>{{ scheduleCountLabel }} · {{ t('taskGraphScheduleTimezone') }}</small>
       </div>
-      <div class="task-graph-schedule-head-actions">
-        <button type="button" :disabled="loading" @click="emit('reload')">{{ t('refresh') }}</button>
-        <button
-          type="button"
+      <BbActionGroup class="task-graph-schedule-head-actions" gap="xs">
+        <BbButton size="sm" variant="secondary" :disabled="loading" @click="emit('reload')">
+          {{ t('refresh') }}
+        </BbButton>
+        <BbButton
+          size="sm"
+          variant="secondary"
           :disabled="!selectedRef || !!actionBusy"
           @click="showCreate = !showCreate"
         >
-          <Plus aria-hidden="true" />
+          <template #leading>
+            <Plus aria-hidden="true" />
+          </template>
           <span>{{ t('taskGraphScheduleCreate') }}</span>
-        </button>
-      </div>
+        </BbButton>
+      </BbActionGroup>
     </header>
 
     <form v-if="showCreate && selectedRef" class="task-graph-schedule-form" @submit.prevent="createSchedule">
-      <label>
-        <span>{{ t('taskGraphScheduleName') }}</span>
+      <BbField :label="t('taskGraphScheduleName')">
         <input v-model="scheduleName" :placeholder="defaultScheduleName" />
-      </label>
+      </BbField>
       <div class="task-graph-schedule-presets" role="group" :aria-label="t('taskGraphSchedulePreset')">
-        <button
+        <BbButton
           v-for="item in presets"
           :key="item.id"
-          type="button"
-          :class="{ selected: preset === item.id }"
+          size="sm"
+          :variant="preset === item.id ? 'primary' : 'secondary'"
           @click="preset = item.id"
         >
           {{ t(item.labelKey) }}
-        </button>
+        </BbButton>
       </div>
-      <label v-if="preset === 'cron'">
-        <span>{{ t('taskGraphScheduleCron') }}</span>
-        <input v-model="customCron" placeholder="0 9 * * *" />
-      </label>
-      <p v-if="localError" class="task-graph-schedule-error">{{ localError }}</p>
-      <div class="task-graph-schedule-form-actions">
-        <button type="button" @click="showCreate = false">{{ t('cancel') }}</button>
-        <button type="submit" :disabled="isBusy('create')">{{ t('create') }}</button>
-      </div>
+      <BbField v-if="preset === 'cron'" :label="t('taskGraphScheduleCron')">
+        <input v-model="customCron" :placeholder="t('taskGraphScheduleCronPlaceholder')" />
+      </BbField>
+      <BbInlineAlert v-if="localError" tone="error">{{ localError }}</BbInlineAlert>
+      <BbActionGroup gap="xs">
+        <BbButton variant="secondary" @click="showCreate = false">{{ t('cancel') }}</BbButton>
+        <BbButton type="submit" variant="primary" :disabled="isBusy('create')">{{ t('create') }}</BbButton>
+      </BbActionGroup>
     </form>
 
-    <div v-if="loading" class="task-graph-schedule-empty">{{ t('loading') }}</div>
-    <div v-else-if="!selectedRef" class="task-graph-schedule-empty">{{ t('taskGraphEmptyPreview') }}</div>
-    <div v-else-if="schedules.length === 0" class="task-graph-schedule-empty">
-      {{ t('taskGraphScheduleEmpty') }}
-    </div>
+    <BbEmptyState v-if="loading" :message="t('loading')" />
+    <BbEmptyState v-else-if="!selectedRef" :message="t('taskGraphEmptyPreview')" />
+    <BbEmptyState v-else-if="schedules.length === 0" :message="t('taskGraphScheduleEmpty')" />
     <div v-else class="task-graph-schedule-list">
       <article
         v-for="schedule in schedules"
@@ -218,55 +220,59 @@ watch(
           <span>{{ scheduleLabel(schedule) }} · {{ schedule.id }}</span>
           <small v-if="schedule.state.last_error">{{ schedule.state.last_error }}</small>
         </div>
-        <dl>
-          <div>
-            <dt>{{ t('status') }}</dt>
-            <dd><span class="task-graph-schedule-status" :data-status="schedule.state.last_status || (schedule.enabled ? 'waiting' : 'paused')">{{ statusLabel(schedule) }}</span></dd>
-          </div>
-          <div>
-            <dt>{{ t('taskGraphScheduleNextRun') }}</dt>
-            <dd>{{ nextRunLabel(schedule) }}</dd>
-          </div>
-          <div>
-            <dt>{{ t('taskGraphScheduleLastRun') }}</dt>
-            <dd>{{ lastRunLabel(schedule) }}</dd>
-          </div>
-        </dl>
-        <div class="task-graph-schedule-actions">
-          <button
-            type="button"
+        <BbInfoGrid>
+          <BbInfoItem :label="t('status')">
+            <BbStatusPill
+              :status="schedule.state.last_status || (schedule.enabled ? 'waiting' : 'paused')"
+              :label="statusLabel(schedule)"
+            />
+          </BbInfoItem>
+          <BbInfoItem :label="t('taskGraphScheduleNextRun')" :value="nextRunLabel(schedule)" />
+          <BbInfoItem :label="t('taskGraphScheduleLastRun')" :value="lastRunLabel(schedule)" />
+        </BbInfoGrid>
+        <BbActionGroup class="task-graph-schedule-actions" gap="xs" :wrap="false">
+          <BbButton
+            size="mini"
+            variant="secondary"
+            icon-only
             :title="t('taskGraphScheduleRunNow')"
             :disabled="!!actionBusy"
             @click="emit('run-now', schedule.id)"
           >
             <Play aria-hidden="true" />
-          </button>
-          <button
-            type="button"
+          </BbButton>
+          <BbButton
+            size="mini"
+            variant="secondary"
+            icon-only
             :title="schedule.enabled ? t('taskGraphSchedulePause') : t('taskGraphScheduleEnable')"
             :disabled="!!actionBusy"
             @click="toggleSchedule(schedule)"
           >
             <CirclePause v-if="schedule.enabled" aria-hidden="true" />
             <CirclePlay v-else aria-hidden="true" />
-          </button>
-          <button
+          </BbButton>
+          <BbButton
             v-if="schedule.state.last_run_id"
-            type="button"
+            size="mini"
+            variant="secondary"
+            icon-only
             :title="t('taskGraphOpenRun')"
             @click="emit('navigate-run', schedule.state.last_run_id)"
           >
             <ExternalLink aria-hidden="true" />
-          </button>
-          <button
-            type="button"
+          </BbButton>
+          <BbButton
+            size="mini"
+            variant="danger"
+            icon-only
             :title="t('taskGraphScheduleDelete')"
             :disabled="!!actionBusy"
             @click="deleteSchedule(schedule)"
           >
             <Trash2 aria-hidden="true" />
-          </button>
-        </div>
+          </BbButton>
+        </BbActionGroup>
       </article>
     </div>
   </section>
@@ -312,58 +318,6 @@ watch(
   font-size: 12px;
 }
 
-.task-graph-schedule-head-actions,
-.task-graph-schedule-form-actions,
-.task-graph-schedule-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.task-graph-schedule-head-actions button,
-.task-graph-schedule-form-actions button,
-.task-graph-schedule-actions button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--bb-border-warm-medium);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 760;
-}
-
-.task-graph-schedule-actions button {
-  width: 30px;
-  padding: 0;
-}
-
-.task-graph-schedule-head-actions button:hover,
-.task-graph-schedule-form-actions button:hover,
-.task-graph-schedule-actions button:hover {
-  border-color: var(--task-graph-accent-border-medium);
-  color: var(--bb-accent);
-}
-
-.task-graph-schedule-head-actions button:disabled,
-.task-graph-schedule-form-actions button:disabled,
-.task-graph-schedule-actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.54;
-}
-
-.task-graph-schedule-head-actions svg,
-.task-graph-schedule-actions svg {
-  width: 14px;
-  height: 14px;
-}
-
 .task-graph-schedule-form {
   display: grid;
   gap: 8px;
@@ -373,67 +327,10 @@ watch(
   background: var(--bb-surface-soft);
 }
 
-.task-graph-schedule-form label {
-  display: grid;
-  gap: 4px;
-}
-
-.task-graph-schedule-form label span {
-  color: var(--bb-text-muted);
-  font-size: 11px;
-  font-weight: 760;
-}
-
-.task-graph-schedule-form input {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 32px;
-  padding: 6px 8px;
-  border: 1px solid var(--bb-border-warm-medium-strong);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-strong);
-  font: inherit;
-  font-size: 12px;
-}
-
 .task-graph-schedule-presets {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-}
-
-.task-graph-schedule-presets button {
-  min-height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--bb-border-warm-medium);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 760;
-}
-
-.task-graph-schedule-presets button.selected {
-  border-color: var(--task-graph-accent-border-medium);
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
-}
-
-.task-graph-schedule-error {
-  margin: 0;
-  color: var(--bb-error);
-  font-size: 12px;
-}
-
-.task-graph-schedule-empty {
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--bb-surface-soft);
-  color: var(--bb-text-muted);
-  font-size: 12px;
-  text-align: center;
 }
 
 .task-graph-schedule-list {
@@ -475,71 +372,6 @@ watch(
   color: var(--bb-error);
 }
 
-.task-graph-schedule-row dl {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(96px, 1fr));
-  gap: 6px;
-  margin: 0;
-}
-
-.task-graph-schedule-row dl > div {
-  min-width: 0;
-  padding: 7px;
-  border-radius: 8px;
-  background: var(--bb-surface-soft);
-}
-
-.task-graph-schedule-row dt {
-  color: var(--bb-text-muted);
-  font-size: 10px;
-  font-weight: 760;
-}
-
-.task-graph-schedule-row dd {
-  margin: 3px 0 0;
-  overflow-wrap: anywhere;
-  color: var(--bb-text-strong);
-  font-size: 12px;
-  font-weight: 760;
-}
-
-.task-graph-schedule-status {
-  display: inline-flex;
-  align-items: center;
-  min-height: 20px;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: var(--bb-surface);
-  color: var(--bb-text-muted);
-  font-size: 11px;
-  font-weight: 820;
-}
-
-.task-graph-schedule-status[data-status='queued'],
-.task-graph-schedule-status[data-status='pending'],
-.task-graph-schedule-status[data-status='running'],
-.task-graph-schedule-status[data-status='waiting'] {
-  background: color-mix(in srgb, var(--bb-focus) 12%, var(--bb-surface));
-  color: var(--bb-focus);
-}
-
-.task-graph-schedule-status[data-status='succeeded'] {
-  background: var(--bb-accent-soft);
-  color: var(--bb-accent);
-}
-
-.task-graph-schedule-status[data-status='failed'],
-.task-graph-schedule-status[data-status='cancelled'] {
-  background: color-mix(in srgb, var(--bb-error) 12%, var(--bb-surface));
-  color: var(--bb-error);
-}
-
-.task-graph-schedule-status[data-status='paused'],
-.task-graph-schedule-status[data-status='skipped'] {
-  background: color-mix(in srgb, var(--bb-warning) 12%, var(--bb-surface));
-  color: var(--bb-warning);
-}
-
 @media (max-width: 1100px) {
   .task-graph-schedule-row {
     grid-template-columns: 1fr;
@@ -552,7 +384,7 @@ watch(
 
 @media (max-width: 760px) {
   .task-graph-schedules > header,
-  .task-graph-schedule-row dl {
+  .task-graph-schedule-row .bb-info-grid {
     grid-template-columns: 1fr;
   }
 

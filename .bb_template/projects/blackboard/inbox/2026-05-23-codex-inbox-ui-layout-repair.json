@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "title": "修复 Inbox 全屏界面布局损坏",
+  "time": "2026-05-23T00:00:00+08:00",
+  "source": "Codex",
+  "project": "blackboard",
+  "topic": "inbox-ui-layout-repair",
+  "done": [
+    "修复 Inbox full 模式右侧 reader 缺少 header 的问题，补回交接详情标题、当前选中文档标题与文件名。",
+    "整理 Inbox full 模式布局层级：外层 panel body 作为单一 bordered surface，split 内部取消多余 padding/gap，左栏和右栏用明确 hairline 分隔。",
+    "调整 reader/list 背景与移动端分隔线，避免透明层叠导致界面像散架。",
+    "新增 `inboxReaderTitle` 中英文 i18n 文案。"
+  ],
+  "validation": [
+    "npm run build --prefix bb_web：通过。",
+    "浏览器打开 http://127.0.0.1:8060/#/projects/blackboard/inbox 并 reload：通过，console error count = 0。",
+    "浏览器 DOM 校验：已出现 `交接详情` reader header，选中文档正常渲染。",
+    "git diff --check：通过，仅 CRLF warning。"
+  ],
+  "next_step": [
+    "如果继续打磨 Inbox，可以把 full/compact 两种布局样式从全局 styles.css 迁移到组件 scoped style，减少未来被全局样式误伤。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/InboxPanel.vue",
+    "bb_web/src/styles.css",
+    "bb_web/src/i18n.ts"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

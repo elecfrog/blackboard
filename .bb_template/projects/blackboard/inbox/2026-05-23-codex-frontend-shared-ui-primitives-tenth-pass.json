@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "title": "继续收敛 section header 到 BbSectionHeader",
+  "time": "2026-05-24T00:00:00+08:00",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "frontend-shared-ui-primitives-tenth-pass",
+  "done": [
+    "新增共享组件 BbSectionHeader，用于统一 title/subtitle/count/actions/divider 的 section 头部结构。",
+    "导出 BbSectionHeader，并在全局 bb-* grammar 中加入 .bb-section-header、title、count、actions、dark theme 变量。",
+    "迁移 InboxStructuredDocument 的 JSON document/section/attachments/extra 头部到 BbSectionHeader。",
+    "迁移 TicketStructuredDocument 的 summary/stories/risks/progress 头部到 BbSectionHeader，保留业务 action button 作为 actions slot。",
+    "迁移 TicketDetailPanel 的 dependencies 与 attachments 头部到 BbSectionHeader。",
+    "迁移 AgentAssignments、AgentMcpTable、AgentMetricsCards、AgentRuntimeConfig、AgentSkillsTable 的 aw-section-header 到 BbSectionHeader。",
+    "更新 DESIGN.md：明确可复用 section header 必须使用 BbSectionHeader，业务组件只负责 actions 内容。"
+  ],
+  "validation": [
+    "rg 'ticket-detail-section-head|ticket-detail-section-title|ticket-detail-section-count|aw-section-header h4|<div class=\"aw-section-header\"|<header class=\"ticket-detail-section-head\"' bb_web/src/components bb_web/src/styles.css：无残留匹配。",
+    "git diff --check -- 本轮相关 bb_web 文件：通过，仅 CRLF warning。",
+    "npm run build --prefix bb_web：通过。",
+    "Browser smoke：打开 Inbox / Tickets / Agents 路由，均可加载且无 console error；Inbox 实际渲染 4 个 .bb-section-header / 4 个 count，Tickets/Agents 当前列表路由未展开被迁移的细节面板。"
+  ],
+  "next_step": [
+    "下一轮建议收 BbToolbar：统一刷新、搜索、筛选、新建、批量操作等顶部操作区。",
+    "然后可以继续收 task graph 内部的小型 timeline/header/action row，但先以 Toolbar 为主，收益更高。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/common/BbSectionHeader.vue",
+    "bb_web/src/components/common/index.ts",
+    "bb_web/src/styles.css",
+    "bb_web/src/components/InboxStructuredDocument.vue",
+    "bb_web/src/components/TicketStructuredDocument.vue",
+    "bb_web/src/components/TicketDetailPanel.vue",
+    "bb_web/src/components/agents/AgentAssignments.vue",
+    "bb_web/src/components/agents/AgentMcpTable.vue",
+    "bb_web/src/components/agents/AgentMetricsCards.vue",
+    "bb_web/src/components/agents/AgentRuntimeConfig.vue",
+    "bb_web/src/components/agents/AgentSkillsTable.vue",
+    "bb_web/DESIGN.md"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

@@ -28,6 +28,9 @@ export interface TaskGraphCatalogItem extends TaskGraphRef {
   edge_count: number
   updated_at: string
   last_run: TaskGraphLastRun | null
+  group_id?: string | null
+  favorite?: boolean
+  sort_order?: number
   /** When the graph JSON failed to parse on the backend, this carries the error message. */
   compile_error?: string | null
 }
@@ -97,7 +100,7 @@ export interface TaskGraphChannelWrite {
 
 // ─── Node Taxonomy Types ────────────────────────────────────────────────────
 
-export type TaskGraphNodeCategory = 'terminal' | 'control' | 'runtime' | 'transform' | 'artifact' | 'integration' | 'approval'
+export type TaskGraphNodeCategory = 'terminal' | 'control' | 'data' | 'runtime' | 'transform' | 'artifact' | 'integration' | 'approval'
 export type TaskGraphNodeRole =
   | 'explorer_agent'
   | 'implementer_agent'
@@ -106,6 +109,7 @@ export type TaskGraphNodeRole =
   | 'handoff_writer'
   | 'opencode_session'
   | 'codex_session'
+  | 'pi_session'
   | 'claude_session'
   | 'local_shell'
   | 'write_wiki_doc'
@@ -155,16 +159,20 @@ export interface TaskGraphNode {
     | 'start'
     | 'end'
     | 'llm'
+    | 'llm_coordinator'
     | 'plan'
     | 'shell'
     | 'human_gate'
     | 'branch'
     | 'loop'
     | 'input_var'
+    | 'data_value'
     | 'sub_graph'
     | 'intent_extract'
     | 'kb_plan'
     | 'manifest_merge'
+    | 'schema_validate'
+    | 'system_write_output'
     | 'llm_mutation'
   label: string
   description?: string
@@ -270,6 +278,8 @@ export interface TaskGraphRunPolicy {
   max_concurrent_runs: number
   queue_enabled: boolean
   max_queue_wait_ms: number
+  queue_timeout_retry_enabled: boolean
+  max_queue_timeout_retries: number
 }
 
 export interface TaskGraphDefinition extends TaskGraphRef {
@@ -297,7 +307,29 @@ export interface TaskGraphDefinition extends TaskGraphRef {
 
 export interface TaskGraphCatalogResult {
   graphs: TaskGraphCatalogItem[]
-  source: 'rest' | 'mock'
+  groups: TaskGraphCatalogGroup[]
+  source: 'rest'
+}
+
+export type TaskGraphCatalogGroupKind = 'system' | 'project'
+
+export interface TaskGraphCatalogGroup {
+  id: string
+  title: string
+  kind: TaskGraphCatalogGroupKind
+  sort_order: number
+}
+
+export interface TaskGraphCatalogEntryPatch extends TaskGraphRef {
+  group_id?: string | null
+  favorite?: boolean
+  sort_order?: number
+}
+
+export interface TaskGraphCatalogPatchInput {
+  schema_version?: number
+  groups: TaskGraphCatalogGroup[]
+  entries: TaskGraphCatalogEntryPatch[]
 }
 
 export interface TaskGraphRunResolverOptions {
@@ -447,6 +479,8 @@ export interface TaskGraphRunDetail {
 export interface TaskGraphValidationError {
   target: 'graph' | 'node' | 'edge'
   id?: string
+  path?: string
+  code?: string
   message: string
 }
 
@@ -505,6 +539,49 @@ export interface TaskGraphRunEvent {
   created_at: string
 }
 
+export type TaskGraphToolLifecycleStatus =
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'timeout'
+  | 'paused'
+  | 'skipped'
+
+export interface TaskGraphToolLifecycleError {
+  code: string
+  message: string
+  category?: string
+}
+
+export interface TaskGraphToolLifecycleArtifact {
+  id?: string
+  path: string
+  content_type?: string
+  label?: string
+}
+
+export interface TaskGraphToolLifecyclePayload {
+  schema_version: number
+  run_id: string
+  superstep: number
+  node_id: string
+  node_run_id: string
+  tool_call_id: string
+  tool_name: string
+  tool_kind: string
+  attempt: number
+  status: TaskGraphToolLifecycleStatus
+  sequence?: number
+  started_at?: string
+  ended_at?: string
+  duration_ms?: number
+  input_summary?: unknown
+  output_summary?: unknown
+  error?: TaskGraphToolLifecycleError
+  artifacts?: TaskGraphToolLifecycleArtifact[]
+}
+
 export type TaskGraphScheduleKind = 'interval' | 'daily' | 'weekly' | 'cron'
 
 export interface TaskGraphScheduleSpec {
@@ -557,10 +634,27 @@ export type TaskGraphSchedulePatchInput = Partial<{
 }>
 
 const TASK_GRAPH_ENGINE_STORAGE_KEY = 'blackboard.task-graphs.engine'
-const knownLlmRuntimes = ['codex', 'opencode', 'codebuddy']
-const MOCK_PREGEL_MUTATION_GRAPH_ID = 'mock-pregel-mutation'
-const MOCK_PREGEL_MUTATION_RUN_ID = 'mock-pregel-mutation-run'
-const MOCK_PREGEL_MUTATION_CONFLICT_RUN_ID = 'mock-pregel-mutation-conflict-run'
+const knownLlmRuntimes = ['codex', 'opencode', 'codebuddy', 'pi']
+const knownPinValueTypes: PinValueType[] = [
+  'string',
+  'text',
+  'int',
+  'float',
+  'bool',
+  'json',
+  'array',
+  'any',
+  'markdown',
+  'file_ref',
+  'wiki_ref',
+  'ticket_ref',
+  'diff',
+  'test_result',
+  'review_comment',
+  'handoff_summary',
+  'runtime_log',
+  'artifact_ref',
+]
 
 function taskGraphEngineOverride(): 'csharp_v2' | null {
   if (typeof window === 'undefined') return null
@@ -568,6 +662,33 @@ function taskGraphEngineOverride(): 'csharp_v2' | null {
     return window.localStorage.getItem(TASK_GRAPH_ENGINE_STORAGE_KEY) === 'csharp_v2' ? 'csharp_v2' : null
   } catch {
     return null
+  }
+}
+
+export class TaskGraphHttpError extends Error {
+  status: number
+  statusText: string
+  url: string
+  code?: string
+  details?: TaskGraphValidationError[]
+
+  constructor(
+    message: string,
+    options: {
+      status: number
+      statusText: string
+      url: string
+      code?: string
+      details?: TaskGraphValidationError[]
+    },
+  ) {
+    super(message)
+    this.name = 'TaskGraphHttpError'
+    this.status = options.status
+    this.statusText = options.statusText
+    this.url = options.url
+    this.code = options.code
+    this.details = options.details
   }
 }
 
@@ -580,7 +701,37 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   })
-  if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText} for ${url}`)
+  if (!response.ok) {
+    let code: string | undefined
+    let message = `HTTP ${response.status} ${response.statusText} for ${url}`
+    let details: TaskGraphValidationError[] | undefined
+    try {
+      const payload = await response.json() as {
+        error?: {
+          code?: string
+          message?: string
+          details?: TaskGraphValidationError[]
+        }
+      }
+      code = payload.error?.code
+      details = payload.error?.details
+      const detailText = details && details.length > 0
+        ? `\n${details.slice(0, 8).map((item) => `• ${item.path ?? item.id ?? item.target}: ${item.message}`).join('\n')}`
+        : ''
+      message = payload.error?.message
+        ? `${payload.error.message}${detailText}`
+        : message
+    } catch {
+      // Keep the HTTP fallback when the backend did not return JSON.
+    }
+    throw new TaskGraphHttpError(message, {
+      status: response.status,
+      statusText: response.statusText,
+      url,
+      code,
+      details,
+    })
+  }
   return (await response.json()) as T
 }
 
@@ -765,7 +916,7 @@ export function validateTaskGraph(
     if (node.type === 'end' && outgoing.length > 0) {
       errors.push({ target: 'node', id: node.id, message: 'End node cannot have outgoing edges.' })
     }
-    if (node.type === 'llm') {
+    if (node.type === 'llm' || node.type === 'llm_coordinator') {
       const runAs = configString(node.config, 'run_as') === 'agent' ? 'agent' : 'llm'
       if (runAs === 'agent') {
         if (!configString(node.config, 'agent_profile')) {
@@ -776,6 +927,23 @@ export function validateTaskGraph(
         if (!knownLlmRuntimes.includes(runtime)) {
           errors.push({ target: 'node', id: node.id, message: `LLM runtime must be one of ${knownLlmRuntimes.join(', ')}.` })
         }
+      }
+    }
+    if (node.type === 'llm_coordinator') {
+      const policy = configRecord(node.config, 'coordinator')
+      const maxNodes = Number(policy.max_nodes ?? 32)
+      const maxEdges = Number(policy.max_edges ?? 64)
+      if (!Number.isFinite(maxNodes) || maxNodes <= 0) {
+        errors.push({ target: 'node', id: node.id, message: 'Coordinator max_nodes must be greater than 0.' })
+      }
+      if (!Number.isFinite(maxEdges) || maxEdges <= 0) {
+        errors.push({ target: 'node', id: node.id, message: 'Coordinator max_edges must be greater than 0.' })
+      }
+    }
+    if (node.type === 'data_value') {
+      const valueType = configString(node.config, 'value_type') || 'string'
+      if (!knownPinValueTypes.includes(valueType as PinValueType)) {
+        errors.push({ target: 'node', id: node.id, message: `Data value type must be one of ${knownPinValueTypes.join(', ')}.` })
       }
     }
     if (node.type === 'shell') {
@@ -860,373 +1028,28 @@ export function validateTaskGraph(
   return { status: errors.length === 0 ? 'passed' : 'failed', errors }
 }
 
-function shouldExposeTaskGraphMocks(project: string) {
-  return project === 'blackboard'
-}
-
-function mockPregelMutationGraph(revision = 0): TaskGraphDefinition {
-  const reviewNode: TaskGraphNode = {
-    id: 'review',
-    type: 'human_gate',
-    label: 'Review',
-    description: 'Runtime review node added by a topology mutation.',
-    position: { x: 640, y: 120 },
-    config: {
-      actions: [
-        { id: 'approve', label: 'Approve', result: 'resume' },
-        { id: 'reject', label: 'Reject', result: 'reject' },
-      ],
-    },
-  }
-  const nodes: TaskGraphNode[] = [
-    { id: 'start', type: 'start', label: 'Start', position: { x: 80, y: 120 }, config: {} },
-    {
-      id: 'planner',
-      type: 'llm',
-      label: 'Planner',
-      description: 'Produces runtime graph mutation requests.',
-      position: { x: 360, y: 120 },
-      config: { runtime: 'codex', prompt: 'Plan next review step.' },
-    },
-    ...(revision > 0 ? [reviewNode] : []),
-    { id: 'end', type: 'end', label: 'End', position: { x: revision > 0 ? 920 : 640, y: 120 }, config: { result: 'succeeded' } },
-  ]
-  const edges: TaskGraphEdge[] = revision > 0
-    ? [
-        { id: 'start__planner', from: 'start', to: 'planner', kind: 'control' },
-        { id: 'planner__review', from: 'planner', to: 'review', kind: 'control' },
-        { id: 'review__end', from: 'review', to: 'end', kind: 'control' },
-      ]
-    : [
-        { id: 'start__planner', from: 'start', to: 'planner', kind: 'control' },
-        { id: 'planner__end', from: 'planner', to: 'end', kind: 'control' },
-      ]
-
-  return {
-    schema_version: 1,
-    scope: 'project',
-    id: MOCK_PREGEL_MUTATION_GRAPH_ID,
-    title: 'Pregel topology mutation fixture',
-    description: 'Frontend fixture for active_nodes, graph revision, and topology mutation timeline.',
-    version: 1,
-    readonly: true,
-    metadata: { tags: ['fixture', 'pregel', 'topology-mutation'] },
-    nodes,
-    edges,
-  }
-}
-
-function mockPregelMutationCatalogItem(): TaskGraphCatalogItem {
-  return {
-    scope: 'project',
-    id: MOCK_PREGEL_MUTATION_GRAPH_ID,
-    title: 'Pregel topology mutation fixture',
-    description: 'Mock run fixture for graph revision and topology mutation UI.',
-    version: 1,
-    readonly: true,
-    source: 'project',
-    origin: null,
-    node_count: 3,
-    edge_count: 2,
-    updated_at: '2026-05-16T00:00:00.000Z',
-    last_run: {
-      run_id: MOCK_PREGEL_MUTATION_RUN_ID,
-      status: 'paused',
-      updated_at: '2026-05-16T00:04:00.000Z',
-    },
-  }
-}
-
-function mockMutationSummary(): GraphMutationSummary {
-  return {
-    added_nodes: ['review'],
-    removed_nodes: [],
-    added_edges: ['planner__review', 'review__end'],
-    removed_edges: ['planner__end'],
-    patched_nodes: [],
-  }
-}
-
-function mockTaskGraphRunSummaries(project: string): TaskGraphRunSummary[] {
-  const graph_ref = { scope: 'project', id: MOCK_PREGEL_MUTATION_GRAPH_ID, version: 1 } as TaskGraphRef & { version: number }
-  return [
-    normalizeTaskGraphRunSummary({
-      id: MOCK_PREGEL_MUTATION_RUN_ID,
-      project,
-      graph_ref,
-      graph: graph_ref,
-      status: 'paused',
-      created_at: '2026-05-16T00:00:00.000Z',
-      started_at: '2026-05-16T00:00:05.000Z',
-      updated_at: '2026-05-16T00:04:00.000Z',
-      current_superstep: 2,
-      last_checkpoint_id: 'mock-checkpoint-mutation-1',
-      current_graph_revision: 1,
-      active_nodes: ['review'],
-    }),
-    normalizeTaskGraphRunSummary({
-      id: MOCK_PREGEL_MUTATION_CONFLICT_RUN_ID,
-      project,
-      graph_ref,
-      graph: graph_ref,
-      status: 'failed',
-      created_at: '2026-05-16T00:10:00.000Z',
-      started_at: '2026-05-16T00:10:04.000Z',
-      updated_at: '2026-05-16T00:11:30.000Z',
-      completed_at: '2026-05-16T00:11:30.000Z',
-      current_superstep: 1,
-      last_checkpoint_id: 'mock-checkpoint-mutation-conflict',
-      current_graph_revision: 0,
-      active_nodes: [],
-    }),
-  ]
-}
-
-function appendMockTaskGraphCatalog(project: string, graphs: TaskGraphCatalogItem[]) {
-  if (!shouldExposeTaskGraphMocks(project) || graphs.some((graph) => graph.id === MOCK_PREGEL_MUTATION_GRAPH_ID)) return graphs
-  return [...graphs, mockPregelMutationCatalogItem()]
-}
-
-function appendMockTaskGraphRuns(project: string, runs: TaskGraphRunSummary[]) {
-  if (!shouldExposeTaskGraphMocks(project)) return runs
-  const existing = new Set(runs.map((run) => run.id))
-  return [
-    ...runs,
-    ...mockTaskGraphRunSummaries(project).filter((run) => !existing.has(run.id)),
-  ]
-}
-
-function mockTaskGraphRunDetail(project: string, runId: string): TaskGraphRunDetail | null {
-  const graph_ref = { scope: 'project', id: MOCK_PREGEL_MUTATION_GRAPH_ID, version: 1 } as TaskGraphRef & { version: number }
-  if (runId === MOCK_PREGEL_MUTATION_RUN_ID) {
-    return normalizeTaskGraphRunDetail({
-      id: MOCK_PREGEL_MUTATION_RUN_ID,
-      project,
-      graph_ref,
-      status: 'paused',
-      created_at: '2026-05-16T00:00:00.000Z',
-      started_at: '2026-05-16T00:00:05.000Z',
-      updated_at: '2026-05-16T00:04:00.000Z',
-      current_superstep: 2,
-      last_checkpoint_id: 'mock-checkpoint-mutation-1',
-      current_graph_revision: 1,
-      active_nodes: ['review'],
-      paused: {
-        node_id: 'review',
-        reason: 'Review node was added by topology mutation and is waiting for a HumanGate action.',
-        actions: [
-          { id: 'approve', label: 'Approve', result: 'resume' },
-          { id: 'reject', label: 'Reject', result: 'reject' },
-        ],
-      },
-      context: {
-        input: { topic: 'topology mutation demo' },
-        node_outputs: {
-          planner: {
-            mutation_batch_id: 'mock-mutation-batch-1',
-            summary: mockMutationSummary(),
-          },
-        },
-        branch_decisions: [],
-        loop_iterations: [],
-      },
-      graph_snapshot: mockPregelMutationGraph(1),
-      nodes: [
-        { node_id: 'start', status: 'succeeded', started_at: '2026-05-16T00:00:05.000Z', completed_at: '2026-05-16T00:00:06.000Z', duration_ms: 1000 },
-        { node_id: 'planner', status: 'succeeded', started_at: '2026-05-16T00:00:07.000Z', completed_at: '2026-05-16T00:02:20.000Z', duration_ms: 133000 },
-        { node_id: 'review', status: 'paused', started_at: '2026-05-16T00:04:00.000Z' },
-        { node_id: 'end', status: 'idle' },
-      ],
-    })
-  }
-
-  if (runId === MOCK_PREGEL_MUTATION_CONFLICT_RUN_ID) {
-    return normalizeTaskGraphRunDetail({
-      id: MOCK_PREGEL_MUTATION_CONFLICT_RUN_ID,
-      project,
-      graph_ref,
-      status: 'failed',
-      created_at: '2026-05-16T00:10:00.000Z',
-      started_at: '2026-05-16T00:10:04.000Z',
-      updated_at: '2026-05-16T00:11:30.000Z',
-      completed_at: '2026-05-16T00:11:30.000Z',
-      current_superstep: 1,
-      last_checkpoint_id: 'mock-checkpoint-mutation-conflict',
-      current_graph_revision: 0,
-      active_nodes: [],
-      context: {
-        input: { topic: 'topology mutation conflict demo' },
-        node_outputs: {},
-        branch_decisions: [],
-        loop_iterations: [],
-      },
-      graph_snapshot: mockPregelMutationGraph(0),
-      nodes: [
-        { node_id: 'start', status: 'succeeded', started_at: '2026-05-16T00:10:04.000Z', completed_at: '2026-05-16T00:10:05.000Z', duration_ms: 1000 },
-        {
-          node_id: 'planner',
-          status: 'failed',
-          started_at: '2026-05-16T00:10:06.000Z',
-          completed_at: '2026-05-16T00:11:30.000Z',
-          duration_ms: 84000,
-          error: {
-            code: 'topology_mutation_conflict',
-            message: 'Rejected add_node review because the node id already exists with a different spec.',
-          },
-        },
-        { node_id: 'end', status: 'idle' },
-      ],
-    })
-  }
-
-  return null
-}
-
-function mockTopologyMutationEvents(project: string, runId: string): TaskGraphRunEvent[] {
-  const _project = project
-  if (runId === MOCK_PREGEL_MUTATION_RUN_ID) {
-    return [
-      {
-        id: 'mock-event-topology-mutation-1',
-        seq: 1,
-        run_id: runId,
-        superstep: 1,
-        kind: 'topology_mutation',
-        message: 'Topology mutation applied.',
-        payload: {
-          batch_id: 'mock-mutation-batch-1',
-          graph_revision_before: 0,
-          graph_revision_after: 1,
-          result: {
-            status: 'applied',
-            new_revision: 1,
-            summary: mockMutationSummary(),
-          },
-        } satisfies TopologyMutationEventPayload,
-        created_at: '2026-05-16T00:03:30.000Z',
-      },
-    ]
-  }
-
-  if (runId === MOCK_PREGEL_MUTATION_CONFLICT_RUN_ID) {
-    return [
-      {
-        id: 'mock-event-topology-mutation-conflict',
-        seq: 1,
-        run_id: runId,
-        superstep: 1,
-        kind: 'topology_mutation',
-        message: 'Topology mutation rejected.',
-        payload: {
-          batch_id: 'mock-mutation-batch-conflict',
-          graph_revision_before: 0,
-          graph_revision_after: 0,
-          result: {
-            status: 'rejected',
-            conflicts: [
-              {
-                code: 'topology_mutation_conflict',
-                message: 'Node review already exists with a different config.',
-                request_ids: ['mock-conflict-add-review'],
-                node_id: 'review',
-              },
-            ],
-          },
-        } satisfies TopologyMutationEventPayload,
-        created_at: '2026-05-16T00:11:20.000Z',
-      },
-    ]
-  }
-
-  return []
-}
-
-function mockTaskGraphRunCheckpoints(project: string, runId: string): TaskGraphSuperstepCheckpoint[] {
-  const _project = project
-  if (runId === MOCK_PREGEL_MUTATION_RUN_ID) {
-    return [
-      normalizeTaskGraphCheckpoint({
-        id: 'mock-checkpoint-mutation-1',
-        run_id: runId,
-        superstep: 1,
-        status: 'paused',
-        created_at: '2026-05-16T00:03:40.000Z',
-        graph_revision_before: 0,
-        graph_revision_after: 1,
-        mutation_batch_id: 'mock-mutation-batch-1',
-        ready_nodes: ['review'],
-        waiting_nodes: ['end'],
-        node_statuses: { start: 'succeeded', planner: 'succeeded', review: 'queued', end: 'idle' },
-        context: {
-          input: { topic: 'topology mutation demo' },
-          node_outputs: {},
-          branch_decisions: [],
-          loop_iterations: [],
-        },
-        pending_effects: [
-          {
-            task_id: 'planner-task-1',
-            source_node_id: 'planner',
-            normal_writes: [],
-            graph_mutations: [
-              {
-                id: 'mock-add-review',
-                source_task_id: 'planner-task-1',
-                source_node_id: 'planner',
-                op: { type: 'add_node', node: mockPregelMutationGraph(1).nodes.find((node) => node.id === 'review')! },
-                reason: 'Planner requested a review gate.',
-              },
-            ],
-          },
-        ],
-      }),
-    ]
-  }
-
-  if (runId === MOCK_PREGEL_MUTATION_CONFLICT_RUN_ID) {
-    return [
-      normalizeTaskGraphCheckpoint({
-        id: 'mock-checkpoint-mutation-conflict',
-        run_id: runId,
-        superstep: 1,
-        status: 'failed',
-        created_at: '2026-05-16T00:11:30.000Z',
-        completed_at: '2026-05-16T00:11:30.000Z',
-        graph_revision_before: 0,
-        graph_revision_after: 0,
-        mutation_batch_id: 'mock-mutation-batch-conflict',
-        ready_nodes: [],
-        waiting_nodes: ['end'],
-        node_statuses: { start: 'succeeded', planner: 'failed', end: 'idle' },
-        context: {
-          input: { topic: 'topology mutation conflict demo' },
-          node_outputs: {},
-          branch_decisions: [],
-          loop_iterations: [],
-        },
-        message: 'Topology mutation rejected because add_node review conflicted with an existing node id.',
-      }),
-    ]
-  }
-
-  return []
-}
-
 export async function loadTaskGraphCatalog(project: string): Promise<TaskGraphCatalogResult> {
   const encoded = encodeURIComponent(project)
-  try {
-    const payload = await fetchJson<{ graphs: TaskGraphCatalogItem[] }>(`/api/projects/${encoded}/task-graphs`)
-    return { graphs: appendMockTaskGraphCatalog(project, payload.graphs ?? []), source: 'rest' }
-  } catch (err) {
-    if (shouldExposeTaskGraphMocks(project)) return { graphs: [mockPregelMutationCatalogItem()], source: 'mock' }
-    throw err
-  }
+  const payload = await fetchJson<{ graphs: TaskGraphCatalogItem[]; groups?: TaskGraphCatalogGroup[] }>(`/api/projects/${encoded}/task-graphs`)
+  return { graphs: payload.graphs ?? [], groups: payload.groups ?? [], source: 'rest' }
 }
 
-export async function readTaskGraph(project: string, ref: TaskGraphRef): Promise<{ graph: TaskGraphDefinition; source: 'rest' | 'mock' }> {
-  if (shouldExposeTaskGraphMocks(project) && ref.scope === 'project' && ref.id === MOCK_PREGEL_MUTATION_GRAPH_ID) {
-    return { graph: mockPregelMutationGraph(0), source: 'mock' }
-  }
+export async function saveTaskGraphCatalog(
+  project: string,
+  patch: TaskGraphCatalogPatchInput,
+): Promise<TaskGraphCatalogResult> {
+  const encoded = encodeURIComponent(project)
+  const payload = await fetchJson<{ graphs: TaskGraphCatalogItem[]; groups?: TaskGraphCatalogGroup[] }>(
+    `/api/projects/${encoded}/task-graphs/catalog`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ schema_version: 1, ...patch }),
+    },
+  )
+  return { graphs: payload.graphs ?? [], groups: payload.groups ?? [], source: 'rest' }
+}
+
+export async function readTaskGraph(project: string, ref: TaskGraphRef): Promise<{ graph: TaskGraphDefinition; source: 'rest' }> {
   const encoded = encodeURIComponent(project)
   const payload = await fetchJson<{ graph: TaskGraphDefinition }>(
     `/api/projects/${encoded}/task-graphs/${encodeURIComponent(ref.scope)}/${encodeURIComponent(ref.id)}`,
@@ -1234,7 +1057,7 @@ export async function readTaskGraph(project: string, ref: TaskGraphRef): Promise
   return { graph: payload.graph, source: 'rest' }
 }
 
-export async function createProjectTaskGraph(project: string, title: string): Promise<{ graph: TaskGraphDefinition; source: 'rest' | 'mock' }> {
+export async function createProjectTaskGraph(project: string, title: string): Promise<{ graph: TaskGraphDefinition; source: 'rest' }> {
   const trimmedTitle = title.trim() || 'New Task Graph'
   const id = uniqueProjectGraphId(project, kebabId(trimmedTitle, 'new-task-graph'))
   const graph: TaskGraphDefinition = {
@@ -1267,7 +1090,7 @@ export async function forkSystemTaskGraph(
   project: string,
   systemId: string,
   title?: string,
-): Promise<{ graph: TaskGraphDefinition; source: 'rest' | 'mock' }> {
+): Promise<{ graph: TaskGraphDefinition; source: 'rest' }> {
   const targetTitle = title?.trim() || `${systemId}（项目自定义）`
   const targetId = uniqueProjectGraphId(project, kebabId(`${systemId}-custom`, 'custom-task-graph'))
   const encoded = encodeURIComponent(project)
@@ -1286,44 +1109,25 @@ export async function saveProjectTaskGraph(
   project: string,
   graph: TaskGraphDefinition,
   expectedVersion = graph.version,
-): Promise<{ graph: TaskGraphDefinition; validation: TaskGraphValidationResult; source: 'rest' | 'mock' }> {
+): Promise<{ graph: TaskGraphDefinition; validation: TaskGraphValidationResult; source: 'rest' }> {
   const encoded = encodeURIComponent(project)
   const scopeSegment = graph.scope === 'system' ? 'system' : 'project'
-  try {
-    const payload = await fetchJson<{ graph: TaskGraphDefinition; validation: TaskGraphValidationResult }>(
-      `/api/projects/${encoded}/task-graphs/${scopeSegment}/${encodeURIComponent(graph.id)}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({ graph, expected_version: expectedVersion }),
-      },
-    )
-    return { graph: payload.graph, validation: payload.validation, source: 'rest' }
-  } catch {
-    const next = {
-      ...graph,
-      version: graph.version + 1,
-      readonly: false,
-      scope: graph.scope,
-    }
-    return {
-      graph: next,
-      validation: validateTaskGraph(next, { project }),
-      source: 'mock',
-    }
-  }
+  const payload = await fetchJson<{ graph: TaskGraphDefinition; validation: TaskGraphValidationResult }>(
+    `/api/projects/${encoded}/task-graphs/${scopeSegment}/${encodeURIComponent(graph.id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ graph, expected_version: expectedVersion }),
+    },
+  )
+  return { graph: payload.graph, validation: payload.validation, source: 'rest' }
 }
 
-export async function listTaskGraphRuns(project: string): Promise<{ runs: TaskGraphRunSummary[]; source: 'rest' | 'mock' }> {
+export async function listTaskGraphRuns(project: string): Promise<{ runs: TaskGraphRunSummary[]; source: 'rest' }> {
   const encoded = encodeURIComponent(project)
-  try {
-    const payload = await fetchJson<{ runs: TaskGraphRunSummary[] }>(`/api/projects/${encoded}/task-graph-runs`)
-    return {
-      source: 'rest',
-      runs: appendMockTaskGraphRuns(project, payload.runs.map(normalizeTaskGraphRunSummary)),
-    }
-  } catch (err) {
-    if (shouldExposeTaskGraphMocks(project)) return { source: 'mock', runs: mockTaskGraphRunSummaries(project) }
-    throw err
+  const payload = await fetchJson<{ runs: TaskGraphRunSummary[] }>(`/api/projects/${encoded}/task-graph-runs`)
+  return {
+    source: 'rest',
+    runs: payload.runs.map(normalizeTaskGraphRunSummary),
   }
 }
 
@@ -1332,10 +1136,7 @@ export async function startTaskGraphRun(
   ref: TaskGraphRef,
   input: Record<string, unknown> = {},
   launchOptions: TaskGraphRunLaunchOptions = {},
-): Promise<{ run: TaskGraphRunSummary; source: 'rest' | 'mock' }> {
-  if (shouldExposeTaskGraphMocks(project) && ref.scope === 'project' && ref.id === MOCK_PREGEL_MUTATION_GRAPH_ID) {
-    return { run: mockTaskGraphRunSummaries(project)[0], source: 'mock' }
-  }
+): Promise<{ run: TaskGraphRunSummary; source: 'rest' }> {
   const encoded = encodeURIComponent(project)
   const engine = taskGraphEngineOverride()
   const intent = launchOptions.intent?.trim()
@@ -1416,46 +1217,28 @@ export async function cancelTaskGraphRun(project: string, runId: string): Promis
   })
 }
 
-export async function readTaskGraphRun(project: string, runId: string): Promise<{ run: TaskGraphRunDetail; source: 'rest' | 'mock' }> {
+export async function readTaskGraphRun(project: string, runId: string): Promise<{ run: TaskGraphRunDetail; source: 'rest' }> {
   const encoded = encodeURIComponent(project)
-  try {
-    const payload = await fetchJson<{ run: TaskGraphRunDetail }>(
-      `/api/projects/${encoded}/task-graph-runs/${encodeURIComponent(runId)}`,
-    )
-    return { run: normalizeTaskGraphRunDetail(payload.run), source: 'rest' }
-  } catch (err) {
-    const mockRun = shouldExposeTaskGraphMocks(project) ? mockTaskGraphRunDetail(project, runId) : null
-    if (mockRun) return { run: mockRun, source: 'mock' }
-    throw err
-  }
+  const payload = await fetchJson<{ run: TaskGraphRunDetail }>(
+    `/api/projects/${encoded}/task-graph-runs/${encodeURIComponent(runId)}`,
+  )
+  return { run: normalizeTaskGraphRunDetail(payload.run), source: 'rest' }
 }
 
 export async function readTaskGraphRunEventLog(project: string, runId: string): Promise<TaskGraphRunEvent[]> {
   const encoded = encodeURIComponent(project)
-  try {
-    const payload = await fetchJson<{ events: TaskGraphRunEvent[] }>(
-      `/api/projects/${encoded}/task-graph-runs/${encodeURIComponent(runId)}/event-log`,
-    )
-    return payload.events
-  } catch (err) {
-    const mockEvents = shouldExposeTaskGraphMocks(project) ? mockTopologyMutationEvents(project, runId) : []
-    if (mockEvents.length > 0) return mockEvents
-    throw err
-  }
+  const payload = await fetchJson<{ events: TaskGraphRunEvent[] }>(
+    `/api/projects/${encoded}/task-graph-runs/${encodeURIComponent(runId)}/event-log`,
+  )
+  return payload.events
 }
 
 export async function readTaskGraphRunCheckpoints(project: string, runId: string): Promise<TaskGraphSuperstepCheckpoint[]> {
   const encoded = encodeURIComponent(project)
-  try {
-    const payload = await fetchJson<{ checkpoints: TaskGraphSuperstepCheckpoint[] }>(
-      `/api/projects/${encoded}/task-graph-runs/${encodeURIComponent(runId)}/checkpoints`,
-    )
-    return payload.checkpoints.map(normalizeTaskGraphCheckpoint)
-  } catch (err) {
-    const mockCheckpoints = shouldExposeTaskGraphMocks(project) ? mockTaskGraphRunCheckpoints(project, runId) : []
-    if (mockCheckpoints.length > 0) return mockCheckpoints
-    throw err
-  }
+  const payload = await fetchJson<{ checkpoints: TaskGraphSuperstepCheckpoint[] }>(
+    `/api/projects/${encoded}/task-graph-runs/${encodeURIComponent(runId)}/checkpoints`,
+  )
+  return payload.checkpoints.map(normalizeTaskGraphCheckpoint)
 }
 
 export async function resumeTaskGraphGate(
@@ -1463,15 +1246,7 @@ export async function resumeTaskGraphGate(
   runId: string,
   nodeId: string,
   actionId: string,
-): Promise<{ run: TaskGraphRunSummary; source: 'rest' | 'mock' }> {
-  if (
-    shouldExposeTaskGraphMocks(project)
-    && runId === MOCK_PREGEL_MUTATION_RUN_ID
-    && nodeId === 'review'
-    && actionId
-  ) {
-    return { run: mockTaskGraphRunSummaries(project)[0], source: 'mock' }
-  }
+): Promise<{ run: TaskGraphRunSummary; source: 'rest' }> {
   const encoded = encodeURIComponent(project)
   const payload = await fetchJson<{ run: TaskGraphRunSummary }>(
     `/api/projects/${encoded}/task-graph-runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(nodeId)}/resume`,

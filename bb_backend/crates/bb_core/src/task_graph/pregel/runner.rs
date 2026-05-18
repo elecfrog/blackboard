@@ -1,10 +1,10 @@
-//! TaskGraph Pregel run entrypoint.
+//! `TaskGraph` Pregel run entrypoint.
 //!
 //! This module provides the public run/resume API around `PregelLoop`.
 //! The implementation is delegated to:
 //! - `coordinator.rs` — Graph Coordinator (control plane, single-threaded)
 //! - `executor.rs` — Task Executor (execution plane, parallel)
-//! - `nodes/` — Per-node execution logic (returns NodeOutcome)
+//! - `nodes/` — Per-node execution logic (returns `NodeOutcome`)
 //!
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -25,7 +25,7 @@ use crate::task_graph::run_state::{self, NodeRunStatus, RunStatus, TaskGraphRunN
 
 // ─── Public runner options ───────────────────────────────────────────────────
 
-/// Options for TaskGraph runner execution.
+/// Options for `TaskGraph` runner execution.
 #[derive(Debug, Clone)]
 pub struct RunnerOptions {
     /// Workspace root path.
@@ -38,12 +38,14 @@ pub struct RunnerOptions {
     pub run_id: String,
     /// Path to codex binary.
     pub codex_path: String,
-    /// Path to CodeBuddy binary.
+    /// Path to `CodeBuddy` binary.
     pub codebuddy_path: String,
     /// Path to opencode binary.
     pub opencode_path: String,
-    /// Optional OpenCode config content injected for child runs.
+    /// Optional `OpenCode` config content injected for child runs.
     pub opencode_config_content: Option<String>,
+    /// Path to Pi binary.
+    pub pi_path: String,
     /// Optional model override.
     pub model: Option<String>,
     /// Timeout for a single node execution.
@@ -62,11 +64,12 @@ pub struct RunnerOptions {
     pub skills: Vec<String>,
 }
 
-/// Resolve the scripts directory for TaskGraph agent sessions.
+/// Resolve the scripts directory for `TaskGraph` agent sessions.
 ///
 /// Source checkouts commonly execute with `.bb_template` as the workspace root
 /// while scripts live at the repository root. Packaged/user workspaces keep
 /// copied scripts under the writable workspace root.
+#[must_use]
 pub fn resolve_scripts_dir(workspace_root: &Path) -> PathBuf {
     let workspace_scripts = workspace_root.join("scripts");
     if workspace_scripts.join("check_ticket_ids.py").is_file() {
@@ -147,17 +150,12 @@ pub enum RunOutcome {
 pub fn execute_run(opts: &RunnerOptions) -> Result<RunOutcome, TaskGraphError> {
     let result = GraphCoordinator::load(opts).and_then(|mut c| c.run());
     if let Err(ref e) = result {
-        // Fast-fail: 确保 run 被标记为 failed
+        // Fast-fail: ensure terminal run/node projections stay consistent.
         eprintln!(
             "[fast-fail] execute_run error for run {}: {}",
             opts.run_id, e
         );
-        let _ = run_state::update_run_status(
-            &opts.workspace_root,
-            &opts.project,
-            &opts.run_id,
-            RunStatus::Failed,
-        );
+        fail_run_after_error(opts, "runner_error", e);
     }
     result
 }
@@ -191,7 +189,7 @@ pub fn resume_run(opts: &RunnerOptions, action_id: &str) -> Result<RunOutcome, T
         .find(|a| a.id == action_id)
         .ok_or_else(|| TaskGraphError::InvalidRunTransition {
             from: "paused".to_string(),
-            to: format!("running (action '{}' not found)", action_id),
+            to: format!("running (action '{action_id}' not found)"),
         })?;
 
     let gate_node_id = paused.node_id.clone();
@@ -204,7 +202,7 @@ pub fn resume_run(opts: &RunnerOptions, action_id: &str) -> Result<RunOutcome, T
         // Mark the gate node as skipped
         let now = Utc::now().to_rfc3339();
         let gate_state = TaskGraphRunNode {
-            node_id: gate_node_id.clone(),
+            node_id: gate_node_id,
             status: NodeRunStatus::Skipped,
             started_at: None,
             completed_at: Some(now),
@@ -213,7 +211,7 @@ pub fn resume_run(opts: &RunnerOptions, action_id: &str) -> Result<RunOutcome, T
             exit_code: None,
             error: None,
             output_artifact: None,
-            log_tail: Some(format!("Human gate rejected: action={}", action_id)),
+            log_tail: Some(format!("Human gate rejected: action={action_id}")),
             child_run_id: None,
             runtime: None,
             agent: None,
@@ -249,7 +247,7 @@ pub fn resume_run(opts: &RunnerOptions, action_id: &str) -> Result<RunOutcome, T
         exit_code: None,
         error: None,
         output_artifact: None,
-        log_tail: Some(format!("Human gate approved: action={}", action_id)),
+        log_tail: Some(format!("Human gate approved: action={action_id}")),
         child_run_id: None,
         runtime: None,
         agent: None,
@@ -272,7 +270,13 @@ pub fn resume_run(opts: &RunnerOptions, action_id: &str) -> Result<RunOutcome, T
     let graph = &detail.graph_snapshot;
 
     let Some(gate_node) = graph.nodes.iter().find(|node| node.id == gate_node_id) else {
-        run_state::update_run_status(ws, project, run_id, RunStatus::Failed)?;
+        run_state::fail_run_active_nodes(
+            ws,
+            project,
+            run_id,
+            "human_gate_not_found",
+            "Human gate node not found in graph snapshot",
+        )?;
         return Ok(RunOutcome::Failed {
             node_id: gate_node_id,
             message: "Human gate node not found in graph snapshot".to_string(),
@@ -290,12 +294,12 @@ pub fn resume_run(opts: &RunnerOptions, action_id: &str) -> Result<RunOutcome, T
         .clone()
         .unwrap_or_else(|| initial_pregel_checkpoint(&compiled, current_run.context.input.clone()));
     let resume_task = PregelTask {
-        id: format!("task-resume-{}", gate_node_id),
+        id: format!("task-resume-{gate_node_id}"),
         node_id: gate_node_id.clone(),
         kind: PregelTaskKind::Pull,
         triggers: Vec::new(),
         path: vec!["__resume__".to_string(), gate_node_id.clone()],
-        input: serde_json::json!({ "action": action_id, "result": action_result.clone() }),
+        input: serde_json::json!({ "action": action_id, "result": action_result }),
     };
     let resume_output = serde_json::json!({ "action": action_id, "result": action_result });
     let mut resume_writes = writes_from_node_outcome(
@@ -318,14 +322,39 @@ pub fn resume_run(opts: &RunnerOptions, action_id: &str) -> Result<RunOutcome, T
     run_state::write_run_json(ws, project, run_id, &current_run)?;
 
     // Continue execution via Coordinator
-    let result = execute_run(opts);
-    if let Err(ref e) = result {
-        // Fast-fail: resume 失败时也确保 run 被标记为 failed
-        eprintln!(
-            "[fast-fail] resume_run error for run {}: {}",
-            opts.run_id, e
-        );
-        let _ = run_state::update_run_status(ws, project, run_id, RunStatus::Failed);
+    execute_run(opts)
+}
+
+fn fail_run_after_error(opts: &RunnerOptions, code: &str, error: &TaskGraphError) {
+    let message = error.to_string();
+    match run_state::fail_run_active_nodes(
+        &opts.workspace_root,
+        &opts.project,
+        &opts.run_id,
+        code,
+        message.clone(),
+    ) {
+        Ok(run) => {
+            let _ = run_state::append_run_event(
+                &opts.workspace_root,
+                &opts.project,
+                &opts.run_id,
+                run.current_superstep,
+                "run_failed",
+                None,
+                "run failed after runner error",
+                serde_json::json!({
+                    "code": code,
+                    "error": message,
+                    "active_nodes_finalized": true,
+                }),
+            );
+        }
+        Err(finalize_error) => {
+            eprintln!(
+                "[fast-fail] failed to finalize run {} after error: {}",
+                opts.run_id, finalize_error
+            );
+        }
     }
-    result
 }
