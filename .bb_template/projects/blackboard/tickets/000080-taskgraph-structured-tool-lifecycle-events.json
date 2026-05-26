@@ -388,6 +388,24 @@
         "Title: 000080 Tool Lifecycle 前端 RunPanel 展示层\nTime: 2026-05-23T00:00:00+08:00\nSource: codex\nProject: blackboard\nTopic: tool-lifecycle-run-ui-000080\nDone:\n- 新增 `TaskGraphToolLifecycleTimeline.vue`，在 TaskGraph RunPanel 的节点详情区域展示当前节点的工具生命周期。\n- 新增前端类型 `TaskGraphToolLifecyclePayload` / status / error / artifact，避免组件直接用散乱 unknown payload。\n- RunPanel 接入新组件，复用已有 `runEvents` 数据流，不新增 API。\n- i18n 补齐中英文文案；样式使用 scoped CSS 和现有 CSS variables，未新增全局颜色。\nValidation:\n- `npm run build --prefix bb_web`: passed\n- Browser: 打开真实 run panel URL 后，新增节点工具生命周期区块和空态可见，console error=0\n- `git diff --check`: passed with CRLF warnings only\nNext step:\n- 重启/刷新使用已接入 backend tool lifecycle 的服务后，跑一个会产生 `tool_*` 事件的 graph，再验证 populated timeline。\nRelated locations:\n- bb_web/src/components/task-graph/TaskGraphToolLifecycleTimeline.vue\n- bb_web/src/components/TaskGraphRunPanel.vue\n- bb_web/src/data/taskGraphs.ts\n- bb_web/src/i18n.ts",
         "cleanup reason: note 的 title 显式写明 '000080 Tool Lifecycle 前端 RunPanel 展示层'，done 内容是 TaskGraphToolLifecycleTimeline.vue 前端展示组件，属于 000080 Tool Lifecycle 的 UI 层实现。"
       ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-24-codex-taskgraph-codex-timeout-process-tree-cleanup.json`.",
+      "evidence": [
+        "inbox/2026-05-24-codex-taskgraph-codex-timeout-process-tree-cleanup.json",
+        "Title: 修复 TaskGraph Codex timeout 后进程树未清理导致长时间卡死\nTime: 2026-05-24T07:10:33Z\nSource: codex\nProject: blackboard\nTopic: TaskGraph Codex timeout process-tree cleanup\nDone:\n- 定位第二轮 frontend-ui-convergence-codex 长时间卡住不是文件锁，而是 Windows 下 Codex npm/node wrapper 被 timeout 杀掉后，真实 codex.exe 子进程仍存活并持有 stdout/stderr 管道，runtime join reader 时继续阻塞。\n- 在 bb_core::platform 增加 terminate_child_process_tree：Windows 使用 taskkill /PID /T /F 清理整棵进程树，失败时回退 child.kill；非 Windows 保持 child.kill。\n- 将 AgentSession、TaskGraph runtime、shell node runtime、bb_daemon codex_client 的 timeout/cancel/shutdown 路径从裸 child.kill 改为 terminate_child_process_tree。\n- 重启后端后用临时 system/timeout-smoke-codex 真实图做 5s node timeout 烟测：run-20260524-070838-8d723148 按预期 failed，错误为 agent session timed out，节点总耗时 35128ms 是因为 transient_retry_attempts=3/3；烟测后无遗留 CLI Codex 进程。\nValidation:\n- cargo fmt --manifest-path bb_backend/Cargo.toml --all: 通过\n- cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon: 通过\n- git diff --check -- backend timeout files: 通过，仅 CRLF 提示\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core resolve_codex_spawn_command_uses_node_cli_for_npm_shim -- --nocapture: 通过\n- GET /api/projects/blackboard/task-graph-r...",
+        "cleanup reason: 修复 Codex timeout 后进程树未清理导致 graph 卡死，000080 spec 即 Tool Lifecycle 事件与 agent session 生命周期管理，done 覆盖 process_tree cleanup 与 smoke 测试。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-25-codex-taskgraph-codex-browseruse-lifecycle-rerun.json`.",
+      "evidence": [
+        "inbox/2026-05-25-codex-taskgraph-codex-browseruse-lifecycle-rerun.json",
+        "Title: Codex BrowserUse lifecycle 收口修复与真实跑测\nTime: 2026-05-25T02:35:19Z\nSource: codex\nProject: blackboard\nTopic: taskgraph-codex-browseruse-lifecycle-rerun\nDone:\n- 修复 AgentSession completed event 后 provider 进程不退出导致 TaskGraph 卡 running：新增 completed grace 后终止进程树并按 CompletedEvent 收口。\n- 修复 Browser Use/node_repl 持有 stdout/stderr 管道导致 reader join 无限等待：新增 reader join grace，超时从 AgentSession events 合成 capture。\n- Browser Use toolkit bootstrap 改为安全读取 globalThis.process?.env，并注入默认后端 iab,chrome 与 15s backend timeout。\n- scripts/dev.py 支持 BB_DAEMON_PORT/BB_SERVER_PORT/BB_FRONTEND_PORT 环境变量，以绕过 Windows 幽灵端口监听。\n- 用 dev.py 启动 daemon 3031/server 3002/frontend 8060，真实运行 frontend-ui-convergence-codex run-20260525-022320-30748afe，最终 succeeded。\n- Graph 本轮 Codex patch 收敛 TaskGraphCatalogSidebar 的 icon button 到 BbIconCommand；系统写出 runtime/frontend-ui-convergence/frontend-ui-convergence-codex-2026-05-25-r4.md。\nValidation:\n- cargo fmt --all: 通过。\n- cargo test -p bb_core agent_session::runtime --lib: 8 passed。\n- cargo test -p bb_core task_graph::tool_layer --lib: 9 passed。\n- cargo check -p bb_daemon -p bb_server: 通过。\n- Graph static-validate: git diff --check -- bb_web/src bb_web/DESIGN.md exit 0；npm run build...",
+        "cleanup reason: Codex BrowserUse lifecycle 收口修复（completed grace、reader join grace、process cleanup），000080 spec 即 Tool Lifecycle 事件与 runtime 生命周期管理，done 明确覆盖 lifecycle 收口与 smoke 验证。"
+      ]
     }
   ],
   "attachments": [
@@ -409,7 +427,7 @@
   ],
   "status": "review",
   "created_at": "2026-05-21",
-  "updated_at": "2026-05-23",
+  "updated_at": "2026-05-26",
   "extra": {
     "area": "TaskGraph",
     "depends_on": "000060 000064 000078",

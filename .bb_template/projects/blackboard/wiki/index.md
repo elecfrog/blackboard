@@ -7,6 +7,7 @@
 - [architecture/overview.md](./architecture/overview.md) — 架构总览（含一张 Mermaid 流程图）
 - [architecture/task-graph-mvp-contract.md](./architecture/task-graph-mvp-contract.md) — Task Graph MVP 前后端契约
 - [architecture/task-graph-mvp-e2e-validation.md](./architecture/task-graph-mvp-e2e-validation.md) — Task Graph MVP 端到端验收记录
+- [architecture/pi-headless-taskgraph-runtime.md](./architecture/pi-headless-taskgraph-runtime.md) — Pi 在 Task Graph headless runtime 中的安装、注入与 AGENTS.md 边界
 - [modules/context-management/index.md](./modules/context-management/index.md) — 嵌套 wiki 示例（目录内部再含 `index.md` + 相对图）
 - [modules/session.md](./modules/session.md) — 单文件模块示例
 - [references/glossary.md](./references/glossary.md) — 术语与引用

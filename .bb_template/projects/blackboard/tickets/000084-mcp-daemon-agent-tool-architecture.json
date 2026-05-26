@@ -332,6 +332,87 @@
       "at": "2026-05-23",
       "summary": "Record: 验证通过：`cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon -p bb_server -p bb_cli`。",
       "evidence": []
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-pi-agent-connector-component-display.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-pi-agent-connector-component-display.json",
+        "Title: Pi component rows now show status only\nTime: 2026-05-26T06:52:34Z\nSource: codex\nProject: blackboard\nTopic: pi-agent-connector-component-display\nDone:\n- Adjusted Agent Connector Pi component rows so they only render component name and install status.\n- Removed component-level current/target version text, install command text, and error details from the Settings row display; the install action and top-level tool status remain available.\nValidation:\n- npm run build --prefix bb_web: passed\n- git diff --check: passed\n- curl http://localhost:8060/src/components/AgentConnectorRow.vue?import: verified compiled component rows only render component.display_name and toolStatusLabel(component.status)\nRelated locations:\n- bb_web/src/components/AgentConnectorRow.vue",
+        "cleanup reason: Pi Agent Connector component rows 只展示状态，文档显示相关文件为 AgentConnectorRow.vue，属于 000084 MCP/Daemon Agent 工具架构的 Settings Agent 连接器 UI 变更"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-pi-agent-connector-install-check.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-pi-agent-connector-install-check.json",
+        "Title: Pi Agent Connector installation/check now covers CLI plus MCP adapter\nTime: 2026-05-26T06:44:30Z\nSource: codex\nProject: blackboard\nTopic: pi-agent-connector-install-check\nDone:\n- Updated Agent Connector tool model so Pi exposes two required components: Pi CLI and Pi MCP adapter.\n- Changed Pi install flow to run the CLI npm install first, then run `pi install npm:pi-mcp-adapter` only after the CLI install succeeds; install results include per-step command/output tails.\n- Changed Pi check flow so a valid CLI without the adapter reports overall `incomplete`, while component details show the adapter install command and error.\n- Updated the web Agent Connector row/types/i18n to render component-level status and allow the incomplete Pi state to be repaired via install.\nValidation:\n- cargo fmt --manifest-path bb_backend/Cargo.toml --all: passed\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core agent_tools -- --nocapture: passed (8 tests)\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon agent_tools_list_returns_static_catalog -- --nocapture: passed\n- npm run build --prefix bb_web: passed\n- git diff --check: passed\nRelated locations:\n- bb_backend/crates/...",
+        "cleanup reason: Pi Agent Connector 安装检查升级为 CLI + MCP adapter 两组件，验证工具检测覆盖，相关文件为 agent_tools.rs / AgentConnectorRow.vue / i18n.ts，属于 000084 工具架构"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-agent-tool-brew-install-source.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-agent-tool-brew-install-source.json",
+        "Title: Agent 工具识别 Homebrew 安装来源\nTime: 2026-05-26T07:06:42Z\nSource: codex\nProject: blackboard\nTopic: agent-tool-brew-install-source\nDone:\n- 调整 Agent CLI 工具检测逻辑：新增 install_source（npm / brew / external），OpenCode 若命令来自 Homebrew Cellar 则识别为 brew，而不是 external。\n- 未安装工具仍保留 npm install 推荐；已有 brew 安装的 OpenCode 被视为可用 installed，后续操作命令显示并调用 `brew upgrade opencode`。\n- 更新 Settings Agent 连接器 UI：brew 来源显示为“Brew 安装”，npm 来源显示为“npm 安装”，详情里展示与来源匹配的命令。\nValidation:\n- cargo test -p bb_core agent_tools -- --nocapture: 通过，10 passed。\n- cargo check -p bb_daemon: 通过。\n- npm run build --prefix bb_web: 通过。\n- 临时启动新 bb-daemon 于 127.0.0.1:3011，GET /api/agents/tools 中 opencode 返回 status=installed、install_source=brew、current_version=1.14.31、install_command=`brew upgrade opencode`、cli_path=/opt/homebrew/bin/opencode。\n- mcp__bb__.create_inbox_note: 通过。\nNext step:\n- 重启当前 dev 后端后，Settings 页面会把本机 OpenCode 显示为 Brew 安装，而不是外部安装。\nRelated locations:\n- bb_backend/crates/bb_core/src/agent_tools.rs\n- bb_web/src/data/agentTools.ts\n- bb_web/src/components/AgentConnectorRow.vue\n- bb_web/src/i18n.ts",
+        "cleanup reason: topic agent-tool-brew-install-source 涉及新增 install_source 字段调整 agent tool 检测逻辑，related_locations 含 bb_core/src/agent_tools.rs；ticket 084 的 summary 明确覆盖 daemon-backed MCP tool 架构和 bb_core 领域服务拆分。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-pi-agent-tool-version-stderr.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-pi-agent-tool-version-stderr.json",
+        "Title: Pi version check now parses stderr\nTime: 2026-05-26T06:55:42Z\nSource: codex\nProject: blackboard\nTopic: pi-agent-tool-version-stderr\nDone:\n- Investigated current Pi install state: `/opt/homebrew/bin/pi` exists, `pi --version` exits 0 but writes `0.75.4` to stderr, and `pi list` shows `npm:pi-mcp-adapter` installed.\n- Updated agent tool version probing so successful `--version` commands parse stdout first, then stderr. This fixes Pi being reported as `failed to parse pi version`.\n- Added a unix unit test with a temporary executable that writes its version to stderr, locking the behavior.\nValidation:\n- pi --version stdout/stderr split: exit 0, stdout empty, stderr `0.75.4`\n- pi list: shows `npm:pi-mcp-adapter` under user packages\n- cargo fmt --manifest-path bb_backend/Cargo.toml --all: passed\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core agent_tools -- --nocapture: passed (9 tests)\n- npm run build --prefix bb_web: passed\n- git diff --check: passed\nRelated locations:\n- bb_backend/crates/bb_core/src/agent_tools.rs",
+        "cleanup reason: topic pi-agent-tool-version-stderr 修复 Pi version 探测解析 stderr；related_locations 在 bb_core/src/agent_tools.rs；属于 Agent tool 检测逻辑修复，归 ticket 084。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-pi-headless-taskgraph-runtime-wiki-corrected.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-pi-headless-taskgraph-runtime-wiki-corrected.json",
+        "Title: Pi headless TaskGraph runtime wiki corrected from graph facts\nTime: 2026-05-26T06:33:20Z\nSource: codex\nProject: blackboard\nTopic: pi-headless-taskgraph-runtime-wiki-corrected\nDone:\n- 按用户纠正重新从实际 system graph 出发梳理 Pi runtime：列出 code-monitor-check-fix、research-*、review、nightly、inbox cleanup 等 graph 中的 Pi 节点数量和用途。\n- 修正 wiki/architecture/pi-headless-taskgraph-runtime.md：撤掉“不依赖 pi install 插件 / 不应使用 --mcp-config / 应生成自研 extension”这些错误结论。\n- 新文档明确当前真实模型：Pi CLI 负责 headless runtime；pi-mcp-adapter 插件负责 MCP tool；Blackboard skills 通过 run-local snapshot 注入；mcp-handoff 节点通过 custom_args 暴露 mcp tool 并受 tool_policy 限制。\n- 补充 AGENTS.md 边界：当前代码没有传 --no-context-files，不能声称 headless Graph 已不读 AGENTS/context files；若要隔离需另行实现。\nValidation:\n- jq 扫描 .bb_template/task_graphs/system/*.json 中 runtime=pi 的节点：通过，确认当前 Pi graph 分布和 mcp-handoff 节点配置。\n- 读取 .bb_template/.pi/mcp.json：通过，确认 pi-mcp-adapter config 形状包含 settings + mcpServers.bb。\n- git diff --check -- .bb_template/projects/blackboard/wiki/index.md：通过。\n- git diff --no-index --check /dev/null .bb_template/projects/blackboard/wiki/architecture/pi-headless-taskgraph-runtime.md：无空白诊断输出。\nNext step:\n- Settings / connector UI 后续应区分 Pi CLI 本体状态和 pi-mcp-adapter...",
+        "cleanup reason: topic pi-headless-taskgraph-runtime-wiki-corrected 修正 pi-headless-taskgraph-runtime.md 文档，明确 Pi runtime/pi-mcp-adapter/Blackboard skills 三层关系；related_locations 含 bb_daemon、agent_session/runtime、task_graph 相关源码；属于 MCP/Daemon Agent 工具架构（ticket 084）中的 Pi headless runtime 文档澄清。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-pi-headless-taskgraph-runtime-wiki.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-pi-headless-taskgraph-runtime-wiki.json",
+        "Title: Pi headless TaskGraph runtime wiki\nTime: 2026-05-26T06:26:25Z\nSource: codex\nProject: blackboard\nTopic: pi-headless-taskgraph-runtime-wiki\nDone:\n- 新增 wiki/architecture/pi-headless-taskgraph-runtime.md，明确 Task Graph 中 Pi 是 headless AgentSession runtime，不依赖全局 Pi extension、pi install package 或 AGENTS.md。\n- 文档对照 run_pi_turn、Pi provider parser、LLM node resolver、tool_layer、prepare_node_skills、Pregel tool identity 和 Pi connector 代码，写清安装要求、能力边界、正确 extension 注入方式和当前 --mcp-config gap。\n- 更新 wiki/index.md，加入新文档入口。\nValidation:\n- git diff --check -- .bb_template/projects/blackboard/wiki/index.md：通过。\n- git diff --no-index --check /dev/null .bb_template/projects/blackboard/wiki/architecture/pi-headless-taskgraph-runtime.md：无空白诊断输出。\n- mcp__bb__.list_projects：通过，确认 project blackboard 可见。\nNext step:\n- 后续实现 Pi Graph tools 时，按新 wiki 将 --mcp-config 方向替换为 session-scoped Pi extension，并补 policy/test 更新。\nRelated locations:\n- .bb_template/projects/blackboard/wiki/architecture/pi-headless-taskgraph-runtime.md\n- .bb_template/projects/blackboard/wiki/index.md\n- bb_backend/crates/bb_core/src/agent_session/runtime.rs\n- bb_backend/crates/bb_core/src/task_graph/tool_layer.rs\n- bb_backend/crates/bb_core/src...",
+        "cleanup reason: topic pi-headless-taskgraph-runtime-wiki 初稿，与 note_6 为同一 wiki 的两个版本，note_6 supersedes note_7；同归 ticket 084。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-pi-taskgraph-runtime-guide-rewrite.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-pi-taskgraph-runtime-guide-rewrite.json",
+        "Title: Pi TaskGraph runtime wiki rewritten as guide\nTime: 2026-05-26T06:35:34Z\nSource: codex\nProject: blackboard\nTopic: pi-taskgraph-runtime-guide-rewrite\nDone:\n- 重写 wiki/architecture/pi-headless-taskgraph-runtime.md，从调研日志式叙述改成面向 human/agent 的使用指南。\n- 新结构按 Mental Model、Existing Patterns、Installation Requirements、MCP Adapter Contract、Runtime Flow、AGENTS.md Boundary、Adding A New Pi Node、Troubleshooting、Do/Do Not 组织。\n- 保留并突出当前真实模型：Pi CLI runtime、pi-mcp-adapter MCP 路径、Blackboard skills snapshot 三层分离。\nValidation:\n- 读取 code-monitor-check-fix/research-internal/rust-vue-code-review 的 Pi node 配置：通过，用于确认文档示例。\n- 读取 .bb_template/skills/code-research/SKILL.md 与 .bb_template/.pi/mcp.json：通过，用于确认 skill 与 adapter config 表述。\n- git diff --no-index --check /dev/null .bb_template/projects/blackboard/wiki/architecture/pi-headless-taskgraph-runtime.md：无空白诊断输出。\nNext step:\n- 后续若改 Settings，应按文档的两层安装要求区分 Pi CLI 与 pi-mcp-adapter。\nRelated locations:\n- .bb_template/projects/blackboard/wiki/architecture/pi-headless-taskgraph-runtime.md\n- .bb_template/task_graphs/system/code-monitor-check-fix.json\n- .bb_template/skills/code-research/SKILL.md\n- .bb_template/.pi/mcp.json",
+        "cleanup reason: topic pi-taskgraph-runtime-guide-rewrite 将 wiki 重写为面向 human/agent 的使用指南；与 note_6/note_7 同属 Pi headless runtime wiki 迭代，归 ticket 084。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-restart-and-verify-brew-opencode-settings.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-restart-and-verify-brew-opencode-settings.json",
+        "Title: 重启 dev 服务并验收 OpenCode Brew 安装显示\nTime: 2026-05-26T07:16:44Z\nSource: codex\nProject: blackboard\nTopic: restart-and-verify-brew-opencode-settings\nDone:\n- 按用户要求重启本地 dev stack，旧 3001/3002/8060 监听已被 scripts/dev.py 清理并由新进程接管。\n- 通过 API 验证 `/api/agents/tools` 中 opencode 返回 status=installed、install_source=brew、current_version=1.14.31、install_command=`brew upgrade opencode`、cli_path=/opt/homebrew/bin/opencode。\n- 通过 in-app Browser 刷新 Settings 页面，等待工具探测完成后确认 OpenCode 行显示 Brew 安装和 brew upgrade 命令，不再显示 opencode 的外部安装或 npm install opencode-ai 命令。\nValidation:\n- lsof: 3001=bb-daemon PID 93731，3002=bb-server PID 93757，8060=node PID 93782。\n- HTTP health: daemon 200、server 200、frontend 200。\n- curl http://127.0.0.1:8060/api/agents/tools: opencode install_source=brew。\n- in-app Browser Settings: agentPanelCount=1、runtimePanelCount=0、advancedOpen=false、OpenCode rowHasBrewInstall=true、rowHasBrewUpgrade=true、rowHasExternalInstall=false、rowHasNpmOpencodeCommand=false、console error 为空。\n- mcp__bb__.create_inbox_note: 通过。\nNext step:\n- 当前 dev 服务已在后台运行，主进程 PID 93716，日志在 /tmp/blackboard-dev.log。\nRelated locations:\n- bb_backend/crates/bb_core/src/agent_tools.rs\n- bb_web/src/components/AgentConnectorRow.vue\n...",
+        "cleanup reason: topic restart-and-verify-brew-opencode-settings 验收 OpenCode brew 安装来源在 Settings 的正确显示；related_locations 含 bb_core/src/agent_tools.rs、bb_web AgentConnectorRow；属于 Agent tool 架构（ticket 084）的 Settings UI 验收。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-runtime-connectors-404-route.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-runtime-connectors-404-route.json",
+        "Title: 修复 Settings Runtime Connectors 404\nTime: 2026-05-26T06:47:30Z\nSource: codex\nProject: blackboard\nTopic: runtime-connectors-404-route\nDone:\n- 定位 Settings 顶部 RuntimeConnectorPanel 的 404 来源：前端请求 `/api/agents/runtime-connectors`，后端只注册了 `/api/agents/connectors` 等路由。\n- 新增 bb_daemon HTTP 子模块 `runtime_connectors`，注册 `GET/PATCH /api/agents/runtime-connectors`，GET 返回 TaskGraph runner config、四个 runtime CLI 探测状态、Pi shellPath 解析信息，PATCH 写回 runner config 并可更新 Pi shellPath。\n- 扩展 `task_graph/runner_config.rs`，暴露 runner config snapshot/patch helpers，并新增测试覆盖 runtime connector 设置写回后仍能被 `build_runner_opts` 读取。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- cargo check -p bb_daemon: 通过。\n- cargo test -p bb_daemon runner_config -- --nocapture: 通过，4 passed。\n- 临时启动更新后的 bb-daemon 于 127.0.0.1:3011，curl GET /api/agents/runtime-connectors 返回 HTTP 200，并返回 codex/codebuddy/opencode/pi 四个 runtime 状态。\n- 当前用户浏览器所在 8060 仍返回 404，判断为运行中的旧后端进程未重启；代码路由已在新进程验证通过。\n- mcp__bb__.list_projects: 通过。\n- mcp__bb__.create_inbox_note: 通过。\nNext step:\n- 重启当前本地 dev 后端/`python3 scripts/dev.py` 管理的 bb-daemon 后，刷新 Settings 页面即可消除 Runtime Connectors 区块的 404。\nRelated locations:\n- bb_backend/crates/bb_daemon/src/http/mod.rs\n- bb...",
+        "cleanup reason: topic runtime-connectors-404-route 新增 GET/PATCH /api/agents/runtime-connectors HTTP 路由，归 bb_daemon HTTP 子模块；属于 MCP/Daemon Agent 工具架构（ticket 084）的 daemon API 层。"
+      ]
     }
   ],
   "attachments": [
@@ -353,6 +434,6 @@
   ],
   "status": "done",
   "created_at": "2026-05-23",
-  "updated_at": "2026-05-23",
+  "updated_at": "2026-05-26",
   "extra": {}
 }

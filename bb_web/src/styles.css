@@ -1716,6 +1716,66 @@ button {
   gap: 16px;
 }
 
+.bb-settings-advanced {
+  border: 1px solid var(--bb-hairline);
+  border-radius: 8px;
+  background: var(--bb-surface);
+  overflow: hidden;
+}
+
+.bb-settings-advanced > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  color: var(--bb-text-strong);
+  list-style: none;
+}
+
+.bb-settings-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bb-settings-advanced > summary::after {
+  content: "›";
+  color: var(--bb-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 0.16s ease;
+}
+
+.bb-settings-advanced[open] > summary::after {
+  transform: rotate(-90deg);
+}
+
+.bb-settings-advanced > summary > span {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bb-settings-advanced > summary strong {
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: var(--bb-text-muted);
+}
+
+.bb-settings-advanced > summary span span {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.bb-settings-advanced > .runtime-panel {
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: var(--bb-surface-soft);
+}
+
 /* Shared left-pane object list grammar. Item means title-only selection. */
 .bb-object-list-pane {
   display: flex;

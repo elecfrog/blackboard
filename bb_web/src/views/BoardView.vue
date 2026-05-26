@@ -94,6 +94,7 @@ const lanes = ref<LaneDef[]>([])
 const inboxNoteCount = ref(0)
 const projectAgents = ref<ProjectAgentProfile[]>([])
 const showLaneManager = ref(false)
+const runtimeSettingsOpen = ref(false)
 const loading = ref(true)
 const error = ref('')
 const query = ref('')
@@ -131,6 +132,10 @@ const workspaceIconComponents: Record<WorkspaceIconKey, Component> = {
 let kanbanResizeObserver: ResizeObserver | null = null
 let syncingKanbanScroll = false
 let boardViewSaveSeq = 0
+
+function setRuntimeSettingsOpen(event: Event) {
+  runtimeSettingsOpen.value = event.target instanceof HTMLDetailsElement ? event.target.open : false
+}
 
 function applyBoardViewSettings(hiddenStatuses: readonly string[] = []) {
   visibleStatusColumns.value = visibleStatusesFromHidden(hiddenStatuses)
@@ -1172,8 +1177,16 @@ async function deprecateSelectedTicket(ticket: BlackboardTicket) {
                 <p>{{ t('settingsSubtitle') }}</p>
               </div>
             </header>
-            <RuntimeConnectorPanel />
             <AgentConnectorPanel :project="project" />
+            <details class="bb-settings-advanced" @toggle="setRuntimeSettingsOpen">
+              <summary>
+                <span>
+                  <strong>{{ t('runtimeConnectorTitle') }}</strong>
+                  <span>{{ t('runtimeConnectors') }}</span>
+                </span>
+              </summary>
+              <RuntimeConnectorPanel v-if="runtimeSettingsOpen" />
+            </details>
           </section>
         </template>
         </main>

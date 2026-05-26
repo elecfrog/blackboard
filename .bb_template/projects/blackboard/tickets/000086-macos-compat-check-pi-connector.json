@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "id": "000086",
+  "lane": "bbq",
+  "title": "macOS 兼容性检查与 Pi Connector 安装引导",
+  "summary": "提供一个面向 macOS 的确定性兼容性检查入口，用核心脚本和构建脚本判断系统是否可用；Pi 未安装时不自动安装，而是输出 Agent Connector 安装动作并打开设置页交给用户点击。",
+  "stories": [
+    {
+      "id": "276c7e80-f91d-40d4-a411-ce1d2f7f87b8",
+      "given": "用户要判断当前 macOS 机器是否能运行 Blackboard 的主要本地功能",
+      "when": "运行 scripts/macos_compat_check.py 或 system/macos-compat-check graph",
+      "then": "系统必须执行平台、依赖、workspace、ticket/schema audit、cargo/web/desktop 脚本检查，并输出 JSON 报告；只要必需脚本全部通过，macOS 兼容性不因 Pi 缺失而失败",
+      "sample": "full + service smoke 输出 {\"ok\":true,\"status\":\"action_required\",\"counts\":{\"passed\":24,\"failed\":0}}。"
+    },
+    {
+      "id": "54062194-0dba-4ad3-8b50-5e70de554ca5",
+      "given": "Pi CLI 未安装或不在 PATH 中",
+      "when": "macOS 兼容性检查探测 runtime.pi",
+      "then": "检查结果必须标记 action_required，并给出 Agent Connector URL，方便用户在 Web 设置页点击安装 Pi，而不是在脚本里静默安装",
+      "sample": "attention 中包含 runtime.pi 和 http://127.0.0.1:8060/#/projects/blackboard/settings。"
+    },
+    {
+      "id": "196b5bd9-d293-4a8b-84cb-e3b53921c58a",
+      "given": "BBPM 或用户希望从 UI/Graph 入口重复执行 macOS 检查",
+      "when": "运行 system/macos-compat-check",
+      "then": "Graph 必须调用同一脚本，完整报告写入 .bb_template/runtime/macos-compat/latest.json，并在 stdout 输出 compact JSON 摘要"
+    }
+  ],
+  "risks": [
+    {
+      "id": "pi-action-required",
+      "description": "Pi 缺失会让整体状态不是纯 passed，而是 action_required。",
+      "mitigation": "脚本 exit 仍为 0，只把 Pi 安装作为用户动作暴露；真正失败只来自 required checks。",
+      "status": "accepted"
+    },
+    {
+      "id": "full-check-cost",
+      "description": "full profile 会执行 cargo/web/desktop prepare，耗时明显高于 quick。",
+      "mitigation": "提供 quick/full profile；Graph 默认 full，日常快速排查可命令行指定 quick。",
+      "status": "mitigated"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-26",
+      "summary": "新增 scripts/macos_compat_check.py 与 system/macos-compat-check graph，并加入 Graph Catalog BB-代码质量分组。",
+      "evidence": [
+        "scripts/macos_compat_check.py",
+        ".bb_template/task_graphs/system/macos-compat-check.json",
+        ".bb_template/projects/blackboard/__graphs__.json"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "已验证 full + service smoke 通过，只有 Pi 缺失需要用户通过 Agent Connector 安装。",
+      "evidence": [
+        "python3 scripts/macos_compat_check.py --profile full --service-smoke on",
+        ".bb_template/runtime/macos-compat/latest.json"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "codex 完成阶段工作，handoff 写入 `2026-05-26-codex-macos-compat-check-pi-connector.json`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Record: 验证：python3 scripts/macos_compat_check.py --profile full --service-smoke on: passed with ok=true, 24 passed, 0 failed, runtime.pi action_required。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Record: 验证：cargo run --manifest-path bb_backend/Cargo.toml -p bb_cli -- --root .bb_template daemon --graph system/macos-compat-check --project blackboard --once: passed, run-20260526-060539-f3a316ca。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Record: 验证：cargo test --manifest-path bb_backend/Cargo.toml -p bb_core task_graph::tests::tests::test_validate_system_graph_fixture: passed。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Record: 验证：python3 -m py_compile scripts/macos_compat_check.py: passed；json.tool graph/index: passed；git diff --check: passed。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-macos-compat-check-pi-connector.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-macos-compat-check-pi-connector.json",
+        "Title: macOS 兼容性检查与 Pi Connector 安装引导完成\nTime: 2026-05-26T06:07:07Z\nSource: codex\nProject: blackboard\nTopic: macos-compat-check-pi-connector\nDone:\n- 新增 scripts/macos_compat_check.py，按 quick/full profile 输出结构化 macOS 兼容性报告。\n- 新增 system/macos-compat-check graph，并加入 Graph Catalog 的 BB-代码质量分组。\n- Pi 未安装时标记 action_required，输出 Agent Connector URL；已打开 http://127.0.0.1:8060/#/projects/blackboard/settings 给用户点击安装。\n- 补齐 bb_desktop npm 依赖，消除桌面依赖 warning。\nValidation:\n- python3 scripts/macos_compat_check.py --profile full --service-smoke on: passed with ok=true, 24 passed, 0 failed, runtime.pi action_required。\n- cargo run --manifest-path bb_backend/Cargo.toml -p bb_cli -- --root .bb_template daemon --graph system/macos-compat-check --project blackboard --once: passed, run-20260526-060539-f3a316ca。\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core task_graph::tests::tests::test_validate_system_graph_fixture: passed。\n- python3 -m py_compile scripts/macos_compat_check.py: passed；json.tool graph/index: passed；git diff --check: passed。\nRelated locations:\n- scripts/macos_compat_check.py\n- .bb_template/task_graphs/system/macos-compat-check.json\n- .bb_template/projects/blackboard/__graphs__...",
+        "cleanup reason: note文件名含macos-compat-check-pi-connector，document.related_tickets明确列出000086，title和topic均指向macOS兼容性检查与Pi Connector安装引导"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "review",
+  "created_at": "2026-05-26",
+  "updated_at": "2026-05-26",
+  "extra": {
+    "area": "macos-compat",
+    "source": "local-smoke"
+  }
+}

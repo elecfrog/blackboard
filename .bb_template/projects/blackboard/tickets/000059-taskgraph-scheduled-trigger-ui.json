@@ -65,12 +65,21 @@
       "at": "2026-05-15",
       "summary": "TaskGraph 页面新增 Schedule 区，支持 presets 创建、启用/暂停、删除、run now、next/last/status/last run 跳转",
       "evidence": []
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-nightly-taskgraph-schedule-0300-setup.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-nightly-taskgraph-schedule-0300-setup.json",
+        "Title: Codex handoff: nightly TaskGraph schedule 03:00 已设置\nTime: 2026-05-23T17:46:01Z\nSource: codex\nProject: blackboard\nTopic: nightly-taskgraph-schedule-0300-setup\nDone:\n- 纠正上一轮误建的 Codex cron：已删除 `blackboard-nightly-auto-optimization-03-00`，避免 Codex app 成为 graph 触发源。\n- 通过 Blackboard TaskGraph schedule HTTP API 创建 `nightly-auto-code-optimization-0300`，目标 graph 为 `system/nightly-auto-code-optimization`，project 为 `blackboard`。\n- schedule 配置为 daily `03:00`，timezone `Asia/Shanghai`，enabled=true，concurrency_policy=skip，misfire_policy=run_once。\n- 为今天凌晨三点这波单独设置了 Codex thread heartbeat `watch-blackboard-nightly-graph-at-03-05`，它只在 03:05 醒来监控当日 schedule run，不负责触发 graph。\nValidation:\n- `codex_app.automation_update delete blackboard-nightly-auto-optimization-03-00`: 通过。\n- `GET /healthz`: 通过，3001 后端在线。\n- `GET /api/projects/blackboard/task-graph-schedules`: 初始为空，创建后返回 1 条 schedule。\n- `POST /api/projects/blackboard/task-graph-schedules`: 通过，schedule id `nightly-auto-code-optimization-0300`，`next_run_at=2026-05-23T19:00:00+00:00`，对应 Asia/Shanghai 2026-05-24 03:00:00。\n- `python -m json.tool .bb_template/runtime/task_graph_schedules/blackboard/nightly-auto-code-optimization-0300.json`: 通过。\n- `bb-...",
+        "cleanup reason: TaskGraph schedule 03:00 创建与验证，000059 spec 即定时任务与 Schedule UI，done 中完整覆盖 API 创建、配置与 dispatcher 验证。"
+      ]
     }
   ],
   "attachments": [],
   "status": "done",
   "created_at": "2026-05-14",
-  "updated_at": "2026-05-18",
+  "updated_at": "2026-05-26",
   "extra": {
     "area": "TaskGraph",
     "assignee": "codex",

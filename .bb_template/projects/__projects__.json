@@ -24,7 +24,7 @@
     }
   },
   "machines": {
-    "CURRENT": "ORNIZHOU-PC0",
+    "CURRENT": "ORNIZHOU-MC0",
     "ORNIZHOU-MC0": {
       "OS": "MacOS",
       "OS_VERSION": "26.2"

@@ -1,0 +1,263 @@
+{
+  "schema_version": 1,
+  "id": "000087",
+  "lane": "bbd",
+  "title": "前端共享 UI 原语收敛：已完成工作归档与后续产品化跟踪",
+  "summary": "承接 Codex 在 2026-05-23 集中完成的前端共享 UI 原语收敛工作，包括 BbButton、BbField、BbDialog、BbStatusPill、BbEmptyState、BbInlineAlert、BbObjectItem、BbInfoGrid、BbInfoItem、BbToolbar、BbSectionHeader、BbRefChip、BbSegmentedControl、BbDenseRow、BbSummaryChip、BbCheckboxField、BbActionGroup、BbIconCommand、BbInlineAction 等组件产品化，以及 DESIGN.md 规范更新、TaskGraph 表单字段迁移、Inbox item 单行设计规范落地和 frontend-ui-convergence-codex graph 创建与跑测。所有工作已通过 npm run build 和 browser smoke 验证。本 ticket 作为这批 inbox handoff notes 的归属 ticket。",
+  "stories": [
+    {
+      "id": "03c6951e-0dd8-41af-9040-de16dcc608d2",
+      "given": "Codex 完成一批前端 UI 原语收敛工作并写入 inbox handoff notes",
+      "when": "bbpm-maintain inbox cleanup graph 执行时",
+      "then": "LLM 能以 high confidence 将这批 notes 归属到本 ticket 并执行 append delete"
+    },
+    {
+      "id": "381b1fa7-ce2f-4a0f-8fbd-2b2c13396c15",
+      "given": "所有相关 inbox notes 已被沉淀到本 ticket 的 progress_record",
+      "when": "用户查看本 ticket",
+      "then": "能看到完整的 UI 收敛工作历史记录"
+    }
+  ],
+  "risks": [],
+  "progress_record": [
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-design-item-card-rule.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-design-item-card-rule.json",
+        "Title: Codex handoff: DESIGN.md item/card 规范强化\nTime: 2026-05-23T11:20:46Z\nSource: codex\nProject: blackboard\nTopic: design-item-card-rule\nDone:\n- 在 bb_web/DESIGN.md 将 Cards And Rows 扩展为 Items, Cards, And Rows。\n- 明确 item 是 single-line navigation/selection entry，title-only，可带一个固定 affordance，但不能承载 meta、time、excerpt、badge、action 或多行摘要。\n- 明确多字段信息应进入 card/table row/detail pane，并补充 code-review smell：item 长出 timestamp/excerpt/badge/action 时通常是伪装成 item 的 card。\nValidation:\n- git diff --check -- bb_web/DESIGN.md：通过，仅有 Windows LF/CRLF 提示。\nRelated locations:\n- bb_web/DESIGN.md",
+        "cleanup reason: DESIGN.md item/card 规范强化属于前端 UI 原语收敛范畴，直接落在 000087 范围（DESIGN.md 规范更新、组件产品化）内。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-design-component-audit.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-design-component-audit.json",
+        "Title: Codex handoff: 高频不一致组件审计\nTime: 2026-05-23T13:54:31Z\nSource: codex\nProject: blackboard\nTopic: frontend-design-component-audit\nDone:\n- 审计 bb_web/src/components、bb_web/src/views、bb_web/src/styles.css 中高频 UI 组件族。\n- 交互元素频率最高的文件集中在 TaskGraphNodeInspector.vue(56)、TaskGraphLlmNodeForm.vue(48)、TaskGraphEditorPanel.vue(16)、TicketDetailPanel.vue(16)、TaskGraphCatalogSidebar.vue(15)、TicketStructuredDocument.vue(14)、BoardView.vue(11)、TaskGraphSchedulePanel.vue(11)、LaneManager.vue(11)。\n- 识别出下一批最值得产品化的组件原语：button/action、dense form field/row、modal/dialog、status badge/pill、empty/error/banner、card/panel。\n- 未修改代码；本轮产出为设计审计和下一步建议。\nValidation:\n- 本地代码检索完成：rg + PowerShell 统计。\n- 未执行构建：本轮没有代码变更。\nNext step:\n- 建议下一步先产品化 BbButton/BbIconButton/BbMiniButton，收益最大且风险最低。\n- 第二步产品化 BbField/BbDenseRow，覆盖 TaskGraph 与 Agent 表单密集区。\n- 第三步收敛 BbDialog/BbAlertDialog，再统一 status pill 与 empty/error。\nRelated locations:\n- bb_web/src/styles.css\n- bb_web/src/components/task-graph/TaskGraphNodeInspector.vue\n- bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue\n- bb_web/src/components/TicketDetailPanel.vue\n- bb_web/src/components/TicketStructuredDocument.vue\n- bb_web/src/components/AgentWorkbench.vue\n- bb_web/src/comp...",
+        "cleanup reason: 高频不一致组件审计是前端共享 UI 原语收敛的前提工作，000087 覆盖组件产品化与规范更新。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-object-list-design-primitive.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-object-list-design-primitive.json",
+        "Title: Codex handoff: 左侧 ObjectItem 规范产品化\nTime: 2026-05-23T11:42:04Z\nSource: codex\nProject: blackboard\nTopic: frontend-object-list-design-primitive\nDone:\n- 新增 bb_web/src/components/common/BbObjectItem.vue，作为左侧二级导航/选择列表的 title-only item 原语。\n- 在 bb_web/src/styles.css 增加 bb-object-list / bb-object-item / bb-object-row-action 共享样式，收敛 hover/active/focus、32-36px 密度、单行省略。\n- 将 Inbox full list、Wiki tree、Idea Canvas list、TaskGraph catalog graph rows、Agent list 改为共享 ObjectItem 语法；需要删除/运行/收藏/移动的控制保留为相邻 row action，item 本体保持 title-only。\n- 更新 bb_web/DESIGN.md，明确左侧 selection item 优先使用 BbObjectItem / bb-object-list，复杂控制放 adjacent row actions。\nValidation:\n- npm run build --prefix bb_web：通过。\n- git diff --check -- 相关前端/设计文件：通过，仅有 Windows LF/CRLF 提示。\n- Browser 验证 Inbox/Wiki/TaskGraph/Idea Canvas/Agents：.bb-object-item 无 secondary content，item 高度收敛为 Inbox 32px、Wiki 32px、TaskGraph 28-32px、Idea Canvas 32px、Agents 34px，console error 0。\nRelated locations:\n- bb_web/src/components/common/BbObjectItem.vue\n- bb_web/src/styles.css\n- bb_web/src/components/InboxPanel.vue\n- bb_web/src/components/WikiTreeItem.vue\n- bb_web/src/components/WikiPanel.vue\n- bb_web/src/components/IdeaCanvasPanel.vue\n- bb_web/src/compon...",
+        "cleanup reason: BbObjectItem 组件产品化明确属于 000087 组件列表范围，且已完成并更新 DESIGN.md。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-shared-ui-primitives-eighth-pass.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-shared-ui-primitives-eighth-pass.json",
+        "Title: 继续收敛 metadata/info grid：SchedulePanel\nTime: 2026-05-23T00:00:00+08:00\nSource: codex\nProject: blackboard\nTopic: frontend-shared-ui-primitives-eighth-pass\nDone:\n- 新增共享组件 BbInfoGrid / BbInfoItem，用于统一紧凑 label/value metadata 展示。\n- 迁移 TaskGraphSchedulePanel 的 schedule status / next run / last run 区块，去掉局部 dl/dt/dd 样式，改为共享 InfoGrid。\n- 更新 common/index.ts 导出与 bb_web/src/styles.css 全局样式。\n- 更新 DESIGN.md：明确 metadata grid 使用 BbInfoGrid/BbInfoItem，避免各页面继续局部重写。\nValidation:\n- git diff --check -- bb_web/DESIGN.md bb_web/src/components/common/BbInfoGrid.vue bb_web/src/components/common/BbInfoItem.vue bb_web/src/components/common/index.ts bb_web/src/styles.css bb_web/src/components/task-graph/TaskGraphSchedulePanel.vue：通过，仅 CRLF warning。\n- npm run build --prefix bb_web：通过。\n- Browser smoke：打开 http://localhost:8060/#/projects/blackboard/task-graphs/project/general-code-search-mpbe2hb4/edit，页面可加载且无 console error；当前路由实际渲染 Task Graphs 列表壳，未覆盖 schedule panel 细节。\nNext step:\n- 继续迁移 AgentConnectorRow / RuntimeConnectorPanel / TaskGraphPreviewPanel 等剩余 dl-style metadata 到 BbInfoGrid。\n- 如果 metadata 场景出现明显分化，再给 BbInfoGrid 增加 columns/tone/density 的受控 props，而不是新增局部 CSS。\nRelated locations:\n- bb_web/src/com...",
+        "cleanup reason: BbInfoGrid/BbInfoItem metadata 收敛属于共享 UI 原语，000087 组件列表包含 BbInfoGrid。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-shared-ui-primitives-eleventh-pass.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-shared-ui-primitives-eleventh-pass.json",
+        "Title: 继续收敛 toolbar 到 BbToolbar\nTime: 2026-05-24T00:00:00+08:00\nSource: codex\nProject: blackboard\nTopic: frontend-shared-ui-primitives-eleventh-pass\nDone:\n- 新增共享组件 BbToolbar，支持 bar/inline 两种形态、compact density、sticky topbar、search/meta/actions slots。\n- 导出 BbToolbar，并在全局 bb-* grammar 中加入 .bb-toolbar、.bb-toolbar-search、.bb-toolbar-actions、.bb-toolbar-count 等共享样式。\n- 迁移 BoardView 的 sticky workspace topbar：搜索、语言、主题、Lane 管理、刷新按钮现在由 BbToolbar 承载。\n- 迁移 InboxPanel、AgentWorkbench、TaskGraphCatalogPanel、WikiPanel、IdeaCanvasPanel 的 workspace action group 到 BbToolbar inline。\n- 简化 bb-workspace-head-actions，让它只作为 toolbar 宿主变量/布局约束，不再自己定义完整 flex toolbar grammar。\n- 更新 DESIGN.md：明确搜索/操作/计数工具条使用 BbToolbar。\nValidation:\n- rg fixed strings: bb-top-actions / <header class=\"bb-workspace-topbar\" / <div class=\"bb-workspace-head-actions\" under bb_web/src：均 no matches。\n- git diff --check -- 本轮相关 bb_web 文件：通过，仅 CRLF warning。\n- npm run build --prefix bb_web：通过。\n- Browser smoke：Tickets / Inbox / Agents / Task Graphs / Wiki / Idea Canvas 路由均可加载且无 console error；Tickets 渲染 1 个 bar toolbar，其他 workspace 渲染 1 个 bar toolbar + 1 个 inline toolbar。\nNext step:\n- 下一轮可以收 BbActionGroup / BbIconCommand：统一小型图标按钮、primary/second...",
+        "cleanup reason: BbToolbar 组件属于 000087 组件列表范围，迁移 BoardView/InboxPanel 等 toolbar。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-shared-ui-primitives-fifth-pass.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-shared-ui-primitives-fifth-pass.json",
+        "Title: 继续收敛 Task Graph dense rows：Branch 与 LLM inline rows\nTime: 2026-05-23T15:33:07Z\nSource: codex\nProject: blackboard\nTopic: frontend-shared-ui-primitives-fifth-pass\nDone:\n- 将 `TaskGraphBranchNodeForm` 的基础字段迁到 `BbField`，将 branch rule row 迁到 `BbDenseRow`，删除本地 field/control skin。\n- 将 `TaskGraphLlmNodeForm` 中 input bindings、prompt vars、skills、MCP server 首行、custom env、custom args 等 inline rows 迁到 `BbDenseRow`，对应输入控件使用 `bb-dense-control`。\n- 保留 LLM 表单复杂 JSON/textarea/MCP detail 区域的历史 broad styles，避免本轮把复杂表单一次性改散；下一轮可继续收敛到 `BbField`。\nValidation:\n- `npm run build --prefix bb_web`: 通过。\n- `git diff --check` 针对本轮相关文件：通过，仅 CRLF 提示。\n- `rg` 检查 branch form 历史 broad selector 与旧 inline-row div：未命中。\n- Browser in-app smoke：当前 task graph URL 可加载且 console error 为 0；该 route 当前渲染 catalog shell，dense rows 未出现在 DOM，因此真实视觉验收仍需能稳定打开 editor inspector 的 route/fixture。\nNext step:\n- 继续把 `TaskGraphLlmNodeForm` 里剩余裸 `label/input/select/textarea` 迁到 `BbField`，然后移除 `.task-graph-llm-form input/select/textarea` broad selector。\n- 收敛 `TaskGraphNodeInspector` 顶部基础字段与子图字段，减少 inspector 自己画 field/control 的情况。\nRelated locations:\n- bb_web/src/components/task-graph/TaskGraphBranchNodeForm.vue\n- bb_web/src/components/task-g...",
+        "cleanup reason: BbDenseRow 迁移 Branch/LLM 表单属于共享 UI 原语收敛，000087 组件列表包含 BbDenseRow。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-shared-ui-primitives-fourth-pass.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-shared-ui-primitives-fourth-pass.json",
+        "Title: 继续收敛前端共享 UI primitives：summary chip 与 dense row\nTime: 2026-05-23T15:29:28Z\nSource: codex\nProject: blackboard\nTopic: frontend-shared-ui-primitives-fourth-pass\nDone:\n- 新增 `BbSummaryChip`，把 Task Graph editor/preview 的 summary toggle 统一到公共组件，并将对应 close 控件迁到 `BbButton`。\n- 新增 `BbDenseRow` 与 `bb-dense-*` 共享语法，迁移 `TaskGraphBindingList`、`TaskGraphInputsPanel`、`TaskGraphRunInputsPanel` 的 dense row chrome、label 与 control 基础样式。\n- 更新 `bb_web/DESIGN.md`，明确 `BbSummaryChip`、`BbDenseRow`、`bb-dense-cell`、`bb-dense-control` 的使用边界。\nValidation:\n- `npm run build --prefix bb_web`: 通过。\n- `git diff --check` 针对本轮相关前端文件：通过，仅有既有 CRLF 提示。\n- `rg` 检查旧 summary/segmented/reference 本地样式选择器：未命中。\n- Browser in-app smoke：当前 task graph URL 可加载且 console error 为 0；该 route 当前实际渲染 catalog shell，summary chip 未在 DOM 中出现，因此视觉验收以 build/selector 检查为主。\nNext step:\n- 继续收敛剩余 dense editor row：branch rules、schedule inputs、node inspector 中仍有少量局部 field/control CSS。\n- 找一个能稳定进入 TaskGraph editor panel 的前端 route 或测试 fixture，补一次真实视觉烟测。\nRelated locations:\n- bb_web/src/components/common/BbSummaryChip.vue\n- bb_web/src/components/common/BbDenseRow.vue\n- bb_web/src/components/common/index.ts\n- bb_web/src/styles.css\n- bb_web/src/componen...",
+        "cleanup reason: BbSummaryChip 与 BbDenseRow 属于 000087 组件列表范围。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-shared-ui-primitives-ninth-pass.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-shared-ui-primitives-ninth-pass.json",
+        "Title: 继续收敛 label/value metadata 到 BbInfoGrid\nTime: 2026-05-23T00:00:00+08:00\nSource: codex\nProject: blackboard\nTopic: frontend-shared-ui-primitives-ninth-pass\nDone:\n- 增强 BbInfoGrid / BbInfoItem：支持 cards/rows 布局、metric/mono 变体、truncate/wrap 溢出策略，并通过 CSS variables 控制密度、字体、行布局。\n- 迁移 AgentConnectorPanel 的 registry 统计、AgentConnectorRow 的 target metadata 到 BbInfoGrid/BbInfoItem。\n- 迁移 RuntimeConnectorPanel 的 runtime facts、Pi mini meta、diagnostics rows 到 BbInfoGrid/BbInfoItem。\n- 迁移 TaskGraphPreviewPanel 的 node popover fields、TaskGraphRunPanel 的 run-level state 与 run inputs 到 BbInfoGrid/BbInfoItem。\n- 迁移 InboxStructuredDocument 的 JSON meta/extra 和 TicketStructuredDocument 的 risk meta 到 BbInfoGrid/BbInfoItem。BDD story Given/When/Then 保留领域结构。\n- 更新 DESIGN.md：明确 metadata 用 BbInfoGrid/BbInfoItem，cards 用于 fact cells，rows 用于 diagnostics/popovers/document metadata。\nValidation:\n- rg '<dl|<dt|<dd' bb_web/src/components bb_web/src/views：仅剩 BbInfoGrid/BbInfoItem 本体与 TicketStructuredDocument 的 BDD story lines。\n- git diff --check -- 本轮相关 bb_web 文件：通过，仅 CRLF warning。\n- npm run build --prefix bb_web：通过。\n- Browser smoke：打开 Agents / Inbox / Tickets / Task Graphs 路由，页面均可加载且无 console error；Inbox 实际渲染到 1 个 ....",
+        "cleanup reason: BbInfoGrid/BbInfoItem cards/rows/metric 增强属于 000087 组件产品化范围。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-shared-ui-primitives-second-pass.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-shared-ui-primitives-second-pass.json",
+        "Title: Frontend UI convergence second pass\nTime: 2026-05-23\nSource: codex\nProject: blackboard\nTopic: frontend-shared-ui-primitives-second-pass\nDone:\n- 新增 BbInlineAction，用于 view-all / analytics / text-like action 这类文字动作入口。\n- 迁移 AgentAssignments、AgentMetricsCards 的 aw-view-all / aw-link 到 BbInlineAction。\n- 迁移 TaskGraphBindingList、TaskGraphInputsPanel、TaskGraphBranchNodeForm、TaskGraphLlmNodeForm、TaskGraphNodeInspector 的行内新增/删除按钮到 BbButton。\n- 清理 TaskGraphEditorPanel 中已无模板使用的 task-graph-inline-add scoped CSS。\n- 从 styles.css 移除一批已无组件引用的 aw-field / aw-btn / aw-modal / aw-add-btn / aw-remove-btn / aw-inline-error 旧样式定义，保留 shared compatibility selector 作为过渡层。\n- 更新 DESIGN.md：明确 text-like actions 用 BbInlineAction，dense editor add/remove controls 用 BbButton。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- git diff --check（本轮相关前端文件）: 通过，仅 Windows LF/CRLF warning。\n- Browser iab Agents 页面: 无 console error，legacy aw-link/aw-view-all/aw-add/aw-remove/aw-field/aw-modal 计数为 0。\n- Browser iab TaskGraph route 抽查: 无 console error，legacy task-graph-inline-add 计数为 0。\nNext step:\n- 下一轮建议继续抽取 BbRefChip / BbSegmentedControl / BbDenseFieldRow，把 variable chip、LLM mode segmented、prompt-var-bind 这类还在局部定义的 de...",
+        "cleanup reason: BbInlineAction/BbButton 迁移属于 000087 组件列表范围。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-shared-ui-primitives-seventh-pass.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-shared-ui-primitives-seventh-pass.json",
+        "Title: 继续收敛字段与 checkbox：NodeInspector / LLM / Editor settings\nTime: 2026-05-23T15:44:40Z\nSource: codex\nProject: blackboard\nTopic: frontend-shared-ui-primitives-seventh-pass\nDone:\n- 新增 `BbCheckboxField` 公共组件，并在 `src/styles.css` 下补统一 checkbox field 样式。\n- 将 `TaskGraphNodeInspector` 的普通字段从裸 `label/input/select/textarea` 迁到 `BbField`，将 schema/system_write/shell 等 checkbox 迁到 `BbCheckboxField`，删除 NodeInspector 本地 broad field/checkbox selector。\n- 将 `TaskGraphLlmNodeForm` 的 resource bundle required checkbox 迁到 `BbCheckboxField`，删除已无用的 `checkedValue` helper。\n- 将 `TaskGraphEditorPanel` 的 graph settings 字段迁到 `BbField`，run policy checkbox 迁到 `BbCheckboxField`，并清理 EditorPanel 中旧 NodeInspector / rule row 死 CSS。\n- 更新 `DESIGN.md`，明确 routine boolean settings 使用 `BbCheckboxField`，不再新增局部 `*-checkbox-row`。\nValidation:\n- `npm run build --prefix bb_web`: 通过。\n- `git diff --check` 针对本轮相关文件：通过，仅 CRLF 提示。\n- `rg` 检查 `checkbox-row`、裸 `type=\"checkbox\"`、settings/node-card broad field selector、`checkboxValue`：目标文件内未命中。\n- Browser in-app smoke：当前 task graph URL 可加载且 console error 为 0；该 route 当前渲染 catalog shell，未展示 settings/inspector，因此真实视觉验收仍需稳定打开 editor inspector 的 route/fixture。\nNext step:\n- 继续收敛 `TaskGraphSc...",
+        "cleanup reason: BbCheckboxField 组件属于 000087 组件列表，NodeInspector/LLM 表单字段收敛也在范围。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-shared-ui-primitives-sixth-pass.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-shared-ui-primitives-sixth-pass.json",
+        "Title: 继续收敛 Task Graph LLM 表单字段到 BbField\nTime: 2026-05-23T15:35:32Z\nSource: codex\nProject: blackboard\nTopic: frontend-shared-ui-primitives-sixth-pass\nDone:\n- 将 `TaskGraphLlmNodeForm` 中剩余裸 `label/input/select/textarea` 字段迁到 `BbField`，覆盖 agent profile、runtime/provider/model、prompt file/preview、enhanced LLM contract、MCP detail fields。\n- 删除 `.task-graph-llm-form input/select/textarea` 和 `.task-graph-llm-form label` broad selector，保留 checkbox row 的最小本地布局样式。\n- 将 prompt preview 的 inline `min-height` 改为局部类 `task-graph-prompt-preview`，避免模板内联样式继续扩散。\nValidation:\n- `npm run build --prefix bb_web`: 通过。\n- `git diff --check -- bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue`: 通过，仅 CRLF 提示。\n- `rg` 检查 LLM 表单 broad selectors 和 inline min-height：未命中。\n- Browser in-app smoke：当前 task graph URL 可加载且 console error 为 0；该 route 当前渲染 catalog shell，未展示 LLM 表单，因此真实视觉验收仍需稳定打开 editor inspector 的 route/fixture。\nNext step:\n- 继续收敛 `TaskGraphNodeInspector` 顶部基础字段和部分 node-specific fields 到 `BbField`。\n- 继续拆除 inspector / editor 里 broad descendant selectors，尤其是直接命中 `label input select textarea` 的样式。\nRelated locations:\n- bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue",
+        "cleanup reason: TaskGraph LLM 表单迁到 BbField 属于 000087 前端共享组件收敛。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-shared-ui-primitives-tenth-pass.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-shared-ui-primitives-tenth-pass.json",
+        "Title: 继续收敛 section header 到 BbSectionHeader\nTime: 2026-05-24T00:00:00+08:00\nSource: codex\nProject: blackboard\nTopic: frontend-shared-ui-primitives-tenth-pass\nDone:\n- 新增共享组件 BbSectionHeader，用于统一 title/subtitle/count/actions/divider 的 section 头部结构。\n- 导出 BbSectionHeader，并在全局 bb-* grammar 中加入 .bb-section-header、title、count、actions、dark theme 变量。\n- 迁移 InboxStructuredDocument 的 JSON document/section/attachments/extra 头部到 BbSectionHeader。\n- 迁移 TicketStructuredDocument 的 summary/stories/risks/progress 头部到 BbSectionHeader，保留业务 action button 作为 actions slot。\n- 迁移 TicketDetailPanel 的 dependencies 与 attachments 头部到 BbSectionHeader。\n- 迁移 AgentAssignments、AgentMcpTable、AgentMetricsCards、AgentRuntimeConfig、AgentSkillsTable 的 aw-section-header 到 BbSectionHeader。\n- 更新 DESIGN.md：明确可复用 section header 必须使用 BbSectionHeader，业务组件只负责 actions 内容。\nValidation:\n- rg 'ticket-detail-section-head|ticket-detail-section-title|ticket-detail-section-count|aw-section-header h4|<div class=\"aw-section-header\"|<header class=\"ticket-detail-section-head\"' bb_web/src/components bb_web/src/styles.css：无残留匹配。\n- git diff --check -- 本轮相关 bb_web 文件：通过，仅 CRLF warning。\n- npm run build --prefix bb_web：通过。\n- Browser smoke：打开 Inb...",
+        "cleanup reason: BbSectionHeader 组件属于 000087 组件列表，迁移 InboxStructuredDocument/TicketStructuredDocument 头部。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-shared-ui-primitives-third-pass.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-shared-ui-primitives-third-pass.json",
+        "Title: Frontend UI convergence third pass: ref chips and segmented controls\nTime: 2026-05-23\nSource: codex\nProject: blackboard\nTopic: frontend-shared-ui-primitives-third-pass\nDone:\n- 新增 BbRefChip，用于 {{inputs.xxx}} 引用展示和可点击 binding shortcut。\n- 新增 BbSegmentedControl，用于 LLM/Agent 这类小型模式切换。\n- 迁移 TaskGraphLlmNodeForm 的 LLM/Agent mode segmented 到 BbSegmentedControl。\n- 迁移 TaskGraphBindingList、TaskGraphInputsPanel、TaskGraphRunInputsPanel、TaskGraphNodeInspector 的 reference chip / binding chip 到 BbRefChip。\n- 清理 TaskGraphEditorPanel 中已无模板引用的旧 variable-list、segmented、mini-button、inline-list 等 scoped CSS。\n- 从 shared CSS 移除已迁移完成的 task-graph-variable-chip / task-graph-prompt-var-bind compatibility selector。\n- 更新 DESIGN.md：明确 reference chips 用 BbRefChip，small option switches 用 BbSegmentedControl。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- git diff --check（本轮相关前端文件）: 通过，仅 Windows LF/CRLF warning。\n- rg 检查 task-graph-segmented / task-graph-variable-chip / task-graph-prompt-var-bind / task-graph-run-inputs small: 无组件引用。\n- Browser iab TaskGraph/Agents 页面冒烟: 无 console error；当前路由未展开 affected editor controls，因此 DOM count 为 0 但旧类也为 0。\nNext step:\n- 下一轮建议继续收敛 BbDenseFieldRow / BbSummaryChip，把 inpu...",
+        "cleanup reason: BbRefChip/BbSegmentedControl 属于 000087 组件列表，迁移 TaskGraph binding/segmented controls。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-shared-ui-primitives.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-shared-ui-primitives.json",
+        "Title: Frontend shared UI primitives centralized\nTime: 2026-05-23\nSource: codex\nProject: blackboard\nTopic: frontend-shared-ui-primitives\nDone:\n- 新增共享 UI 原语组件：BbButton、BbField、BbDialog、BbStatusPill、BbEmptyState、BbInlineAlert，并通过 common/index.ts 统一导出。\n- 在 styles.css 增加 Shared UI primitives 集中样式层，兼容映射既有按钮、状态、空态、pill 等 legacy selector，减少页面局部重复皮肤。\n- 迁移高频业务面：AgentWorkbench、AgentProfileSection、AgentRuntimeConfig、AgentMcpTable、AgentSkillsTable、LaneManager、TaskGraph LLM 表单、NodeInspector、RunHistory、SchedulePanel。\n- 更新 bb_web/DESIGN.md，明确以后 recurring chrome 先走 components/common，页面组件只负责布局和业务结构。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- git diff --check（本轮相关前端文件）: 通过，仅有 Windows LF/CRLF warning。\n- Browser iab Agents 页面: .bb-button/.bb-object-item 正常，legacy aw-add/aw-remove 为 0，console error 为 0。\n- Browser iab 新建 Agent 弹窗: .bb-dialog=1、.bb-field=4、.bb-button=3，legacy aw-modal/aw-field 为 0，console error 为 0。\nNext step:\n- 下一轮可以继续收敛 link-action、dense table row、confirm dialog、graph dense row remove buttons，把剩余 legacy CSS 从兼容映射逐步迁走。\nRelated locations:\n- bb_web/src/components/common/\n- bb_web/src/styles.css\n- bb_web/DESIGN.md\n- bb_web/src/components/AgentWorkbench.vue\n- bb_web/src/component...",
+        "cleanup reason: BbButton/BbField/BbDialog/BbStatusPill/BbEmptyState/BbInlineAlert 是 000087 的核心组件，已在 done 中列出。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-ui-convergence-codex-graph-run.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-ui-convergence-codex-graph-run.json",
+        "Title: Codex UI 收敛 graph 跑测与 Windows spawn 修复\nTime: 2026-05-24T00:58:00+08:00\nSource: codex\nProject: blackboard\nTopic: frontend-ui-convergence-codex graph run\nDone:\n- 修复 Windows 下 Codex runtime spawn `codex.cmd` 参数失败：新增 `resolve_codex_spawn_command`，优先用 `node <@openai/codex/bin/codex.js>`，接入 AgentSession Codex runtime 与 daemon Codex app-server。\n- 重启 `bb_daemon`/`bb_server` 后启动 `frontend-ui-convergence-codex` run：`run-20260523-164426-7c544c2b`，最终 `succeeded`。\n- run 中 `codex-patch` 用 `gpt-5.5` 成功执行并将 `TaskGraphPreviewPanel.vue` 的预览头部操作区从 `bb-top-action-button` 收敛为 `BbActionGroup + BbButton`。\n- 系统静态验证通过：`git diff --check` 与 `npm run build --prefix bb_web` 均通过。\n- 使用当前会话的 Browser/in-app browser 补做真实 UI 冒烟：idea-canvas、settings、task graph 页面均加载，console error 为 0；settings 仍显示 `/api/agents/runtime-connectors` 404，判定为既有后端路由状态。\n- 修复 graph v4 的最终报告模板：`system-write-report` 改引用 `stdout_json`，避免 Scan/Validation JSON 为空。\nValidation:\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core resolve_codex_spawn_command_uses_node_cli_for_npm_shim -- --nocapture: 通过\n- cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon: 通过\n- GET /api/projects/blackboard/task-graphs/system/frontend-ui...",
+        "cleanup reason: frontend-ui-convergence-codex graph 跑测属于 000087 的 Codex UI 收敛工作，包含 BbActionGroup/BbButton 迁移和 graph 创建。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-ui-convergence-codex-graph.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-ui-convergence-codex-graph.json",
+        "Title: Frontend UI convergence pass and Codex graph handoff\nTime: 2026-05-24T00:00:00+08:00\nSource: codex\nProject: blackboard\nTopic: frontend-ui-convergence-codex-graph\nDone:\n- 新增 shared primitives `BbActionGroup` 与 `BbIconCommand`，并让 `BbButton iconOnly` 自动回退使用 title 作为 aria-label。\n- 将 IdeaCanvas 的刷新/新建/删除确认动作迁到 `BbActionGroup` + `BbButton`/`BbIconCommand`，移除旧 `bb-primary-command`/`bb-secondary-command` 业务用法。\n- 将 RuntimeConnectorPanel 的页头动作与 Pi Git Bash workaround 动作迁到 shared button/action group，删除本地 `runtime-button` 皮肤 CSS。\n- 新增系统 graph `frontend-ui-convergence-codex`，流程为 scan -> Codex patch(gpt-5.5 medium) -> static validate loop -> runtime 内部报告。\n- 新增确定性脚本 `scripts/task_graph_frontend_ui_convergence.py`，支持 scan/validate，validate 会跑遗留 selector 扫描、`git diff --check` 与 `npm run build --prefix bb_web`。\nValidation:\n- `python -m py_compile scripts/task_graph_frontend_ui_convergence.py`: 通过。\n- `python scripts/task_graph_frontend_ui_convergence.py validate --repo-root . --frontend-workspace bb_web --timeout-seconds 900`: 通过，has_issues=false，selector matches=0，git diff --check=0，npm build=0。\n- `python -m json.tool .bb_template/task_graphs/system/frontend-ui-convergence-codex.json`: 通过。...",
+        "cleanup reason: BbActionGroup/BbIconCommand 组件属于 000087，新增 frontend-ui-convergence-codex graph 和验证脚本。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-frontend-ui-convergence-codex-os-aware-smoke.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-frontend-ui-convergence-codex-os-aware-smoke.json",
+        "Title: Frontend UI convergence Codex graph OS-aware smoke update\nTime: 2026-05-24T00:00:00+08:00\nSource: codex\nProject: blackboard\nTopic: frontend-ui-convergence-codex-os-aware-smoke\nDone:\n- 将 `frontend-ui-convergence-codex` graph 从 v1 升到 v2。\n- 新增 `interactive-smoke` Codex LLM 节点，固定 `runtime=codex`、`model=gpt-5.5`、`variant=medium`。\n- `interactive-smoke` 节点只做 UI 冒烟，不改文件；prompt 明确 Windows 必须拉起 Browser Use / Codex in-app browser，macOS/Darwin 必须拉起 Computer Use。\n- 更新系统报告节点，把 interactive smoke 结果纳入 runtime 内部报告。\n- 更新 `scripts/task_graph_frontend_ui_convergence.py`，scan/validate 输出加入 `platform.system/release/machine`，供 graph 做 OS 分流。\nValidation:\n- `python -m py_compile scripts/task_graph_frontend_ui_convergence.py`: 通过。\n- `python -m json.tool .bb_template/task_graphs/system/frontend-ui-convergence-codex.json`: 通过。\n- `python scripts/task_graph_frontend_ui_convergence.py scan --repo-root . --frontend-workspace bb_web`: 通过，本机 platform.system=Windows，has_issues=false，matches=0。\n- HTTP GET `/api/projects/blackboard/task-graphs/system/frontend-ui-convergence-codex`: 通过，返回 version=2，8 nodes，7 edges，包含 `interactive-smoke`。\n- `python scripts/task_graph_frontend_ui_convergence.py validate --repo...",
+        "cleanup reason: frontend-ui-convergence-codex graph v2 与 OS-aware smoke 属于 000087 Codex 收敛工作。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-gpt-5-5-medium-bb-web-ui-收敛-graph-小片试验.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-gpt-5-5-medium-bb-web-ui-收敛-graph-小片试验.json",
+        "Title: Task Graph 预览面板操作组收敛\nTime: 2026-05-23T16:46:22Z\nSource: codex-gpt-5.5-medium\nProject: blackboard\nTopic: bb_web UI 收敛 graph 小片试验\nDone:\n- 将 TaskGraphPreviewPanel 头部预览操作从原生 button + bb-top-action-button 收敛为 BbActionGroup + BbButton。\n- 移除该区域重复的 page-local flex/gap 操作组语法，仅保留 min-width 布局约束。\n- 未新增 shared primitive，未修改后端、桌面端、ticket、wiki、runtime、node_modules 或 dist 源文件。\nValidation:\n- npm run build --prefix C:/Dev/blackboard/bb_web: 通过\n- mcp__bb__.list_projects: 通过\n- mcp__bb__.create_inbox_note: 当前调用\nNext step:\n- 由外部验证链路继续做 Windows Browser Use 冒烟，检查 Task Graph 预览头部按钮视觉和点击行为。\nRelated locations:\n- bb_web/src/components/task-graph/TaskGraphPreviewPanel.vue",
+        "cleanup reason: TaskGraphPreviewPanel 头部操作组收敛属于前端 UI 原语收敛，迁移到 BbActionGroup + BbButton。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-inbox-item-single-line-design-rule.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-inbox-item-single-line-design-rule.json",
+        "Title: Inbox item 单行设计规范落地\nTime: 2026-05-23T00:00:00+08:00\nSource: Codex\nProject: blackboard\nTopic: inbox-item-single-line-design-rule\nDone:\n- 将 Inbox full 模式左侧 item 严格收敛为 single-line title-only：移除 meta、time、excerpt。\n- 调整 selectable item 样式为 row 规格：透明背景、轻量 active/hover、32px min-height、title 单行 ellipsis。\n- 保留完整信息在右侧 InboxStructuredDocument detail/card 中展示，区分 item 与 card 职责。\nValidation:\n- npm run build --prefix bb_web：通过。\n- 浏览器 reload Inbox：通过，console error count = 0。\n- 浏览器实测：前 6 个 `.bb-inbox-item--selectable` 都只有一个 button 子元素，文本只有 title，高度约 34px。\n- git diff --check：通过，仅 CRLF warning。\nNext step:\n- 建议把“Item = single-line title-only；Card = multi-field content”写进前端设计规范，并逐步检查 TaskGraph/Ticket/Inbox 其他列表是否混用了 item/card。\nRelated locations:\n- bb_web/src/components/InboxPanel.vue\n- bb_web/src/styles.css",
+        "cleanup reason: Inbox item 单行设计规范落地属于 DESIGN.md 规范更新和组件使用规范，落在 000087 范围。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-inbox-item-typography-density.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-inbox-item-typography-density.json",
+        "Title: 收敛 Inbox item 与字体规范\nTime: 2026-05-23T00:00:00+08:00\nSource: Codex\nProject: blackboard\nTopic: inbox-item-typography-density\nDone:\n- 将 Inbox full 模式左侧 item 从内容卡片收敛为扫描列表项：标题、meta/time、摘要三层信息。\n- 左侧 item 标题统一为 12px / 600，meta 改用 UI 字体而不是 mono，meta 和时间合并到一行。\n- 左侧 item 摘要压缩为单行，padding、gap、caret 尺寸整体缩小，实测 item 高度约 67px。\n- 右侧 reader 标题从 mono 改为 UI 字体，避免中文标题呈现不自然。\nValidation:\n- npm run build --prefix bb_web：通过。\n- 浏览器 reload http://127.0.0.1:8060/#/projects/blackboard/inbox：通过，console error count = 0。\n- 浏览器实测：前 5 个 `.bb-inbox-item--selectable` 高度约 67px；meta font-family 为 Noto Sans SC/system UI；标题 12px/600。\n- git diff --check：通过，仅 CRLF warning。\nNext step:\n- 建议后续把 List Item 规范抽为通用 CSS class/token，TaskGraph catalog、ticket list、inbox list 统一使用同一套密度和字体层级。\nRelated locations:\n- bb_web/src/components/InboxPanel.vue\n- bb_web/src/styles.css",
+        "cleanup reason: Inbox item 字体与密度收敛属于前端设计规范更新，000087 覆盖 DESIGN.md 规范工作。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-23-codex-inbox-ui-layout-repair.json`.",
+      "evidence": [
+        "inbox/2026-05-23-codex-inbox-ui-layout-repair.json",
+        "Title: 修复 Inbox 全屏界面布局损坏\nTime: 2026-05-23T00:00:00+08:00\nSource: Codex\nProject: blackboard\nTopic: inbox-ui-layout-repair\nDone:\n- 修复 Inbox full 模式右侧 reader 缺少 header 的问题，补回交接详情标题、当前选中文档标题与文件名。\n- 整理 Inbox full 模式布局层级：外层 panel body 作为单一 bordered surface，split 内部取消多余 padding/gap，左栏和右栏用明确 hairline 分隔。\n- 调整 reader/list 背景与移动端分隔线，避免透明层叠导致界面像散架。\n- 新增 `inboxReaderTitle` 中英文 i18n 文案。\nValidation:\n- npm run build --prefix bb_web：通过。\n- 浏览器打开 http://127.0.0.1:8060/#/projects/blackboard/inbox 并 reload：通过，console error count = 0。\n- 浏览器 DOM 校验：已出现 `交接详情` reader header，选中文档正常渲染。\n- git diff --check：通过，仅 CRLF warning。\nNext step:\n- 如果继续打磨 Inbox，可以把 full/compact 两种布局样式从全局 styles.css 迁移到组件 scoped style，减少未来被全局样式误伤。\nRelated locations:\n- bb_web/src/components/InboxPanel.vue\n- bb_web/src/styles.css\n- bb_web/src/i18n.ts",
+        "cleanup reason: Inbox full 模式布局修复属于前端共享 UI 原语收敛范围，000087 spec 明确覆盖 Inbox UI 规范落地与组件收敛。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-24-codex-frontend-ui-convergence-codex-run-monitored.json`.",
+      "evidence": [
+        "inbox/2026-05-24-codex-frontend-ui-convergence-codex-run-monitored.json",
+        "Title: 前端 UI 收敛图运行成功并补做浏览器冒烟\nTime: 2026-05-24T07:47:45Z\nSource: codex\nProject: blackboard\nTopic: Frontend UI convergence Codex run monitored\nDone:\n- 发起并监控 system/frontend-ui-convergence-codex v4：run-20260524-074102-cbb1ad1f，最终 succeeded。\n- Codex patch 节点修改 bb_web/src/components/AgentConnectorPanel.vue：将同步全部按钮迁移到 BbButton variant=primary，并删除局部 .btn/.btn-primary 按钮皮肤。\n- 图内 static-validate 通过；图内 interactive-smoke 因子 Codex 会话没有 Browser Use 工具而报告 blocked。\n- 用当前 Codex in-app Browser 手动补做 idea-canvas 和 settings 页面冒烟：页面非空、无 fatal 文本、console error 为空；settings 页仍显示 /api/agents/runtime-connectors 404，这是后端路由/环境状态，不是本轮 UI 收敛引入。\n- 检查前端 run 后无遗留 CLI Codex 进程。\nValidation:\n- run-20260524-074102-cbb1ad1f: succeeded\n- git diff --check -- bb_web/src bb_web/DESIGN.md: 通过，仅 CRLF 提示\n- npm run build --prefix bb_web: 通过\n- Browser smoke http://127.0.0.1:8060/#/projects/blackboard/idea-canvas: 通过\n- Browser smoke http://127.0.0.1:8060/#/projects/blackboard/settings: 通过，但存在既有 runtime-connectors 404 提示\nNext step:\n- 如继续前端收敛，建议下一轮先避免与自动 nightly/code-monitor 同时修改同一批文件；当前系统中另有 nightly-auto-code-optimization/code-monitor-check-fix 在运行，未干预。\nRelated locations:\n- bb_web/src/components/AgentConnectorPanel.vue\n- .bb_t...",
+        "cleanup reason: frontend-ui-convergence-codex graph 真实跑测与 browser smoke，000087 spec 明确覆盖 frontend-ui-convergence-codex graph 创建与跑测。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-25-codex-bb-web-taskgraph-catalog-弹窗字段-ui-收敛.json`.",
+      "evidence": [
+        "inbox/2026-05-25-codex-bb-web-taskgraph-catalog-弹窗字段-ui-收敛.json",
+        "Title: 收敛 TaskGraph catalog 弹窗字段到 BbField\nTime: 2026-05-25T01:53:43Z\nSource: codex\nProject: blackboard\nTopic: bb_web TaskGraph catalog 弹窗字段 UI 收敛\nDone:\n- 将 TaskGraphCatalogCreate.vue 的创建名称字段从本地 label/span/input 语法迁到 BbField。\n- 将 TaskGraphCatalogGroupDialog.vue 的分组名称字段从本地 label/span/input 语法迁到 BbField。\n- 删除上述两个弹窗中重复的字段 label/span 局部 CSS，保留 input 尺寸和弹窗布局 CSS。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- tool_search Browser Use/Playwright: 未暴露可用浏览器工具，Windows Browser Use 冒烟验证 blocked，未用 curl/shell 伪造 UI 通过。\n- mcp__bb__.list_projects: 通过。\n- mcp__bb__.create_inbox_note: 通过。\nNext step:\n- 需要在 Browser Use 工具可用后打开 Task Graph catalog，分别触发新建 graph 和新建/重命名 group 弹窗做 UI 冒烟。\nRelated locations:\n- bb_web/src/components/task-graph/TaskGraphCatalogCreate.vue\n- bb_web/src/components/task-graph/TaskGraphCatalogGroupDialog.vue",
+        "cleanup reason: TaskGraph catalog 弹窗字段迁移到 BbField，属于前端共享 UI 原语收敛范围，000087 spec 明确覆盖组件收敛与 DESIGN.md 规范更新。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-25-codex-bb-web-ui-primitive-收敛-taskgraphpreviewpanel-节点弹层关闭动作.json`.",
+      "evidence": [
+        "inbox/2026-05-25-codex-bb-web-ui-primitive-收敛-taskgraphpreviewpanel-节点弹层关闭动作.json",
+        "Title: TaskGraphPreviewPanel 节点弹层关闭按钮迁到 BbIconCommand\nTime: 2026-05-25T02:12:07Z\nSource: Codex\nProject: blackboard\nTopic: bb_web UI primitive 收敛：TaskGraphPreviewPanel 节点弹层关闭动作\nDone:\n- 将 TaskGraphPreviewPanel 节点 popover 的本地关闭 button 替换为 BbIconCommand。\n- 删除该 popover header button 的局部皮肤/hover CSS，保留页面局部布局与 BbInfoGrid 密度变量。\n- 未修改 shared primitive；因此未改 DESIGN.md。\nValidation:\n- npm run build --prefix C:/Dev/blackboard/bb_web：通过。\nNext step:\n- 可继续扫描 Task Graph 局部 raw button 或局部 field row，按同样小范围迁到 common primitives。",
+        "cleanup reason: 文件名含 bb_web UI primitive 收敛，topic 描述 TaskGraphPreviewPanel popover 替换 BbIconCommand；related_locations 在 bb_web/src/components/task-graph/；ticket 087 的 summary 明确覆盖 Codex 2026-05-23 完成的前端共享 UI 原语收敛工作，包括 BbIconCommand 组件产品化。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-settings-page-connector-hierarchy-cleanup.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-settings-page-connector-hierarchy-cleanup.json",
+        "Title: 收敛 Settings 页面连接器层级\nTime: 2026-05-26T06:51:43Z\nSource: codex\nProject: blackboard\nTopic: settings-page-connector-hierarchy-cleanup\nDone:\n- 响应页面层级混乱反馈：Settings 默认视图不再同时展示 Runtime Connectors 和 Agent 连接器两块大面板。\n- 将 AgentConnectorPanel 保留为 Settings 主内容，将 RuntimeConnectorPanel 移入底部 `details.bb-settings-advanced` 高级区，并通过 `v-if=runtimeSettingsOpen` 延迟挂载，默认不请求 runtime-connectors 接口。\n- 新增 Settings 高级区样式，使低频 Task Graph runtime 配置成为轻量折叠入口。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- in-app Browser 刷新 http://localhost:8060/#/projects/blackboard/settings：默认 runtimePanelCount=0、agentPanelCount=1、advancedOpen=false、页面无 /api/agents/runtime-connectors 404 文本、console error 为空。\n- mcp__bb__.create_inbox_note: 通过。\nNext step:\n- 如需进一步降噪，可把 Runtime Connectors 迁到 Task Graphs 页面内的运行配置入口，而不是保留在 Settings。\nRelated locations:\n- bb_web/src/views/BoardView.vue\n- bb_web/src/styles.css",
+        "cleanup reason: topic settings-page-connector-hierarchy-cleanup 收敛 Settings 页面 Runtime Connector 与 Agent Connector 层级；related_locations 在 bb_web/src/views/BoardView.vue；属于前端 UI 原语收敛（ticket 087）的 Settings 视图整理。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-settings-tool-status-detail-cleanup.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-settings-tool-status-detail-cleanup.json",
+        "Title: 清理 Settings Agent 工具状态长命令展示\nTime: 2026-05-26T07:27:09Z\nSource: codex\nProject: blackboard\nTopic: settings-tool-status-detail-cleanup\nDone:\n- 按用户反馈移除 AgentConnectorRow 中默认可见的工具包名、安装命令和 CLI 路径详情行。\n- 工具状态现在只展示来源/当前版本/目标版本；Pi 等组件列表只在组件非 installed 时显示，避免正常状态下重复噪音。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- in-app Browser 刷新 Settings：Pi 行 foundPiRow=true、piHasCompactStatus=true、piHasNpmCommand=false、piHasCliPath=false、visibleToolStatusDetailCount=0。\n- OpenCode 行 openCodeHasBrewCommand=false、openCodeHasCliPath=false。\n- Browser console error 为空。\n- mcp__bb__.create_inbox_note: 通过。\nRelated locations:\n- bb_web/src/components/AgentConnectorRow.vue",
+        "cleanup reason: topic settings-tool-status-detail-cleanup 移除 AgentConnectorRow 默认可见的工具详情命令；related_locations 在 bb_web/src/components/AgentConnectorRow.vue；属于前端共享 UI 原语收敛（ticket 087）的 AgentConnectorRow 组件产品化。"
+      ]
+    }
+  ],
+  "attachments": [],
+  "status": "in_progress",
+  "created_at": "2026-05-26",
+  "updated_at": "2026-05-26",
+  "extra": {}
+}

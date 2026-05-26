@@ -92,6 +92,15 @@
         "Title: TaskGraph 节点编辑器逐节点规范化一轮\nTime: 2026-05-23T00:00:00+08:00\nSource: Codex\nProject: blackboard\nTopic: taskgraph-node-inspector-ui-normalization\nDone:\n- 补齐前端 TaskGraphNode 类型对 schema_validate 与 system_write_output 的支持，并为 input_var/schema_validate/system_write_output 补默认 pins。\n- 补齐节点 palette/visual/meta：Input Var、KB Plan、Manifest Merge、Schema Validate、System Write 现在有统一分类、颜色、icon、描述与默认创建配置。\n- 重构 TaskGraphNodeInspector：start/input_var/plan/kb_plan/manifest_merge/schema_validate/system_write_output 有明确配置区；未来未知节点走统一 JSON fallback，不再裸空。\n- 给 TaskGraphBranchNodeForm 增加 scoped style、rule 表头、按钮样式和无障碍 label，避免 Branch 表单裸 DOM。\n- 清理 TaskGraphLlmNodeForm 增强 LLM 契约硬编码文案，统一走 i18n。\nValidation:\n- npm run build --prefix bb_web：通过。\n- 浏览器打开 http://127.0.0.1:8060/#/projects/blackboard/task-graphs/system/rust-vue-code-review/edit：通过，console error count = 0。\n- 浏览器 DOM 校验：palette 已出现 Input Var、KB Plan、Manifest Merge、Schema Validate、System Write。\n- git diff --check：通过，仅保留既有 CRLF warning。\nNext step:\n- 如果继续细化，下一步可以把 Inspector 里的重复 TaskGraphBindingList 段落抽成小组件，进一步降低每个 node type 的模板重复。\n- 可以再做一轮按节点截图/视觉验收，挑出具体节点的字段命名和布局是否符合产品语义。\nRelated locations:\n- bb_web/src/data/taskGraphs.ts\n- bb_web/src/data/taskGraphP...",
         "cleanup reason: note 的 document.related_locations 涉及 TaskGraphNodeInspector / TaskGraphLlmNodeForm / palette 规范化，done 内容是 TaskGraph 节点编辑器 UI 规范化一轮，topic 和 done 语义与 000077 增强 TaskGraph 编辑器直接对齐。"
       ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-24-codex-taskgraph-unified-tool-layer-runtime-renderers.json`.",
+      "evidence": [
+        "inbox/2026-05-24-codex-taskgraph-unified-tool-layer-runtime-renderers.json",
+        "Title: TaskGraph LLM 统一工具层初版落地\nTime: 2026-05-24T08:35:41Z\nSource: codex\nProject: blackboard\nTopic: taskgraph-unified-tool-layer-runtime-renderers\nDone:\n- 新增 `task_graph::tool_layer` 模块，将工具能力从 LLM resolver 中抽出：节点声明 toolkits，tool_layer 解析为 provider-neutral `ToolInjectionPlan`。\n- 定义 `ToolTransportKind` 与 `ToolEndpointSpec`，统一表示 MCP / CLI / REST / Shell 四类工具入口；当前 concrete toolkit 仍是 `browser_use`，但 plan 已具备多 transport 承载形态。\n- 将 Codex / Pi / OpenCode / CodeBuddy 的 MCP 配置渲染迁移到 tool_layer：Codex 输出 `--config mcp_servers.*`，Pi 输出 `.pi/mcp.json` 形态，OpenCode/CodeBuddy 保持各自 provider-specific 格式。\n- LLM resolver 改为只合并 opts/profile/node/toolkit 的 skills 与 MCP，再调用 `render_runtime_tool_config`；不再在 `nodes/llm.rs` 内直接维护 provider config 细节。\n- 保留 `nodes::llm::*` builder re-export，避免已有测试和调用点断裂；同时在 `task_graph::mod` 公开新的 tool_layer 类型和 renderer。\n- 前端 LLM 节点 Toolkits 文案更新为统一工具层语义，Browser Use 仍可在节点级按需开启。\nValidation:\n- cargo fmt --all: 通过。\n- cargo test -p bb_core task_graph::tool_layer: 通过，6/6。\n- cargo test -p bb_core task_graph::nodes::llm::tests: 通过，17/17。\n- cargo check -p bb_core: 通过。\n- cargo check -p bb_daemon: 通过。\n- npm run build --prefix bb_web: 通过。\n- git diff --check（本次相关文件）: 通过，仅 CRLF warning。\nNe...",
+        "cleanup reason: TaskGraph 统一工具层初版落地，新建 tool_layer 模块并统一 MCP/CLI/REST/Shell renderer，000077 spec 聚焦 graph 编辑器支撑与工具层能力，done 涵盖 tool_layer 模块落地与前端表单更新。"
+      ]
     }
   ],
   "attachments": [
@@ -104,7 +113,7 @@
   ],
   "status": "todo",
   "created_at": "2026-05-18",
-  "updated_at": "2026-05-23",
+  "updated_at": "2026-05-26",
   "extra": {
     "scope": "graph-editor-authoring",
     "source_request": "用户要求先落 sub graph 和 graph 编辑增强 ticket，后续再详细讨论，不写代码。"

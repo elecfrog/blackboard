@@ -1,0 +1,768 @@
+{
+  "schema_version": 1,
+  "id": "nightly-auto-code-optimization-custom-mpmtlzwa",
+  "scope": "project",
+  "title": "nightly-auto-code-optimization（项目自定义）",
+  "description": "夜间总控管线：Rust/Vue code review -> review scout fix -> 代码质量检查修复 -> bbpm inbox/ticket 深度维护 -> repo/inbox/ticket 日报 -> 写出唯一老板入口 project wiki/nightly/nightly-report-yyyy-mm-dd.md。",
+  "version": 1,
+  "readonly": false,
+  "origin": {
+    "scope": "system",
+    "id": "nightly-auto-code-optimization",
+    "version": 10,
+    "forked_at": "2026-05-26T15:59:19.551208+00:00"
+  },
+  "metadata": {
+    "tags": [
+      "system",
+      "nightly",
+      "unattended",
+      "code-review",
+      "scout-fix",
+      "code-quality",
+      "inbox",
+      "ticket",
+      "pi"
+    ],
+    "owner": "blackboard",
+    "created_by": "codex",
+    "updated_by": "codex",
+    "run_policy": {
+      "allow_concurrent_runs": false,
+      "max_concurrent_runs": 1,
+      "queue_enabled": true,
+      "max_queue_wait_ms": 7200000,
+      "queue_timeout_retry_enabled": true,
+      "max_queue_timeout_retries": 5
+    }
+  },
+  "inputs": [
+    {
+      "id": "input",
+      "label": "Daily Goal",
+      "type": "string",
+      "default": "执行夜间无人值守代码优化：审查当前 Rust/Vue 变更，验证并修复高置信 code review finding，运行既有代码质量检查修复，最后运行 bbpm 维护管线尽可能清理 JSON inbox 并维护 tickets。",
+      "description": "本次无人值守优化目标。"
+    },
+    {
+      "id": "source-root",
+      "label": "Source Root",
+      "type": "string",
+      "default": "{{env.root}}/..",
+      "description": "代码根目录。"
+    },
+    {
+      "id": "run-static-checks",
+      "label": "Run Static Checks",
+      "type": "boolean",
+      "default": true
+    },
+    {
+      "id": "review-output-slug",
+      "label": "Review Output Slug",
+      "type": "string",
+      "default": "day0-code-review"
+    },
+    {
+      "id": "fix-output-slug",
+      "label": "Fix Output Slug",
+      "type": "string",
+      "default": "day0-code-review-scout-fix"
+    },
+    {
+      "id": "quality-max-iterations",
+      "label": "Quality Max Iterations",
+      "type": "number",
+      "default": 3,
+      "min": 1.0,
+      "max": 10.0
+    },
+    {
+      "id": "inbox-batch-count",
+      "label": "Inbox Batch Count",
+      "type": "number",
+      "default": 20,
+      "description": "夜间维护默认尽可能清理 JSON inbox：每轮最多处理 20 条。",
+      "min": 1.0,
+      "max": 20.0
+    },
+    {
+      "id": "inbox-max-iterations",
+      "label": "Inbox Max Iterations",
+      "type": "number",
+      "default": 20,
+      "description": "夜间维护默认最多 20 轮，理论上最多处理 400 条 JSON inbox note。",
+      "min": 1.0,
+      "max": 20.0
+    },
+    {
+      "id": "ticket-bdd-batch-count",
+      "label": "Ticket BDD Batch Count",
+      "type": "number",
+      "default": 20,
+      "description": "夜间维护默认每轮最多检查/修复 20 个 ticket。",
+      "min": 1.0,
+      "max": 20.0
+    },
+    {
+      "id": "ticket-bdd-max-iterations",
+      "label": "Ticket BDD Max Iterations",
+      "type": "number",
+      "default": 20,
+      "description": "夜间维护默认最多 20 轮 ticket 检查/修复。",
+      "min": 1.0,
+      "max": 20.0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {
+        "x": 20.0,
+        "y": 260.0
+      },
+      "config": {},
+      "pins": [
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "resolve-report-date",
+      "type": "shell",
+      "label": "Resolve Local Report Date",
+      "description": "按机器本地时间解析夜间报告日期；机器时区是唯一基准，不在 graph 中硬编码时区。",
+      "position": {
+        "x": 180.0,
+        "y": 140.0
+      },
+      "config": {
+        "args": [
+          "{{env.scripts_dir}}/resolve_local_report_date.py"
+        ],
+        "capture": {
+          "max_bytes": 32768,
+          "strip_ansi": true
+        },
+        "command": "python",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "read_only",
+        "timeout_ms": 60000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "code-review",
+      "type": "sub_graph",
+      "label": "Rust/Vue Code Review",
+      "description": "先生成只读 code review 报告。",
+      "position": {
+        "x": 360.0,
+        "y": 260.0
+      },
+      "config": {
+        "graph_id": "rust-vue-code-review",
+        "graph_scope": "system",
+        "input_bindings": {
+          "diff-base": "HEAD",
+          "input": "{{inputs.input}}\n\n只做 review，不做修复。重点找 bug、回归风险、安全问题、缺失测试和静态检查失败。",
+          "max-diff-chars": 60000,
+          "output-slug": "{{inputs.review-output-slug}}",
+          "run-checks": "{{inputs.run-static-checks}}",
+          "source-root": "{{inputs.source-root}}",
+          "timeout-seconds": 900
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "review-scout-fix",
+      "type": "sub_graph",
+      "label": "Code Review Scout Fix",
+      "description": "基于 review 报告验证 finding 并做保守小修复。",
+      "position": {
+        "x": 720.0,
+        "y": 260.0
+      },
+      "config": {
+        "graph_id": "code-review-scout-fix",
+        "graph_scope": "system",
+        "input_bindings": {
+          "input": "基于 {{inputs.review-output-slug}} review 报告做 scout fix：先验证再修复，只做高置信小改动。",
+          "output-slug": "{{inputs.fix-output-slug}}",
+          "review-report-path": "{{env.workspace}}/runtime/nightly/internal/reviews/{{inputs.review-output-slug}}.md",
+          "source-root": "{{inputs.source-root}}",
+          "validation-timeout-seconds": 900
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "code-quality-check-fix",
+      "type": "sub_graph",
+      "label": "Existing Code Quality Check/Fix",
+      "description": "复用已产品化的 code-monitor-check-fix：前端 i18n/theme + Rust clippy 检查修复闭环。",
+      "position": {
+        "x": 1080.0,
+        "y": 260.0
+      },
+      "config": {
+        "graph_id": "code-monitor-check-fix",
+        "graph_scope": "system",
+        "input_bindings": {
+          "frontend-workspace": "bb_web",
+          "max-iterations": "{{inputs.quality-max-iterations}}",
+          "package": "",
+          "project": "blackboard",
+          "workspace": "bb_backend"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "inbox-ticket-maintain",
+      "type": "sub_graph",
+      "label": "Inbox/Ticket Maintain",
+      "description": "代码优化完成后运行 bbpm-maintain：尽可能清理 JSON inbox，并执行 ticket audit/维护。",
+      "position": {
+        "x": 1440.0,
+        "y": 260.0
+      },
+      "config": {
+        "graph_id": "bbpm-maintain",
+        "graph_scope": "system",
+        "input_bindings": {
+          "inbox-batch-count": "{{inputs.inbox-batch-count}}",
+          "inbox-max-iterations": "{{inputs.inbox-max-iterations}}",
+          "ticket-bdd-batch-count": "{{inputs.ticket-bdd-batch-count}}",
+          "ticket-bdd-max-iterations": "{{inputs.ticket-bdd-max-iterations}}"
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "collect-daily-context",
+      "type": "shell",
+      "label": "Collect Daily Context",
+      "description": "确定性采集 repo/inbox/ticket 状态，给 MiniMax 日报节点提供事实输入；只读，不做归因或写入。",
+      "position": {
+        "x": 1800.0,
+        "y": 260.0
+      },
+      "config": {
+        "args": [
+          "{{env.scripts_dir}}/collect_daily_context.py",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--workspace-root",
+          "{{env.workspace}}",
+          "--project",
+          "{{env.project}}",
+          "--max-items",
+          "20"
+        ],
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
+        },
+        "command": "python",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "read_only",
+        "timeout_ms": 300000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "daily-brief",
+      "type": "llm",
+      "label": "Repo/Inbox/Ticket Daily Brief",
+      "description": "MiniMax 后台清道夫日报节点：只压缩 collect-daily-context 的确定性事实，不调用工具、不写文件。",
+      "position": {
+        "x": 2160.0,
+        "y": 260.0
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "daily_context": "{{nodes.collect-daily-context.output.stdout_json}}",
+          "maintenance": "{{nodes.inbox-ticket-maintain.output}}"
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 Blackboard 夜间无人值守 graph 的 MiniMax 日报压缩节点。你的职责是把确定性采集的 repo/inbox/ticket facts 压缩成第二天早上能直接看的中文 Markdown brief。\n\n硬性规则：\n1. 不要调用任何工具，不要写文件，只输出 Markdown。\n2. 只基于 Daily Context 和 Maintenance Output，不要编造未出现的 ticket、路径、验证结果或结论。\n3. 不要大段粘贴 JSON；保留数字、状态、ticket id、关键路径和人工需要看的事项。\n4. 区分 repo 代码/配置改动、Blackboard 数据维护、inbox 残留、ticket 队列状态。\n5. 如果 status 里存在 staged/unstaged/untracked 变更，明确说明当前工作区不是干净状态。\n\n必须输出这些二级章节：\n## Repo 状态\n## Inbox 状态\n## Ticket 状态\n## 明早优先关注\n## 风险/阻塞\n\nDaily Context JSON:\n{{inputs.daily_context}}\n\nMaintenance Output:\n{{inputs.maintenance}}"
+        },
+        "run_as": "llm",
+        "runtime": "pi",
+        "tool_policy": {
+          "allowed_tools": []
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "nightly-overall-report",
+      "type": "llm",
+      "label": "Nightly Overall Report",
+      "description": "把 review、修复、质量、维护和日报事实收敛成老板只需要看的夜间总体 review、修改与风险报告。",
+      "position": {
+        "x": 2880.0,
+        "y": 260.0
+      },
+      "config": {
+        "agent": "native",
+        "inputs": {
+          "daily_goal": "{{inputs.input}}",
+          "facts": "{{nodes.collect-final-facts.output.stdout_json}}",
+          "fix": "{{nodes.review-scout-fix.output}}",
+          "maintenance": "{{nodes.inbox-ticket-maintain.output}}",
+          "quality": "{{nodes.code-quality-check-fix.output}}",
+          "report_date": "{{nodes.resolve-report-date.output.stdout_json}}",
+          "report_path": "{{env.workspace}}/projects/{{env.project}}/wiki/nightly/nightly-report-{{nodes.resolve-report-date.output.stdout_json.report_date}}.md",
+          "review": "{{nodes.code-review.output}}"
+        },
+        "model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "output": {
+          "artifact_type": "markdown",
+          "required": true
+        },
+        "prompt": {
+          "mode": "inline",
+          "template": "你是 Blackboard 夜间无人值守代码优化的最终总审查员。你的读者是团队 boss，他不想看一堆零散 artifact，只需要一份可以第二天直接验收的中文 Markdown 总报告。\n\n最终报告路径：{{inputs.report_path}}\n\n硬性要求：\n1. 不要调用任何工具，不要写文件；只在最终回复中输出 Markdown，系统会落盘到最终报告路径。\n2. 不要大段粘贴原始 JSON；只提炼关键事实、路径、状态、风险。\n3. 不要把中间 artifact 当成产出清单。中间文件只是内部依赖，最终用户入口只有最终报告路径。\n4. Final facts 是确定性系统采集结果，优先级高于其他 LLM 文案；代码是否修改必须以 final facts.git.status / diff_numstat 为准。\n5. 如果 final facts 显示有 staged / unstaged / untracked 变更，绝不能写“未产生代码修改”。必须概括修改范围、文件数量、主要目录和风险。\n6. 如果某个阶段只有 artifact path 而没有正文，基于可见字段保守总结，并明确“未展开正文”。不要编造。\n7. 把“自动生成/修改了什么代码”和“最终风险”放在最前面。\n8. 只有当 final facts.git.status.counts.total 为 0 时，才可以写“本夜间未产生代码修改”。\n9. 最终报告里只允许出现一个用户可见产物：{{inputs.report_path}}。不得列出 runtime/nightly/internal、runtime/ticket-audit、wiki/reviews、review artifact、scout artifact 或任何中间报告路径。内部文件只能被概括为“已作为内部运行材料归档”，不能作为产物路径展示。\n\n必须输出这些一级或二级章节：\n# 夜间无人值守代码优化总报告\n## Boss TL;DR\n用 3 到 6 条 bullet 说明是否可接受、是否需要人工介入、最大风险是什么。\n## 本夜间代码产出\n列出自动生成/修改的代码或配置范围；区分代码/配置改动、数据维护、最终报告。不要把中间 artifact 伪装成代码产出。\n## Review 结论\n总结 code review 发现的主要问题、严重度、哪些已修、哪些跳过。\n## 自动修补与验证\n总结 scout fix、code quality check/fix、frontend build、rust clippy/cargo check 等验证状态。\n## Inbox / Ticket 维护\n总结 bbpm-maintain 在代码优化后执行的 inbox 清理、ticket audit、schema/索引维护结果；明确 inbox 是否已尽可能清理干净，以及如仍有残留，残留原因是什么。\n## 风险与人工决策\n列出仍需要 boss 或人类工程师判断的风险；没有就写“无阻塞风险”。\n## 最终产物\n只列最终报告路径和本次 run id。不要列任何内部 artifact、内部审查报告、ticket audit JSON、runtime 路径或辅助文件路径。\n\nDaily goal:\n{{inputs.daily_goal}}\n\nDeterministic final facts:\n{{inputs.facts}}\n\nCode review node output:\n{{inputs.review}}\n\nScout fix node output:\n{{inputs.fix}}\n\nCode quality node output:\n{{inputs.quality}}\n\nInbox/ticket maintenance node output:\n{{inputs.maintenance}}"
+        },
+        "run_as": "llm",
+        "runtime": "pi",
+        "tool_policy": {
+          "allowed_tools": []
+        }
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "collect-final-facts",
+      "type": "shell",
+      "label": "Collect Final Facts",
+      "description": "确定性采集 git diff/status、review/scout artifact 摘要和子图 health report，防止最终报告误判是否有代码修改。",
+      "position": {
+        "x": 2520.0,
+        "y": 260.0
+      },
+      "config": {
+        "args": [
+          "{{env.scripts_dir}}/collect_nightly_final_facts.py",
+          "--repo-root",
+          "{{env.root}}/..",
+          "--workspace-root",
+          "{{env.workspace}}",
+          "--project",
+          "{{env.project}}",
+          "--max-artifact-chars",
+          "12000"
+        ],
+        "capture": {
+          "max_bytes": 1048576,
+          "strip_ansi": true
+        },
+        "command": "python",
+        "expected_exit_codes": [
+          0
+        ],
+        "permission": "read_only",
+        "timeout_ms": 300000
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "system-write-summary",
+      "type": "system_write_output",
+      "label": "System Write Day0 Summary",
+      "description": "写出老板视角的一份夜间总体 review、修改与风险报告，便于第二天验收。",
+      "position": {
+        "x": 3240.0,
+        "y": 260.0
+      },
+      "config": {
+        "artifact_type": "markdown",
+        "content": "{{inputs.report}}",
+        "create_parent_dirs": true,
+        "inputs": {
+          "report": "{{nodes.nightly-overall-report.output}}"
+        },
+        "output_path": "{{env.workspace}}/projects/{{env.project}}/wiki/nightly/nightly-report-{{nodes.resolve-report-date.output.stdout_json.report_date}}.md",
+        "overwrite": true
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        },
+        {
+          "id": "content",
+          "label": "Content",
+          "direction": "in",
+          "category": "data",
+          "value_type": "any",
+          "required": false
+        },
+        {
+          "id": "exec_out",
+          "label": "Out",
+          "direction": "out",
+          "category": "exec",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "out",
+          "category": "data",
+          "value_type": "json",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "end-success",
+      "type": "end",
+      "label": "Success",
+      "position": {
+        "x": 3600.0,
+        "y": 260.0
+      },
+      "config": {
+        "result": "succeeded"
+      },
+      "pins": [
+        {
+          "id": "exec_in",
+          "label": "In",
+          "direction": "in",
+          "category": "exec",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-start-report-date",
+      "from": "start",
+      "to": "resolve-report-date",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-report-date-review",
+      "from": "resolve-report-date",
+      "to": "code-review",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-review-fix",
+      "from": "code-review",
+      "to": "review-scout-fix",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-fix-quality",
+      "from": "review-scout-fix",
+      "to": "code-quality-check-fix",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-quality-maintain",
+      "from": "code-quality-check-fix",
+      "to": "inbox-ticket-maintain",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-maintain-daily-context",
+      "from": "inbox-ticket-maintain",
+      "to": "collect-daily-context",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-daily-context-brief",
+      "from": "collect-daily-context",
+      "to": "daily-brief",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-daily-brief-final-facts",
+      "from": "daily-brief",
+      "to": "collect-final-facts",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-final-facts-overall-report",
+      "from": "collect-final-facts",
+      "to": "nightly-overall-report",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-overall-report-summary",
+      "from": "nightly-overall-report",
+      "to": "system-write-summary",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    },
+    {
+      "id": "e-summary-end",
+      "from": "system-write-summary",
+      "to": "end-success",
+      "kind": "exec",
+      "from_pin": "exec_out",
+      "to_pin": "exec_in"
+    }
+  ],
+  "layout": {
+    "viewport": {
+      "x": 0.0,
+      "y": 0.0,
+      "scale": 1.0
+    }
+  }
+}

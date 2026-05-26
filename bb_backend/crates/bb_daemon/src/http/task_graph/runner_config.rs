@@ -1,25 +1,26 @@
 use std::collections::BTreeMap;
-use std::path::Path as StdPath;
+use std::path::{Path as StdPath, PathBuf};
 
+use bb_core::InboxError;
 use bb_core::{agents_registry, agents_registry::McpServerConfig, task_graph};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
-const RUNNER_CONFIG_PATH: &str = "config/task_graph_runner.toml";
+pub const RUNNER_CONFIG_PATH: &str = "config/task_graph_runner.toml";
 
 /// Last-resort command fallback when no workspace config or override is set.
-const FALLBACK_CODEX_COMMAND: &str = "codex";
-const FALLBACK_CODEBUDDY_COMMAND: &str = "codebuddy";
-const FALLBACK_OPENCODE_COMMAND: &str = "opencode";
-const FALLBACK_PI_COMMAND: &str = "pi";
+pub const FALLBACK_CODEX_COMMAND: &str = "codex";
+pub const FALLBACK_CODEBUDDY_COMMAND: &str = "codebuddy";
+pub const FALLBACK_OPENCODE_COMMAND: &str = "opencode";
+pub const FALLBACK_PI_COMMAND: &str = "pi";
 /// Last-resort timeout fallbacks when no workspace config or override is set.
-const FALLBACK_NODE_TIMEOUT_SECS: u64 = 900;
-const FALLBACK_RUN_TIMEOUT_SECS: u64 = 1800;
+pub const FALLBACK_NODE_TIMEOUT_SECS: u64 = 900;
+pub const FALLBACK_RUN_TIMEOUT_SECS: u64 = 1800;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-struct RunnerConfig {
+pub struct RunnerConfig {
     #[serde(alias = "codex_path")]
     codex_command: Option<String>,
     #[serde(alias = "codebuddy_path")]
@@ -34,6 +35,32 @@ struct RunnerConfig {
     opencode_max_concurrent: Option<u32>,
     codex_max_concurrent: Option<u32>,
     codebuddy_max_concurrent: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RunnerRuntimeCommand {
+    pub id: String,
+    pub command: String,
+    pub configured_command: Option<String>,
+    pub fallback_command: String,
+    pub max_concurrency: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RunnerConfigSnapshot {
+    pub config_path: PathBuf,
+    pub node_timeout_secs: u64,
+    pub run_timeout_secs: u64,
+    pub runtimes: Vec<RunnerRuntimeCommand>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RunnerConfigPatch {
+    pub commands: BTreeMap<String, String>,
+    pub runtime_max_concurrency: BTreeMap<String, u32>,
+    pub node_timeout_secs: Option<u64>,
+    pub run_timeout_secs: Option<u64>,
 }
 
 /// Optional overrides for `RunnerOptions`, used by daemon CLI to pass
@@ -158,6 +185,179 @@ fn read_runner_config(root: &StdPath) -> RunnerConfig {
             RunnerConfig::default()
         }
     }
+}
+
+pub fn read_runner_config_snapshot(root: &StdPath) -> RunnerConfigSnapshot {
+    let config = read_runner_config(root);
+    let runtime_max_concurrency = config.runtime_max_concurrency.clone().unwrap_or_default();
+    RunnerConfigSnapshot {
+        config_path: root.join(RUNNER_CONFIG_PATH),
+        node_timeout_secs: choose_secs(None, config.node_timeout_secs, FALLBACK_NODE_TIMEOUT_SECS),
+        run_timeout_secs: choose_secs(None, config.run_timeout_secs, FALLBACK_RUN_TIMEOUT_SECS),
+        runtimes: vec![
+            runtime_command(
+                "codex",
+                config.codex_command,
+                FALLBACK_CODEX_COMMAND,
+                runtime_max_concurrency
+                    .get("codex")
+                    .copied()
+                    .or(config.codex_max_concurrent),
+            ),
+            runtime_command(
+                "codebuddy",
+                config.codebuddy_command,
+                FALLBACK_CODEBUDDY_COMMAND,
+                runtime_max_concurrency
+                    .get("codebuddy")
+                    .copied()
+                    .or(config.codebuddy_max_concurrent),
+            ),
+            runtime_command(
+                "opencode",
+                config.opencode_command,
+                FALLBACK_OPENCODE_COMMAND,
+                runtime_max_concurrency
+                    .get("opencode")
+                    .copied()
+                    .or(config.opencode_max_concurrent),
+            ),
+            runtime_command(
+                "pi",
+                config.pi_command,
+                FALLBACK_PI_COMMAND,
+                runtime_max_concurrency.get("pi").copied(),
+            ),
+        ],
+    }
+}
+
+pub fn patch_runner_config(
+    root: &StdPath,
+    patch: RunnerConfigPatch,
+) -> Result<RunnerConfigSnapshot, InboxError> {
+    let current = read_runner_config_snapshot(root);
+    let mut commands: BTreeMap<String, String> = current
+        .runtimes
+        .iter()
+        .map(|runtime| (runtime.id.clone(), runtime.command.clone()))
+        .collect();
+    for (id, command) in patch.commands {
+        if is_known_runtime(&id) && !command.trim().is_empty() {
+            commands.insert(id, command.trim().to_string());
+        }
+    }
+
+    let mut runtime_max_concurrency: BTreeMap<String, u32> = current
+        .runtimes
+        .iter()
+        .filter_map(|runtime| {
+            runtime
+                .max_concurrency
+                .map(|value| (runtime.id.clone(), value))
+        })
+        .collect();
+    for (id, value) in patch.runtime_max_concurrency {
+        if is_known_runtime(&id) {
+            runtime_max_concurrency.insert(id, value);
+        }
+    }
+
+    let node_timeout_secs = patch
+        .node_timeout_secs
+        .filter(|value| *value > 0)
+        .unwrap_or(current.node_timeout_secs);
+    let run_timeout_secs = patch
+        .run_timeout_secs
+        .filter(|value| *value > 0)
+        .unwrap_or(current.run_timeout_secs);
+
+    let content = render_runner_config(
+        &commands,
+        node_timeout_secs,
+        run_timeout_secs,
+        &runtime_max_concurrency,
+    );
+    let path = root.join(RUNNER_CONFIG_PATH);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|source| InboxError::Io {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+    std::fs::write(&path, content).map_err(|source| InboxError::Io {
+        path: path.clone(),
+        source,
+    })?;
+    Ok(read_runner_config_snapshot(root))
+}
+
+fn runtime_command(
+    id: &str,
+    configured_command: Option<String>,
+    fallback_command: &str,
+    max_concurrency: Option<u32>,
+) -> RunnerRuntimeCommand {
+    let command = choose_command(None, configured_command.clone(), fallback_command);
+    RunnerRuntimeCommand {
+        id: id.to_string(),
+        command,
+        configured_command,
+        fallback_command: fallback_command.to_string(),
+        max_concurrency,
+    }
+}
+
+fn is_known_runtime(id: &str) -> bool {
+    matches!(id, "codex" | "codebuddy" | "opencode" | "pi")
+}
+
+fn render_runner_config(
+    commands: &BTreeMap<String, String>,
+    node_timeout_secs: u64,
+    run_timeout_secs: u64,
+    runtime_max_concurrency: &BTreeMap<String, u32>,
+) -> String {
+    let command = |id: &str, fallback: &str| {
+        toml_string(commands.get(id).map(String::as_str).unwrap_or(fallback))
+    };
+    let mut output = String::new();
+    output.push_str("# Workspace-level defaults for Task Graph execution.\n");
+    output.push_str("# CLI/HTTP overrides take precedence over these values.\n");
+    output.push_str(&format!(
+        "codex_command = {}\n",
+        command("codex", FALLBACK_CODEX_COMMAND)
+    ));
+    output.push_str(&format!(
+        "codebuddy_command = {}\n",
+        command("codebuddy", FALLBACK_CODEBUDDY_COMMAND)
+    ));
+    output.push_str(&format!(
+        "opencode_command = {}\n",
+        command("opencode", FALLBACK_OPENCODE_COMMAND)
+    ));
+    output.push_str(&format!(
+        "pi_command = {}\n\n",
+        command("pi", FALLBACK_PI_COMMAND)
+    ));
+    output.push_str(&format!("node_timeout_secs = {node_timeout_secs}\n"));
+    output.push_str(&format!("run_timeout_secs = {run_timeout_secs}\n\n"));
+    output
+        .push_str("# Strict runtime-level process concurrency across all TaskGraph runs in this\n");
+    output
+        .push_str("# bb-server process. Parent graph concurrency still controls run admission;\n");
+    output.push_str("# this guard also covers dynamic fanout scouts.\n");
+    output.push_str("[runtime_max_concurrency]\n");
+    for (id, value) in runtime_max_concurrency {
+        if is_known_runtime(id) {
+            output.push_str(&format!("{id} = {value}\n"));
+        }
+    }
+    output
+}
+
+fn toml_string(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())
 }
 
 fn choose_command(
@@ -394,5 +594,59 @@ run_timeout_secs = 34
         assert_eq!(opts.codex_path, "codex-from-override");
         assert_eq!(opts.node_timeout.as_secs(), 56);
         assert_eq!(opts.run_timeout.as_secs(), 78);
+    }
+
+    #[test]
+    fn patch_runner_config_persists_runtime_connector_settings() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut commands = BTreeMap::new();
+        commands.insert("codex".to_string(), "codex-next".to_string());
+        commands.insert("pi".to_string(), "pi-next".to_string());
+        let mut runtime_max_concurrency = BTreeMap::new();
+        runtime_max_concurrency.insert("codex".to_string(), 2);
+        runtime_max_concurrency.insert("pi".to_string(), 4);
+
+        let snapshot = patch_runner_config(
+            temp.path(),
+            RunnerConfigPatch {
+                commands,
+                runtime_max_concurrency,
+                node_timeout_secs: Some(11),
+                run_timeout_secs: Some(22),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(snapshot.node_timeout_secs, 11);
+        assert_eq!(snapshot.run_timeout_secs, 22);
+        assert_eq!(
+            snapshot
+                .runtimes
+                .iter()
+                .find(|runtime| runtime.id == "codex")
+                .unwrap()
+                .command,
+            "codex-next"
+        );
+        assert_eq!(
+            snapshot
+                .runtimes
+                .iter()
+                .find(|runtime| runtime.id == "pi")
+                .unwrap()
+                .max_concurrency,
+            Some(4)
+        );
+
+        let opts = build_runner_opts(
+            temp.path(),
+            "blackboard".to_string(),
+            "run-patched".to_string(),
+            None,
+        );
+        assert_eq!(opts.codex_path, "codex-next");
+        assert_eq!(opts.pi_path, "pi-next");
+        assert_eq!(opts.node_timeout.as_secs(), 11);
+        assert_eq!(opts.run_timeout.as_secs(), 22);
     }
 }

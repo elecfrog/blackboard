@@ -1,10 +1,23 @@
 export type AgentToolStatus =
   | 'missing'
   | 'installed'
+  | 'incomplete'
   | 'version_mismatch'
   | 'npm_missing'
   | 'check_failed'
   | 'external_install'
+
+export type AgentToolInstallSource = 'npm' | 'brew' | 'external'
+
+export interface AgentToolComponent {
+  id: string
+  display_name: string
+  status: AgentToolStatus
+  target: string
+  current?: string
+  install_command?: string
+  last_error?: string
+}
 
 export interface AgentTool {
   id: string
@@ -15,10 +28,12 @@ export interface AgentTool {
   install_arg: string
   install_command: string
   status: AgentToolStatus
+  install_source?: AgentToolInstallSource
   cli_path?: string
   current_version?: string
   npm_version?: string
   last_error?: string
+  components?: AgentToolComponent[]
 }
 
 export interface AgentToolList {
@@ -27,6 +42,16 @@ export interface AgentToolList {
 
 export interface AgentToolInstallResult {
   tool: AgentTool
+  command: string
+  steps?: AgentToolInstallStepResult[]
+  exit_code?: number
+  stdout_tail?: string
+  stderr_tail?: string
+}
+
+export interface AgentToolInstallStepResult {
+  id: string
+  label: string
   command: string
   exit_code?: number
   stdout_tail?: string

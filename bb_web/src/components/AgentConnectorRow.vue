@@ -63,6 +63,8 @@ function toolStatusLabel(status: AgentToolStatus) {
       return t('agentToolMissing')
     case 'installed':
       return t('agentToolInstalled')
+    case 'incomplete':
+      return t('agentToolIncomplete')
     case 'version_mismatch':
       return t('agentToolVersionMismatch')
     case 'npm_missing':
@@ -76,11 +78,18 @@ function toolStatusLabel(status: AgentToolStatus) {
   }
 }
 
+function toolPrimaryStatusLabel(tool: AgentTool) {
+  if (tool.status === 'installed' && tool.install_source === 'brew') return t('agentToolBrewInstall')
+  if (tool.status === 'installed' && tool.install_source === 'npm') return t('agentToolNpmInstall')
+  return toolStatusLabel(tool.status)
+}
+
 function toolTone(status: AgentToolStatus) {
   switch (status) {
     case 'installed':
       return 'green'
     case 'missing':
+    case 'incomplete':
     case 'version_mismatch':
     case 'external_install':
       return 'yellow'
@@ -136,8 +145,10 @@ const toolActionLabel = computed(() => {
   if (isToolBusy.value) return t('connectorBusy')
   const tool = props.tool
   if (!tool) return t('agentToolInstall')
+  if (tool.install_source === 'brew') return t('agentToolUpdate')
   if (tool.status === 'version_mismatch' && lockedToolIds.has(tool.id)) return t('agentToolLockOpenCode')
   if (tool.status === 'installed' && lockedToolIds.has(tool.id)) return t('agentToolLocked')
+  if (tool.status === 'incomplete') return t('agentToolRepair')
   if (tool.status === 'installed') return t('agentToolUpdate')
   if (tool.status === 'external_install') return t('agentToolRepair')
   return t('agentToolInstall')
@@ -145,9 +156,13 @@ const toolActionLabel = computed(() => {
 const canInstallTool = computed(() => {
   if (!props.tool || isToolBusy.value || anyToolBusy.value || anyBusy.value) return false
   if (props.tool.status === 'npm_missing') return false
+  if (props.tool.install_source === 'brew') return true
   if (props.tool.status === 'installed' && lockedToolIds.has(props.tool.id)) return false
   return true
 })
+const visibleToolComponents = computed(() =>
+  props.tool?.components?.filter((component) => component.status !== 'installed') ?? [],
+)
 const managedAgents = computed(() =>
   props.agents
     .filter((agent) => agent.runtime === props.connector.id)
@@ -321,15 +336,21 @@ function onInstallTool() {
         </div>
         <div v-if="tool" class="tool-status" :data-tone="toolTone(tool.status)">
           <div class="tool-status-main">
-            <span class="tool-status-label">{{ toolStatusLabel(tool.status) }}</span>
+            <span class="tool-status-label">{{ toolPrimaryStatusLabel(tool) }}</span>
             <span class="tool-version">{{ t('agentToolCurrent') }} {{ tool.current_version ?? '-' }}</span>
             <span class="tool-version">{{ t('agentToolTarget') }} {{ tool.target_version }}</span>
           </div>
-          <div class="tool-status-detail">
-            <span>{{ tool.npm_package }}</span>
-            <code>{{ tool.install_command }}</code>
-            <span v-if="tool.cli_path" class="tool-cli">{{ tool.cli_path }}</span>
-            <span v-if="tool.last_error" class="tool-error">{{ tool.last_error }}</span>
+          <div v-if="tool.last_error" class="tool-error">{{ tool.last_error }}</div>
+          <div v-if="visibleToolComponents.length" class="tool-component-list">
+            <div
+              v-for="component in visibleToolComponents"
+              :key="component.id"
+              class="tool-component"
+              :data-tone="toolTone(component.status)"
+            >
+              <span class="component-name">{{ component.display_name }}</span>
+              <span class="component-status">{{ toolStatusLabel(component.status) }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -782,8 +803,7 @@ function onInstallTool() {
   border-color: color-mix(in srgb, var(--bb-error) 36%, var(--bb-hairline));
 }
 
-.tool-status-main,
-.tool-status-detail {
+.tool-status-main {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -796,28 +816,51 @@ function onInstallTool() {
   font-weight: 700;
 }
 
-.tool-version,
-.tool-status-detail span {
+.tool-version {
   color: var(--bb-text-muted);
 }
 
-.tool-status-detail code,
-.tool-cli {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--bb-font-mono);
-}
-
-.tool-status-detail code {
-  color: var(--bb-text);
-}
-
-.tool-status-detail .tool-error {
+.tool-error {
   color: var(--bb-error);
   overflow-wrap: anywhere;
+}
+
+.tool-component-list {
+  display: grid;
+  gap: 5px;
+  padding-top: 4px;
+  border-top: 1px solid var(--bb-hairline);
+}
+
+.tool-component {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) auto;
+  gap: 6px 8px;
+  align-items: center;
+  min-width: 0;
+  color: var(--bb-text-muted);
+}
+
+.tool-component[data-tone='green'] .component-status {
+  color: var(--bb-success);
+}
+
+.tool-component[data-tone='yellow'] .component-status {
+  color: var(--bb-warning);
+}
+
+.tool-component[data-tone='red'] .component-status {
+  color: var(--bb-error);
+}
+
+.component-name {
+  color: var(--bb-text);
+  font-weight: 650;
+}
+
+.component-status {
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .connector-actions {

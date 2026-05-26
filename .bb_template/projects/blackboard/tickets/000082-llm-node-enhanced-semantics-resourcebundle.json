@@ -182,6 +182,51 @@
         "Title: ResourceBundle 契约与 daemon-backed inbox archive 收口\nTime: 2026-05-23T08:56:12Z\nSource: codex\nProject: blackboard\nTopic: resource-bundle-daemon-tools-000082-000084-cleanup\nDone:\n- 补齐 ResourceBundle 一等契约：新增 schema/version/builder registry，并让 inbox cleanup、rust/vue code review、code review fix 三个 builder 统一注入契约字段。\n- 补齐 daemon-backed typed inbox 工具：新增 core `archive_note`、MCP `archive_inbox_note`，bbpm/dev-all profile 可用，普通 agent profile 不暴露 delete/archive。\n- 000082 和 000084 已通过 Blackboard MCP 结构化工具更新为 done；UI 和 Tool Lifecycle 按用户要求留到下一轮。\nValidation:\n- cargo fmt --manifest-path bb_backend/Cargo.toml --all\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core archives_inbox_note -- --nocapture\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon archive_inbox_note -- --nocapture\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon daemon_only_delete_inbox_note_returns_standard_content_result -- --nocapture\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_daemon all_listed_tools_return_standard_content_results -- --nocapture\n- cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon -p bb_server -p bb_cli\n- python ResourceBundle builder sm...",
         "cleanup reason: note 的 title/document.related_tickets 显式写明 '000082' 和 '000084'，document.done 内容与 000082 (ResourceBundle/ToolPolicy/OutputContract) 和 000084 (MCP/Daemon Agent 工具架构) 直接对应。"
       ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-24-codex-taskgraph-codex-browseruse-frontend-convergence-run.json`.",
+      "evidence": [
+        "inbox/2026-05-24-codex-taskgraph-codex-browseruse-frontend-convergence-run.json",
+        "Title: Codex + Browser Use 前端收敛试跑结果\nTime: 2026-05-24T18:12:00+08:00\nSource: codex\nProject: blackboard\nTopic: taskgraph-codex-browseruse-frontend-convergence-run\nDone:\n- 通过 TaskGraph HTTP 实跑 system/frontend-ui-convergence-codex@v5，两轮输入均使用 Codex gpt-5.5 medium；第一轮 run-20260524-094414-9012b0d8 succeeded，第二轮 run-20260524-095048-44c42863 在 interactive-smoke pending 后被取消。\n- 将 interactive-smoke 节点配置为 toolkits=[blackboard_mcp,browser_use]，让 Browser Use 走 toolkit 注入而不是共享隐式配置。\n- 第一轮由 Codex 收敛 bb_web/src/components/task-graph/TaskGraphLlmNodeForm.vue 的 LLM Toolkits 区域：改为 BbSectionHeader + BbDenseRow + BbCheckboxField，并在 bb_web/DESIGN.md 补充规范。\n- 第一轮 Browser Use 已被注入并按要求尝试 node_repl / agent.browsers.get(\"iab\")，但返回 Browser is not available: iab；节点按规则报告 blocked，没有用 curl/shell 伪造 UI 验证。\n- 修复 bb_backend/crates/bb_core/src/task_graph/tool_layer.rs 的 browser_use prompt prelude：从硬编码 iab 改成依次尝试 iab、chrome，并要求报告 globalThis.browserBackend。\n- 第二轮验证 frontend Toolkits 区域时 Codex 判断无需继续修改，static validate 通过；interactive-smoke 创建 agent session 后停在 pending，event_count=0/tool_count=0，约 9 分钟后手动 cancel。取消后确认此前观测到的临时 codex/chrome PID 已不存在。\nValidation:\n- cargo fmt --all：通过。\n- cargo test -p bb_core task_graph::tool...",
+        "cleanup reason: Codex + Browser Use 前端收敛试跑、interactive-smoke pending 问题和 AgentSession 启动期 timeout 观察，000082 spec 涵盖 LLM 节点 Toolkits 注入与 Output Contract。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-24-codex-taskgraph-llm-toolkits-browser-use-experiment.json`.",
+      "evidence": [
+        "inbox/2026-05-24-codex-taskgraph-llm-toolkits-browser-use-experiment.json",
+        "Title: LLM 节点按需注入 Browser Use toolkit 实验版\nTime: 2026-05-24T08:20:37Z\nSource: codex\nProject: blackboard\nTopic: taskgraph-llm-toolkits-browser-use-experiment\nDone:\n- 为 LLM config 增加 `toolkits` 字段，支持别名 `capabilities` / `tool_capabilities`，当前实现 `browser_use`。\n- 新增统一的 ToolInjectionPlan：先解析节点级 toolkit，再按 runtime 展开为 skills / MCP servers / prompt prelude；Codex browser_use 从用户 Codex config 读取 `mcp_servers.node_repl`，再通过 `--config mcp_servers.node_repl=...` 注入到子 Codex。\n- `browser_use` 会注入 Codex Browser 插件的 `browser-client.mjs` bootstrap 指令；如果 runtime 不是 codex，会在 validation/resolve 阶段阻断而不是静默降级。\n- Agent mode 现在也会合并节点级 `skills`、`mcp_servers` 与 toolkit 注入，不再只吃 profile 里的工具配置。\n- 前端 LLM 节点表单增加 Toolkits 区域，可勾选 Browser Use；节点 meta 会显示已启用 toolkits。\nValidation:\n- cargo fmt --all: 通过。\n- cargo test -p bb_core task_graph::nodes::llm::tests: 通过，17/17。\n- cargo check -p bb_core: 通过。\n- npm run build --prefix bb_web: 通过。\n- git diff --check（本次修改文件范围）: 通过，仅 CRLF warning。\n- Browser 插件打开 system/frontend-ui-convergence-codex/edit：页面加载、无 console error；未进一步保存 graph。\nNext step:\n- 如果要让某个 Codex LLM 节点真实拉 Browser Use，在该节点 config 加 `toolkits: [\"browser_use\"]` 或在 UI 勾选 Browser Use 后保存并重跑。\n- Pi 的 MCP 注入仍然走 provider-spe...",
+        "cleanup reason: LLM config 新增 toolkits 字段、ToolInjectionPlan 统一解析、Codex browser_use toolkit 注入，000082 spec 涵盖 ResourceBundle/Tool Policy/Output Contract。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-24-codex-taskgraph-pi-dynamic-mcp-injection.json`.",
+      "evidence": [
+        "inbox/2026-05-24-codex-taskgraph-pi-dynamic-mcp-injection.json",
+        "Title: TaskGraph Pi runtime MCP 注入改为 per-session 动态配置\nTime: 2026-05-24T08:59:53Z\nSource: codex\nProject: blackboard\nTopic: taskgraph-pi-dynamic-mcp-injection\nDone:\n- 确认 Pi 本体没有直接的 --mcp-config；实际由 pi-mcp-adapter 扩展注册并从 process.argv 读取 --mcp-config <path>。\n- 将 TaskGraph/AgentSession 的 Pi MCP 配置从 execution_root/.pi/mcp.json 改为 runtime/agent_sessions/<project>/<session>/artifacts/pi-mcp/mcp.json。\n- run_pi_turn 启动 Pi 时自动追加 --mcp-config <session artifact path>，保留 current_dir/execution_root 仍为 workspace root。\n- 测试更新为断言 Pi 节点收到 --mcp-config，且不再写 workspace/root 下的 .pi/mcp.json。\nValidation:\n- cargo fmt --all: 通过\n- cargo test -p bb_core pi_: 18 passed\n- cargo test -p bb_core task_graph::tool_layer: 6 passed\n- cargo check -p bb_core: 通过\n- cargo check -p bb_daemon: 通过\n- git diff --check 相关文件: 通过，仅 CRLF warning\nNext step:\n- 下一步可以把 toolkit schema 扩展到多个具体工具包，不再只有 browser_use；以及把 CLI/REST/Shell broker 的 runtime 渲染规则继续产品化。\nRelated locations:\n- C:/Dev/blackboard/bb_backend/crates/bb_core/src/agent_session/runtime.rs\n- C:/Dev/blackboard/bb_backend/crates/bb_core/src/task_graph/tests/runner/runtime.rs\n- C:/Users/ornizhou/.pi/agent/npm/node_modules/pi-mcp-adapter/index.ts\n- C:/Users/ornizhou/.pi/agen...",
+        "cleanup reason: Pi runtime MCP 注入改为 per-session 动态配置，000082 spec 涵盖 LLM 节点工具层配置，done 明确涉及 Pi MCP renderer 改造。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-24-codex-taskgraph-unified-toolkit-blackboard-mcp.json`.",
+      "evidence": [
+        "inbox/2026-05-24-codex-taskgraph-unified-toolkit-blackboard-mcp.json",
+        "Title: TaskGraph LLM toolkit 接入 blackboard_mcp 并统一 Pi MCP 渲染\nTime: 2026-05-24T09:19:19Z\nSource: codex\nProject: blackboard\nTopic: taskgraph-unified-toolkit-blackboard-mcp\nDone:\n- 将 LLM config 的 toolkits 从字符串数组升级为兼容 string/object 的 LlmToolkitConfig，支持 { id, exposure, tools/direct_tools }。\n- 新增 task_graph/tool_layer.rs 的产品级 toolkit 解析：blackboard_mcp 默认注入 daemon-backed bb MCP；browser_use 继续作为 Codex-only toolkit。\n- Pi 不再依赖共享 .pi/mcp.json 作为 TaskGraph 注入入口，而是通过统一 ToolInjectionPlan 渲染 per-run pi-mcp-adapter config；支持 direct/proxy exposure 和 direct_tools 覆盖。\n- LLM resolver 改为先 resolve_tool_injection_plan，再合并 profile/runtime/node mcp_servers，并把 mcp_server_options 传给 runtime renderer。\n- 前端 LLM 节点表单显式展示 Blackboard MCP toolkit；新建 LLM/Coordinator/Mutation 节点默认带 blackboard_mcp；节点 meta 支持 toolkit object 显示。\n- 顺手修复 branch/loop 条件 JSONPath 前缀解析错误：$.path 之前被误写为 $?，导致 branch/loop eval 用例失败。\nValidation:\n- cargo fmt --all: 通过\n- cargo test -p bb_core task_graph::tool_layer: 8 passed\n- cargo test -p bb_core task_graph::nodes::llm::tests: 17 passed\n- cargo test -p bb_core pi_: 20 passed\n- cargo test -p bb_core: 398 passed\n- cargo check -p bb_core: 通过\n- cargo check -p bb_daemon: 通过\n- npm run build --pre...",
+        "cleanup reason: LLM toolkit 接入 blackboard_mcp 并统一 Pi MCP 渲染，000082 spec 涵盖 bb MCP 接入与 toolkit 配置，done 明确涉及 blackboard_mcp 默认注入与 frontend 表单默认带 blackboard_mcp。"
+      ]
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-26-codex-pi-headless-graph-injection-review.json`.",
+      "evidence": [
+        "inbox/2026-05-26-codex-pi-headless-graph-injection-review.json",
+        "Title: Pi headless graph injection review\nTime: 2026-05-26T06:11:04Z\nSource: codex\nProject: blackboard\nTopic: pi-headless-graph-injection-review\nDone:\n- Rechecked TaskGraph Pi call path: Graph uses Pi as headless AgentSession via `--mode json --print`, session/model/thinking/custom args/env, JSON event capture, tool policy extension, and isolated skill snapshots.\n- Verified current Pi MCP injection emits `--mcp-config`, but Pi 0.75.4/0.75.5 do not support that flag and document MCP as extension/package territory.\n- Confirmed Pi AGENTS.md sync is global interactive context only and should not be the required Graph injection path.\nValidation:\n- Local `rg`/`sed` over TaskGraph, AgentSession runtime, Pi provider, tool layer, skills, and agents_config.\n- `npm view`/`npm pack` for @earendil-works/pi-coding-agent 0.75.4 and 0.75.5.\n- `mcp__bb__.list_projects: passed`; `mcp__bb__.search_tickets: passed_no_matches`; `mcp__bb__.create_inbox_note: passed after correcting extra to string-only values`.\nNext step:\n- Replace Pi Graph MCP injection with a generated/session-scoped Pi extension or package loaded via `--extension`, registering Blackboard tools directly; stop relying on `--mcp-conf...",
+        "cleanup reason: note 验证了 TaskGraph → Pi headless 调用路径（含 llm.rs/tool_layer.rs/agent_session/runtime.rs/providers/pi.rs 等 LLM node runtime 组件），与 000082 'LLM 节点统一升级：ResourceBundle / Tool Policy / Output Contract' 直接对应。Next step 指向 MCP injection 替换方案和 tool_policy 扩展，与该 ticket 的 tool_policy 主题一致。"
+      ]
     }
   ],
   "attachments": [
@@ -203,6 +248,6 @@
   ],
   "status": "done",
   "created_at": "2026-05-22",
-  "updated_at": "2026-05-23",
+  "updated_at": "2026-05-26",
   "extra": {}
 }

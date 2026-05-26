@@ -1,6 +1,7 @@
 mod agent_sessions;
 mod idea_canvas;
 mod project_picker;
+mod runtime_connectors;
 pub mod task_graph;
 mod tickets;
 mod wiki;
@@ -207,6 +208,11 @@ pub fn app_with_options(workspace: Workspace, options: HttpServeOptions) -> Rout
         // as the lane endpoints above, so the Settings UI can drive them
         // directly without going through stdio.
         .route("/api/agents/connectors", get(list_agent_connectors_handler))
+        .route(
+            "/api/agents/runtime-connectors",
+            get(runtime_connectors::list_runtime_connectors_handler)
+                .patch(runtime_connectors::patch_runtime_connectors_handler),
+        )
         .route("/api/agents/tools", get(list_agent_tools_handler))
         .route("/api/agents/skills", get(list_agent_skills_handler))
         .route(

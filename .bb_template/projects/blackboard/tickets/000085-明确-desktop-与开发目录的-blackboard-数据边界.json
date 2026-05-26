@@ -106,11 +106,20 @@
       "at": "2026-05-25",
       "summary": "Record: 验证：dev.py --backend --root runtime/tmp/dev-root-000085/.bb with ports 3072/3073：daemon/server /api/projects 均返回 200。",
       "evidence": []
+    },
+    {
+      "at": "2026-05-26",
+      "summary": "Consolidated inbox note `2026-05-25-codex-desktop-与开发目录-blackboard-数据边界实施完成.json`.",
+      "evidence": [
+        "inbox/2026-05-25-codex-desktop-与开发目录-blackboard-数据边界实施完成.json",
+        "Title: 000085 Desktop init / dev / packaging 自测完成\nTime: 2026-05-25T13:15:53Z\nSource: codex\nProject: blackboard\nTopic: Desktop 与开发目录 Blackboard 数据边界实施完成\nDone:\n- Workspace::list_projects 对 stale location 和无效 project meta 做容错，单个坏 registry entry 不再导致 /api/projects 500。\n- Desktop 启动会从 bundled seed materialize 内置 blackboard 到 ~/.bb/projects/blackboard，并保证 registry 中 blackboard -> ./blackboard。\n- desktop.py 打包阶段生成 clean seed/home-template：seed registry 只保留 blackboard 相对路径，home-template 为空 workspace。\n- dev.py --user-root/--root 初始化用户态 .bb 时也 materialize blackboard 并注册相对路径。\nValidation:\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core workspace::tests -- --nocapture：通过，3 tests。\n- cargo check --manifest-path bb_desktop/src-tauri/Cargo.toml：通过。\n- python -m py_compile scripts/dev.py scripts/desktop.py：通过。\n- python scripts/desktop.py prepare --release --skip-web-build --skip-sidecar-build：通过，seed/home-template 校验通过。\n- npm run build in bb_desktop with CARGO_BUILD_JOBS=1：通过，生成 blackboard-desktop.exe 与 NSIS installer。\n- 真实启动 release desktop：/api/projects 返回 200，data_root 为 C:\\\\Users\\\\ornizhou\\\\.bb\\\\projects\\\\blackboard。\n- dev daemon --root .bb_template on 3071：/api/projects 返回 200。\n...",
+        "cleanup reason: Desktop init/dev/packaging 自测完成，related_tickets 已标 000085，done 覆盖 Workspace 容错、desktop 打包与 dev.py 初始化。"
+      ]
     }
   ],
   "attachments": [],
   "status": "review",
   "created_at": "2026-05-25",
-  "updated_at": "2026-05-25",
+  "updated_at": "2026-05-26",
   "extra": {}
 }
