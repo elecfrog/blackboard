@@ -18,7 +18,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+    session::never::NeverSessionManager, StreamableHttpServerConfig, StreamableHttpService,
 };
 
 use crate::mcp_handler::BbMcpHandler;
@@ -334,9 +334,11 @@ pub fn app_with_options(workspace: Workspace, options: HttpServeOptions) -> Rout
 /// Build the rmcp Streamable HTTP MCP service for the `/mcp` endpoint.
 fn build_mcp_service(
     workspace: Arc<RwLock<Workspace>>,
-) -> StreamableHttpService<BbMcpHandler, LocalSessionManager> {
-    let config = StreamableHttpServerConfig::default();
-    let session_manager = Arc::new(LocalSessionManager::default());
+) -> StreamableHttpService<BbMcpHandler, NeverSessionManager> {
+    let config = StreamableHttpServerConfig::default()
+        .with_stateful_mode(false)
+        .with_json_response(true);
+    let session_manager = Arc::new(NeverSessionManager::default());
     StreamableHttpService::new(
         move || Ok(BbMcpHandler::new(workspace.clone())),
         session_manager,

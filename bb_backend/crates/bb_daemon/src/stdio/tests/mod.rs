@@ -181,7 +181,6 @@ fn sample_tool_arguments(name: &str) -> Value {
         "upsert_agent" => json!({
             "id": "test-agent",
             "display_name": "Test Agent",
-            "kind": "platform_agent",
             "runtime": "codex",
             "roles": ["engineering"],
         }),

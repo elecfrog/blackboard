@@ -9,11 +9,10 @@ fn write_registry(root: &Path, body: &str) {
 }
 
 /// Helper: build a minimal valid AgentProfile for testing.
-fn test_agent(id: &str, display_name: &str, kind: &str) -> AgentProfile {
+fn test_agent(id: &str, display_name: &str) -> AgentProfile {
     AgentProfile {
         id: id.to_string(),
         display_name: display_name.to_string(),
-        kind: kind.to_string(),
         runtime: None,
         scope: default_scope(),
         status: default_status(),
@@ -40,18 +39,26 @@ fn lists_global_and_project_agents() {
     write_registry(
         temp.path(),
         r#"
-version = 1
+version = 2
 
-[[agents]]
+[[runtimes]]
 id = "codex"
 display_name = "Codex"
-kind = "platform_agent"
+assignable = true
+
+[[runtimes]]
+id = "opencode"
+display_name = "OpenCode"
+assignable = true
+
+[[agents]]
+id = "worker"
+display_name = "Worker"
 runtime = "codex"
 
 [[agents]]
 id = "bb-pm"
 display_name = "BB PM"
-kind = "agent"
 runtime = "opencode"
 scope = "project"
 
@@ -69,7 +76,7 @@ lanes = ["bbp"]
         .iter()
         .map(|item| item.agent.id.as_str())
         .collect();
-    assert_eq!(ids, vec!["bb-pm", "codex"]);
+    assert_eq!(ids, vec!["bb-pm", "worker"]);
     assert_eq!(list.agents[0].project_role.as_deref(), Some("pm"));
 }
 
@@ -79,14 +86,22 @@ fn validates_assignee_when_registry_exists() {
     write_registry(
         temp.path(),
         r#"
-[[agents]]
+[[runtimes]]
 id = "codex"
 display_name = "Codex"
-kind = "platform_agent"
+assignable = true
+
+[[agents]]
+id = "bb-pm"
+display_name = "BB PM"
 "#,
     );
 
+    // Runtime ID is a valid assignee
     validate_assignee_for_project(temp.path(), "blackboard", "codex").unwrap();
+    // Agent ID is a valid assignee
+    validate_assignee_for_project(temp.path(), "blackboard", "bb-pm").unwrap();
+    // Unknown ID is rejected
     assert!(validate_assignee_for_project(temp.path(), "blackboard", "ghost").is_err());
 }
 
@@ -99,7 +114,7 @@ fn missing_registry_does_not_block_legacy_writes() {
 #[test]
 fn upserts_agent_and_project_registration() {
     let temp = TempDir::new().unwrap();
-    let mut agent_profile = test_agent("codex", "Codex", "platform_agent");
+    let mut agent_profile = test_agent("codex", "Codex");
     agent_profile.runtime = Some("codex".to_string());
     agent_profile.roles = vec!["coding".to_string()];
     agent_profile.description = Some("primary coding agent".to_string());
@@ -133,7 +148,6 @@ fn removes_project_registration_idempotently() {
 [[agents]]
 id = "codex"
 display_name = "Codex"
-kind = "platform_agent"
 
 [[project_agents]]
 project = "blackboard"
@@ -158,7 +172,6 @@ fn parse_profile_with_model_variant_and_instructions() {
 [[agents]]
 id = "bb-pm"
 display_name = "BB PM"
-kind = "agent"
 model = "minimax/MiniMax-M2.7-highspeed"
 variant = "xhigh"
 instructions = "You are BB-PM, the project manager."
@@ -188,7 +201,6 @@ fn parse_profile_with_legacy_model_reasoning_effort_alias() {
 [[agents]]
 id = "bb-pm"
 display_name = "BB PM"
-kind = "agent"
 model_reasoning_effort = "xhigh"
 "#,
     );
@@ -215,7 +227,6 @@ fn parse_profile_with_instructions_path() {
 [[agents]]
 id = "bb-pm"
 display_name = "BB PM"
-kind = "agent"
 instructions_path = "agents/prompts/bb-pm.md"
 "#,
     );
@@ -232,7 +243,7 @@ instructions_path = "agents/prompts/bb-pm.md"
 #[test]
 fn validate_instructions_mutual_exclusion() {
     let temp = TempDir::new().unwrap();
-    let mut agent = test_agent("bb-pm", "BB PM", "agent");
+    let mut agent = test_agent("bb-pm", "BB PM");
     agent.instructions = Some("inline".to_string());
     agent.instructions_path = Some("agents/prompts/bb-pm.md".to_string());
 
@@ -251,7 +262,6 @@ fn parse_profile_with_custom_env_and_args() {
 [[agents]]
 id = "codex"
 display_name = "Codex"
-kind = "platform_agent"
 custom_env = { BB_DAEMON = "1", OPENAI_API_KEY = "sk-test" }
 custom_args = ["--timeout", "300"]
 "#,
@@ -279,7 +289,6 @@ fn parse_profile_with_max_concurrent_tasks() {
 [[agents]]
 id = "codex"
 display_name = "Codex"
-kind = "platform_agent"
 max_concurrent_tasks = 3
 "#,
     );
@@ -291,7 +300,7 @@ max_concurrent_tasks = 3
 #[test]
 fn validate_max_concurrent_tasks_zero_rejected() {
     let temp = TempDir::new().unwrap();
-    let mut agent = test_agent("codex", "Codex", "platform_agent");
+    let mut agent = test_agent("codex", "Codex");
     agent.max_concurrent_tasks = Some(0);
 
     let result = upsert_agent(temp.path(), agent);
@@ -309,7 +318,6 @@ fn backward_compat_no_new_fields() {
 [[agents]]
 id = "codex"
 display_name = "Codex"
-kind = "platform_agent"
 runtime = "codex"
 "#,
     );
@@ -329,7 +337,7 @@ runtime = "codex"
 #[test]
 fn upsert_agent_with_full_profile() {
     let temp = TempDir::new().unwrap();
-    let mut agent = test_agent("bb-pm", "BB PM", "agent");
+    let mut agent = test_agent("bb-pm", "BB PM");
     agent.model = Some("minimax/MiniMax-M2.7-highspeed".to_string());
     agent.variant = Some("xhigh".to_string());
     agent.instructions = Some("You are BB-PM.".to_string());

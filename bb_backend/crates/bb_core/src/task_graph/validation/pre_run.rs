@@ -374,7 +374,6 @@ mod tests {
 [[agents]]
 id = "bb-pm"
 display_name = "BBPM"
-kind = "opencode_agent"
 runtime = "opencode"
 "#,
         )

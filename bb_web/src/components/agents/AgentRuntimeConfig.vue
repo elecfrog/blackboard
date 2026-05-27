@@ -23,7 +23,7 @@ const editForm = ref({
   variant: '',
 })
 
-const runtimeDisplay = computed(() => props.agent.runtime || props.agent.kind || t('runtimeUnset'))
+const runtimeDisplay = computed(() => props.agent.runtime || t('runtimeUnset'))
 const modelDisplay = computed(() => props.agent.model || t('modelUnset'))
 const variantDisplay = computed(() => props.agent.variant || t('variantUnset'))
 
@@ -113,7 +113,7 @@ watch(
         <span class="aw-meta-label">{{ t('runtimeConfigRuntimeLabel') }}</span>
         <span
           v-if="!editMode"
-          :class="['aw-meta-value', { 'is-empty': !agent.runtime && !agent.kind }]"
+          :class="['aw-meta-value', { 'is-empty': !agent.runtime }]"
           :title="runtimeDisplay"
         >
           {{ runtimeDisplay }}

@@ -550,7 +550,6 @@ mod tests {
 [[agents]]
 id = "bb-pm"
 display_name = "BBPM"
-kind = "opencode_agent"
 runtime = "opencode"
 model = "model-a"
 variant = "high"
@@ -594,7 +593,6 @@ command = "qmd"
 [[agents]]
 id = "codex-worker"
 display_name = "Codex Worker"
-kind = "platform_agent"
 runtime = "codex"
 model = "gpt-5.4-mini"
 variant = "low"
@@ -631,7 +629,6 @@ variant = "low"
 [[agents]]
 id = "bb-pm"
 display_name = "BBPM"
-kind = "opencode_agent"
 runtime = "opencode"
 instructions_path = "agents/prompts/bb-pm.md"
 "#,
@@ -661,7 +658,6 @@ instructions_path = "agents/prompts/bb-pm.md"
 [[agents]]
 id = "bb-pm"
 display_name = "BBPM"
-kind = "opencode_agent"
 runtime = "opencode"
 "#,
         )
@@ -691,7 +687,6 @@ runtime = "opencode"
 [[agents]]
 id = "bb-pm"
 display_name = "BBPM"
-kind = "opencode_agent"
 runtime = "opencode"
 "#,
         )
@@ -867,7 +862,6 @@ CODEX_HOME = "C:\\Users\\demo\\.codex"
 [[agents]]
 id = "bb-pm"
 display_name = "BBPM"
-kind = "opencode_agent"
 runtime = "opencode"
 "#,
         )

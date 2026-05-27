@@ -6,9 +6,8 @@
 import { computed, onMounted, ref } from 'vue'
 import {
   loadAgentRegistry,
-  loadProjectAgents,
   type AgentRegistryList,
-  type ProjectAgentList,
+  type RuntimeProfile,
 } from '@/data/agents'
 import {
   disconnectAgentConnector,
@@ -23,7 +22,7 @@ import {
   type AgentTool,
   type AgentToolList,
 } from '@/data/agentTools'
-import { BbButton, BbInfoGrid, BbInfoItem } from '@/components/common'
+import { BbButton } from '@/components/common'
 import { t } from '@/i18n'
 import AgentConnectorRow from './AgentConnectorRow.vue'
 
@@ -34,7 +33,6 @@ const props = defineProps<{
 const list = ref<AgentConnectorList | null>(null)
 const toolList = ref<AgentToolList | null>(null)
 const registry = ref<AgentRegistryList | null>(null)
-const projectRegistry = ref<ProjectAgentList | null>(null)
 const offline = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -56,13 +54,11 @@ async function refresh() {
     offline.value = result.source === 'offline'
     backendError.value = result.source === 'error' ? result.error ?? t('connectorBackendError') : null
     if (result.source === 'rest') {
-      const [registryResult, projectResult, toolsResult] = await Promise.all([
+      const [registryResult, toolsResult] = await Promise.all([
         loadAgentRegistry(),
-        loadProjectAgents(props.project),
         loadAgentTools(),
       ])
       registry.value = registryResult
-      projectRegistry.value = projectResult
       toolList.value = toolsResult
     }
   } catch (err) {
@@ -83,10 +79,14 @@ const sourcePath = computed(() => list.value?.source_path ?? '')
 const connectors = computed(() => list.value?.connectors ?? [])
 const tools = computed(() => toolList.value?.tools ?? [])
 const agents = computed(() => registry.value?.agents ?? [])
-const assignableAgents = computed(() => projectRegistry.value?.agents ?? [])
-const distributedCount = computed(
-  () => agents.value.filter((agent) => agent.runtime === 'opencode' && agent.distribute).length,
-)
+const runtimes = computed(() => registry.value?.runtimes ?? [])
+
+function runtimeColor(id: string): string {
+  let hash = 0
+  for (const ch of id) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0
+  const hue = Math.abs(hash) % 360
+  return `hsl(${hue}, 65%, 42%)`
+}
 
 const driftCount = computed(
   () =>
@@ -242,37 +242,53 @@ async function handleInstallTool(id: string) {
 
     <p v-if="error" class="banner banner-error">{{ error }}</p>
 
-    <section v-if="registry" class="agent-registry-card">
-      <div>
-        <h3>{{ t('agentRegistry') }}</h3>
-        <p>{{ t('agentRegistryDescription') }}</p>
+    <!-- Runtimes section -->
+    <div v-if="!offline && !backendError && runtimes.length > 0" class="runtime-section">
+      <h3 class="runtime-section-title">Runtimes</h3>
+      <div class="runtime-grid">
+        <div
+          v-for="rt in runtimes"
+          :key="rt.id"
+          class="runtime-card"
+        >
+          <div class="runtime-card-head">
+            <span class="runtime-card-avatar" :style="{ background: runtimeColor(rt.id) }">
+              {{ rt.display_name.slice(0, 1).toUpperCase() }}
+            </span>
+            <div class="runtime-card-info">
+              <strong>{{ rt.display_name }}</strong>
+              <code>{{ rt.id }}</code>
+            </div>
+          </div>
+          <div class="runtime-card-meta">
+            <span v-if="rt.command" class="runtime-card-tag">{{ rt.command }}</span>
+            <span class="runtime-card-tag" :class="rt.assignable ? 'tag-green' : 'tag-grey'">
+              {{ rt.assignable ? t('connectorMetaYes') : t('connectorMetaNo') }}
+            </span>
+          </div>
+        </div>
       </div>
-      <BbInfoGrid class="agent-registry-facts" columns="repeat(3, minmax(96px, 1fr))">
-        <BbInfoItem :label="t('connectorAgents')" :value="agents.length" variant="metric" />
-        <BbInfoItem
-          :label="`${project} ${t('connectorAssignable')}`"
-          :value="assignableAgents.length"
-          variant="metric"
-        />
-        <BbInfoItem :label="t('connectorOpenCodeDistributed')" :value="distributedCount" variant="metric" />
-      </BbInfoGrid>
-    </section>
+    </div>
 
-    <div v-if="!offline && !backendError && connectors.length > 0" class="connector-list">
-      <AgentConnectorRow
-        v-for="connector in connectors"
-        :key="connector.id"
-        :connector="connector"
-        :busy-id="busyId"
-        :source-missing="sourceMissing"
-        :agents="agents"
-        :registry-source-path="registry?.source_path ?? ''"
-        :tool="toolForConnector(connector.id)"
-        :tool-busy-id="toolBusyId"
-        @connect="handleConnect"
-        @disconnect="handleDisconnect"
-        @install-tool="handleInstallTool"
-      />
+    <!-- Connectors section -->
+    <div v-if="!offline && !backendError && connectors.length > 0" class="connector-section">
+      <h3 class="connector-section-title">{{ t('connectorAgentManager') }}</h3>
+      <div class="connector-list">
+        <AgentConnectorRow
+          v-for="connector in connectors"
+          :key="connector.id"
+          :connector="connector"
+          :busy-id="busyId"
+          :source-missing="sourceMissing"
+          :agents="agents"
+          :registry-source-path="registry?.source_path ?? ''"
+          :tool="toolForConnector(connector.id)"
+          :tool-busy-id="toolBusyId"
+          @connect="handleConnect"
+          @disconnect="handleDisconnect"
+          @install-tool="handleInstallTool"
+        />
+      </div>
     </div>
   </section>
 </template>
@@ -358,49 +374,9 @@ async function handleInstallTool(id: string) {
   gap: 8px;
 }
 
-.agent-registry-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
-  padding: 14px 16px;
-  border: 1px solid var(--bb-hairline);
-  border-radius: 8px;
-  background: var(--bb-surface);
-}
-
-.agent-registry-card h3 {
-  margin: 0 0 4px;
-  font-size: 15px;
-  color: var(--bb-text-strong);
-}
-
-.agent-registry-card p {
-  margin: 0;
-  color: var(--bb-text-muted);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.agent-registry-facts {
-  --bb-info-grid-gap: 10px;
-  --bb-info-item-padding: 8px 10px;
-  --bb-info-item-border: 1px solid var(--bb-hairline);
-}
-
-:global(:root[data-theme='dark']) .agent-registry-facts {
-  --bb-info-item-bg: var(--bb-surface-muted);
-}
-
 @media (max-width: 860px) {
-  .agent-registry-card,
   .agent-panel-header {
-    grid-template-columns: 1fr;
     flex-direction: column;
-  }
-
-  .agent-registry-facts {
-    grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
-    width: 100%;
   }
 }
 </style>

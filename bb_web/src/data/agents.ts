@@ -12,7 +12,6 @@ export interface McpServerConfig {
 export interface AgentProfile {
   id: string
   display_name: string
-  kind: string
   runtime?: string
   scope: string
   status: string
@@ -36,6 +35,15 @@ export interface AgentProfile {
   skills?: string[]
 }
 
+export interface RuntimeProfile {
+  id: string
+  display_name: string
+  assignable: boolean
+  command?: string
+  roles?: string[]
+  description?: string
+}
+
 export interface ProjectAgentProfile extends AgentProfile {
   origin: 'global' | 'project' | string
   project_role?: string
@@ -52,6 +60,7 @@ export interface ProjectAgentList {
 export interface AgentRegistryList {
   source_state: AgentRegistrySourceState
   source_path: string
+  runtimes: RuntimeProfile[]
   agents: AgentProfile[]
   project_agents: Array<{
     project: string

@@ -1,10 +1,49 @@
-version = 1
+version = 2
 project_agents = []
+
+[[runtimes]]
+id = "codebuddy"
+display_name = "CodeBuddy"
+assignable = true
+roles = ["engineering"]
+description = "CodeBuddy runtime for codebase work."
+
+[[runtimes]]
+id = "codex"
+display_name = "Codex"
+assignable = true
+command = "codex"
+roles = [
+    "generalist",
+    "engineering",
+]
+description = "Codex runtime for implementation, debugging, and multimodal product work."
+
+[[runtimes]]
+id = "opencode"
+display_name = "OpenCode"
+assignable = true
+command = "opencode"
+roles = [
+    "engineering",
+    "research",
+]
+description = "OpenCode runtime for backend work, research workflows, and automated pipelines."
+
+[[runtimes]]
+id = "pi"
+display_name = "Pi"
+assignable = true
+command = "pi"
+roles = [
+    "engineering",
+    "research",
+]
+description = "Pi runtime for lightweight terminal coding workflows."
 
 [[agents]]
 id = "bb-pm"
 display_name = "BB PM"
-kind = "opencode_agent"
 runtime = "opencode"
 scope = "global"
 status = "active"
@@ -42,79 +81,8 @@ command = "qmd"
 args = ["serve"]
 
 [[agents]]
-id = "claude"
-display_name = "Claude Code"
-kind = "platform_agent"
-runtime = "claude"
-scope = "global"
-status = "active"
-assignable = true
-distribute = false
-roles = ["engineering"]
-description = "Claude Code runtime agent for implementation and debugging."
-
-[[agents]]
-id = "codebuddy"
-display_name = "CodeBuddy"
-kind = "platform_agent"
-runtime = "codebuddy"
-scope = "global"
-status = "active"
-assignable = true
-distribute = false
-roles = ["engineering"]
-description = "Central CodeBuddy agent for codebase work."
-
-[[agents]]
-id = "codex"
-display_name = "Codex"
-kind = "platform_agent"
-runtime = "codex"
-scope = "global"
-status = "active"
-assignable = true
-distribute = false
-roles = [
-    "generalist",
-    "engineering",
-]
-description = "Central Codex agent for implementation, debugging, and multimodal product work."
-skills = ["triage"]
-
-[[agents]]
-id = "opencode"
-display_name = "OpenCode"
-kind = "platform_agent"
-runtime = "opencode"
-scope = "global"
-status = "active"
-assignable = true
-distribute = false
-roles = [
-    "engineering",
-    "research",
-]
-description = "OpenCode runtime agent for backend work, research workflows, and automated pipelines."
-
-[[agents]]
-id = "pi"
-display_name = "Pi"
-kind = "platform_agent"
-runtime = "pi"
-scope = "global"
-status = "active"
-assignable = true
-distribute = false
-roles = [
-    "engineering",
-    "research",
-]
-description = "Pi runtime agent for lightweight terminal coding workflows."
-
-[[agents]]
 id = "owner"
 display_name = "Project Owner"
-kind = "human"
 scope = "global"
 status = "active"
 assignable = true
@@ -125,7 +93,6 @@ description = "Blackboard owner and product decision maker."
 [[agents]]
 id = "spec-coordinator"
 display_name = "Spec Coordinator"
-kind = "opencode_agent"
 runtime = "opencode"
 scope = "global"
 status = "active"
@@ -141,7 +108,6 @@ description = "Open Spec coordinator."
 [[agents]]
 id = "spec-dispatch-adapter"
 display_name = "Spec Dispatch Adapter"
-kind = "sub_agent"
 runtime = "opencode"
 scope = "global"
 status = "active"
@@ -153,7 +119,6 @@ roles = ["spec"]
 [[agents]]
 id = "spec-reviewer"
 display_name = "Spec Reviewer"
-kind = "sub_agent"
 runtime = "opencode"
 scope = "global"
 status = "active"
@@ -168,7 +133,6 @@ roles = [
 [[agents]]
 id = "spec-scout"
 display_name = "Spec Scout"
-kind = "sub_agent"
 runtime = "opencode"
 scope = "global"
 status = "active"
@@ -183,7 +147,6 @@ roles = [
 [[agents]]
 id = "spec-writer"
 display_name = "Spec Writer"
-kind = "sub_agent"
 runtime = "opencode"
 scope = "global"
 status = "active"

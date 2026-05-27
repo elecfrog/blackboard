@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import type { AgentProfile } from '@/data/agents'
+import type { AgentProfile, RuntimeProfile } from '@/data/agents'
 import type { SkillInfo } from '@/data/agents'
 import { loadAgentRegistry, loadAgentSkills, upsertAgent } from '@/data/agents'
 import type { BlackboardTicket, ProjectEntry } from '@/data/tickets'
@@ -8,11 +8,13 @@ import { isOpenTicketStatus, loadBlackboardData, loadProjects } from '@/data/tic
 import { BbButton, BbDialog, BbField, BbToolbar } from '@/components/common'
 import { t } from '@/i18n'
 import AgentListPanel from './agents/AgentListPanel.vue'
+import type { SelectionKind } from './agents/AgentListPanel.vue'
 import AgentProfileSection from './agents/AgentProfileSection.vue'
 import AgentRuntimeConfig from './agents/AgentRuntimeConfig.vue'
 import AgentMcpTable from './agents/AgentMcpTable.vue'
 import AgentSkillsTable from './agents/AgentSkillsTable.vue'
 import AgentAssignments from './agents/AgentAssignments.vue'
+import RuntimeDetailSection from './agents/RuntimeDetailSection.vue'
 
 interface ProjectTickets {
   project: ProjectEntry
@@ -25,10 +27,12 @@ const props = defineProps<{
 
 const loading = ref(true)
 const error = ref('')
+const runtimes = ref<RuntimeProfile[]>([])
 const agents = ref<AgentProfile[]>([])
 const availableSkills = ref<SkillInfo[]>([])
 const projects = ref<ProjectTickets[]>([])
-const selectedAgent = ref('')
+const selectedId = ref('')
+const selectedKind = ref<SelectionKind>('runtime')
 const skillSaving = ref(false)
 const skillSaveError = ref('')
 
@@ -37,7 +41,7 @@ const showNewAgent = ref(false)
 const newAgentForm = ref({
   id: '',
   display_name: '',
-  kind: 'opencode',
+  runtime: 'opencode',
   scope: 'global',
   status: 'active',
   assignable: true,
@@ -48,7 +52,15 @@ const newAgentForm = ref({
 const newAgentSaving = ref(false)
 
 const selectedAgentProfile = computed(() =>
-  agents.value.find((agent) => agent.id === selectedAgent.value) ?? null,
+  selectedKind.value === 'agent'
+    ? agents.value.find((agent) => agent.id === selectedId.value) ?? null
+    : null,
+)
+
+const selectedRuntimeProfile = computed(() =>
+  selectedKind.value === 'runtime'
+    ? runtimes.value.find((rt) => rt.id === selectedId.value) ?? null
+    : null,
 )
 
 const assignedProjects = computed(() =>
@@ -56,7 +68,7 @@ const assignedProjects = computed(() =>
     .map((entry) => ({
       project: entry.project,
       tickets: entry.tickets.filter(
-        (ticket) => ticket.extra.assignee === selectedAgent.value && isOpenTicketStatus(ticket.status),
+        (ticket) => ticket.extra.assignee === selectedId.value && isOpenTicketStatus(ticket.status),
       ),
     }))
     .filter((entry) => entry.tickets.length > 0),
@@ -75,8 +87,9 @@ const assignmentCountByAgent = computed(() => {
   return counts
 })
 
-function selectAgent(id: string) {
-  selectedAgent.value = id
+function onSelect(id: string, kind: SelectionKind) {
+  selectedId.value = id
+  selectedKind.value = kind
   skillSaveError.value = ''
 }
 
@@ -91,12 +104,13 @@ async function createNewAgent() {
   try {
     const created = await upsertAgent(newAgentForm.value as AgentProfile)
     agents.value.push(created)
-    selectedAgent.value = created.id
+    selectedId.value = created.id
+    selectedKind.value = 'agent'
     showNewAgent.value = false
     newAgentForm.value = {
       id: '',
       display_name: '',
-      kind: 'opencode',
+      runtime: 'opencode',
       scope: 'global',
       status: 'active',
       assignable: true,
@@ -129,10 +143,16 @@ async function updateAgentSkills(skills: string[]) {
   }
 }
 
-function chooseDefaultAgent() {
-  if (selectedAgent.value) return
-  const preferred = agents.value.find((agent) => agent.id === 'codex') ?? agents.value[0]
-  selectedAgent.value = preferred?.id ?? ''
+function chooseDefault() {
+  if (selectedId.value) return
+  // Prefer first runtime
+  if (runtimes.value.length > 0) {
+    selectedId.value = runtimes.value[0].id
+    selectedKind.value = 'runtime'
+  } else if (agents.value.length > 0) {
+    selectedId.value = agents.value[0].id
+    selectedKind.value = 'agent'
+  }
 }
 
 async function reload() {
@@ -140,8 +160,9 @@ async function reload() {
   error.value = ''
   try {
     const [registry, projectList] = await Promise.all([loadAgentRegistry(), loadProjects()])
+    runtimes.value = registry.runtimes
     agents.value = registry.agents.filter((agent) => agent.status === 'active' && agent.assignable)
-    chooseDefaultAgent()
+    chooseDefault()
     try {
       availableSkills.value = (await loadAgentSkills()).skills
     } catch (err) {
@@ -184,48 +205,54 @@ onMounted(reload)
     <div v-else-if="error" class="bb-state-panel bb-error">{{ error }}</div>
     <template v-else>
       <div class="aw-layout">
-        <!-- Left: Agent list -->
+        <!-- Left: Runtime + Agent list -->
         <AgentListPanel
+          :runtimes="runtimes"
           :agents="agents"
-          :selected-id="selectedAgent"
+          :selected-id="selectedId"
+          :selected-kind="selectedKind"
           :assignment-counts="assignmentCountByAgent"
-          @select="selectAgent"
+          @select="onSelect"
         />
 
         <!-- Right: Content area -->
         <main class="aw-content">
-          <AgentProfileSection
-            :agent="selectedAgentProfile"
-            @updated="onAgentUpdated"
+          <!-- Runtime detail view -->
+          <RuntimeDetailSection
+            v-if="selectedRuntimeProfile"
+            :runtime="selectedRuntimeProfile"
+            :agents="agents"
           />
 
-          <AgentRuntimeConfig
-            v-if="selectedAgentProfile"
-            :agent="selectedAgentProfile"
-            @updated="onAgentUpdated"
-          />
+          <!-- Agent detail view -->
+          <template v-if="selectedAgentProfile">
+            <AgentProfileSection
+              :agent="selectedAgentProfile"
+              @updated="onAgentUpdated"
+            />
 
-          <AgentMcpTable
-            v-if="selectedAgentProfile"
-            :servers="selectedAgentProfile.mcp_servers ?? []"
-            :edit-mode="false"
-          />
+            <AgentRuntimeConfig
+              :agent="selectedAgentProfile"
+              @updated="onAgentUpdated"
+            />
 
-          <AgentSkillsTable
-            v-if="selectedAgentProfile"
-            :skills="selectedAgentProfile.skills ?? []"
-            :available-skills="availableSkills"
-            :saving="skillSaving"
-            :save-error="skillSaveError"
-            @update:skills="updateAgentSkills"
-          />
+            <AgentMcpTable
+              :servers="selectedAgentProfile.mcp_servers ?? []"
+              :edit-mode="false"
+            />
 
-          <!-- TODO(ticket: agent-metrics): Re-enable AgentMetricsCards after implementing real agent metrics data. -->
+            <AgentSkillsTable
+              :skills="selectedAgentProfile.skills ?? []"
+              :available-skills="availableSkills"
+              :saving="skillSaving"
+              :save-error="skillSaveError"
+              @update:skills="updateAgentSkills"
+            />
 
-          <AgentAssignments
-            v-if="selectedAgentProfile"
-            :projects="assignedProjects"
-          />
+            <AgentAssignments
+              :projects="assignedProjects"
+            />
+          </template>
         </main>
       </div>
     </template>
@@ -244,13 +271,9 @@ onMounted(reload)
         <template #label>{{ t('agentDisplayNameLabel') }} <em>*</em></template>
         <input v-model="newAgentForm.display_name" type="text" :placeholder="t('agentDisplayNamePlaceholder')" />
       </BbField>
-      <BbField :label="t('agentKindLabel')">
-        <select v-model="newAgentForm.kind">
-          <option value="opencode">opencode</option>
-          <option value="codex">codex</option>
-          <option value="codebuddy">codebuddy</option>
-          <option value="pi">pi</option>
-          <option value="custom">custom</option>
+      <BbField :label="t('runtimeConfigRuntimeLabel')">
+        <select v-model="newAgentForm.runtime">
+          <option v-for="rt in runtimes" :key="rt.id" :value="rt.id">{{ rt.display_name }}</option>
         </select>
       </BbField>
       <BbField :label="t('agentVariantLabel')">

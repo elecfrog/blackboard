@@ -710,7 +710,7 @@ async fn remote_mcp_initialize_and_list_tools() {
     let (_temp, workspace) = fixture();
     let router = app(workspace);
 
-    // Step 1: Send initialize request (creates a session)
+    // Step 1: Send initialize request (stateless — no session)
     let init_body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"0.1"}}}"#;
     let response = router
         .clone()
@@ -728,43 +728,16 @@ async fn remote_mcp_initialize_and_list_tools() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    // Extract session ID from response headers
-    let session_id = response
-        .headers()
-        .get("mcp-session-id")
-        .expect("initialize response must include Mcp-Session-Id header")
-        .to_str()
-        .unwrap()
-        .to_string();
-    assert!(!session_id.is_empty());
+    // No session ID in stateless mode
+    assert!(response.headers().get("mcp-session-id").is_none());
 
-    // Parse SSE response body to extract the initialize result
+    // Response is plain JSON in stateless json_response mode
     let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
-    // SSE format: lines starting with "data:" contain the JSON-RPC response
-    let init_result = extract_json_from_sse(&body_str);
+    let init_result: Value = serde_json::from_str(&body_str).unwrap();
     assert_eq!(init_result["result"]["serverInfo"]["name"], "bb");
 
-    // Step 2: Send notifications/initialized notification
-    let initialized_body = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
-    let response = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri("/mcp")
-                .header("host", "localhost")
-                .header("content-type", "application/json")
-                .header("accept", "application/json, text/event-stream")
-                .header("mcp-session-id", &session_id)
-                .body(Body::from(initialized_body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::ACCEPTED);
-
-    // Step 3: Send tools/list request with session ID
+    // Step 2: Send tools/list request (no session ID needed)
     let tools_body = r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#;
     let response = router
         .clone()
@@ -775,7 +748,6 @@ async fn remote_mcp_initialize_and_list_tools() {
                 .header("host", "localhost")
                 .header("content-type", "application/json")
                 .header("accept", "application/json, text/event-stream")
-                .header("mcp-session-id", &session_id)
                 .body(Body::from(tools_body))
                 .unwrap(),
         )
@@ -785,28 +757,13 @@ async fn remote_mcp_initialize_and_list_tools() {
     assert_eq!(response.status(), StatusCode::OK);
     let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
-    let tools_result = extract_json_from_sse(&body_str);
+    let tools_result: Value = serde_json::from_str(&body_str).unwrap();
     assert_eq!(tools_result["jsonrpc"], "2.0");
     assert_eq!(tools_result["result"]["tools"][0]["name"], "list_projects");
 }
 
-/// Extract the first JSON-RPC message from an SSE response body.
-fn extract_json_from_sse(sse_body: &str) -> Value {
-    for line in sse_body.lines() {
-        if let Some(data) = line.strip_prefix("data:") {
-            let data = data.trim();
-            if let Ok(value) = serde_json::from_str::<Value>(data) {
-                if value.get("jsonrpc").is_some() {
-                    return value;
-                }
-            }
-        }
-    }
-    panic!("No JSON-RPC message found in SSE response: {sse_body}");
-}
-
-/// Helper: perform the full MCP initialize handshake and return the session ID.
-async fn mcp_initialize(router: &Router) -> String {
+/// Helper: perform a stateless MCP initialize call and verify success.
+async fn mcp_initialize(router: &Router) {
     let init_body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"0.1"}}}"#;
     let response = router
         .clone()
@@ -823,36 +780,14 @@ async fn mcp_initialize(router: &Router) -> String {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let session_id = response
-        .headers()
-        .get("mcp-session-id")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
-
-    // Send initialized notification
-    let initialized_body = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
-    let resp = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri("/mcp")
-                .header("host", "localhost")
-                .header("content-type", "application/json")
-                .header("accept", "application/json, text/event-stream")
-                .header("mcp-session-id", &session_id)
-                .body(Body::from(initialized_body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::ACCEPTED);
-    session_id
+    // Stateless mode with json_response: response is application/json
+    let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
+    let init_result: Value = serde_json::from_str(&body_str).unwrap();
+    assert_eq!(init_result["result"]["serverInfo"]["name"], "bb");
 }
 
-async fn mcp_call_tool(router: &Router, session_id: &str, name: &str, arguments: Value) -> Value {
+async fn mcp_call_tool(router: &Router, _session_id: &str, name: &str, arguments: Value) -> Value {
     let call_body = json!({
         "jsonrpc": "2.0",
         "id": 3,
@@ -871,7 +806,6 @@ async fn mcp_call_tool(router: &Router, session_id: &str, name: &str, arguments:
                 .header("host", "localhost")
                 .header("content-type", "application/json")
                 .header("accept", "application/json, text/event-stream")
-                .header("mcp-session-id", session_id)
                 .body(Body::from(call_body.to_string()))
                 .unwrap(),
         )
@@ -881,14 +815,14 @@ async fn mcp_call_tool(router: &Router, session_id: &str, name: &str, arguments:
     assert_eq!(response.status(), StatusCode::OK);
     let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
-    extract_json_from_sse(&body_str)
+    serde_json::from_str(&body_str).unwrap()
 }
 
 #[tokio::test]
 async fn mcp_list_projects_follows_global_folder_registry() {
     let (temp, workspace) = fixture();
     let router = app(workspace);
-    let session_id = mcp_initialize(&router).await;
+    mcp_initialize(&router).await;
 
     let code_root = temp.path().join("MCP Code");
     fs::create_dir_all(&code_root).unwrap();
@@ -914,7 +848,7 @@ async fn mcp_list_projects_follows_global_folder_registry() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let result = mcp_call_tool(&router, &session_id, "list_projects", json!({})).await;
+    let result = mcp_call_tool(&router, "", "list_projects", json!({})).await;
     let text = result["result"]["content"][0]["text"].as_str().unwrap();
     let projects: Value = serde_json::from_str(text).unwrap();
     let project_names: Vec<_> = projects
@@ -930,10 +864,10 @@ async fn mcp_list_projects_follows_global_folder_registry() {
 async fn mcp_tools_call_returns_content() {
     let (_temp, workspace) = fixture();
     let router = app(workspace);
-    let session_id = mcp_initialize(&router).await;
+    mcp_initialize(&router).await;
 
     // Call list_projects tool
-    let result = mcp_call_tool(&router, &session_id, "list_projects", json!({})).await;
+    let result = mcp_call_tool(&router, "", "list_projects", json!({})).await;
     assert_eq!(result["jsonrpc"], "2.0");
     // The result should have content array with text type
     let content = &result["result"]["content"];
@@ -946,13 +880,11 @@ async fn mcp_tools_call_returns_content() {
 }
 
 #[tokio::test]
-async fn mcp_missing_session_id_returns_not_found() {
+async fn mcp_stateless_ignores_session_header() {
     let (_temp, workspace) = fixture();
     let router = app(workspace);
-    let session_id = mcp_initialize(&router).await;
-    let _ = session_id; // just to create a valid session
 
-    // Send tools/list with a bogus session ID
+    // In stateless mode, sending a session ID header should be ignored (not 404)
     let tools_body = r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#;
     let response = router
         .clone()
@@ -970,17 +902,16 @@ async fn mcp_missing_session_id_returns_not_found() {
         .await
         .unwrap();
 
-    // MCP spec: server MUST respond with 404 for unknown sessions
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    // Stateless mode: session header is ignored, request succeeds
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
-async fn mcp_delete_terminates_session() {
+async fn mcp_stateless_delete_returns_method_not_allowed() {
     let (_temp, workspace) = fixture();
     let router = app(workspace);
-    let session_id = mcp_initialize(&router).await;
 
-    // DELETE the session
+    // DELETE is not supported in stateless mode
     let response = router
         .clone()
         .oneshot(
@@ -988,32 +919,13 @@ async fn mcp_delete_terminates_session() {
                 .method(Method::DELETE)
                 .uri("/mcp")
                 .header("host", "localhost")
-                .header("mcp-session-id", &session_id)
+                .header("mcp-session-id", "some-session-id")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::ACCEPTED);
-
-    // Subsequent request with the same session ID should return 404
-    let tools_body = r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#;
-    let response = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri("/mcp")
-                .header("host", "localhost")
-                .header("content-type", "application/json")
-                .header("accept", "application/json, text/event-stream")
-                .header("mcp-session-id", &session_id)
-                .body(Body::from(tools_body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
 }
 
 #[tokio::test]
@@ -1669,7 +1581,7 @@ async fn rest_agent_registry_write_roundtrips_project_agents() {
             Request::post("/api/agents")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    r#"{"id":"codex","display_name":"Codex","kind":"platform_agent","runtime":"codex"}"#,
+                    r#"{"id":"codex","display_name":"Codex","runtime":"codex"}"#,
                 ))
                 .unwrap(),
         )

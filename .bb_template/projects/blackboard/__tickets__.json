@@ -1,5 +1,5 @@
 {
-  "current_counter": "000087",
+  "current_counter": "000088",
   "tickets": [
     {
       "name": "000001-产品基线-多agent工具管理dashboard.json",
@@ -958,9 +958,9 @@
       "id": "000053",
       "lane": "bbp",
       "title": "TaskGraph Vision：多 Runtime 自主协作执行图",
-      "status": "done",
+      "status": "archived",
       "created_at": "2026-05-14",
-      "updated_at": "2026-05-18",
+      "updated_at": "2026-05-26",
       "attachments": [],
       "extra": {
         "area": "TaskGraph",
@@ -1086,7 +1086,7 @@
       "id": "000059",
       "lane": "bbt",
       "title": "TaskGraph Trigger：定时任务与 Schedule UI",
-      "status": "done",
+      "status": "archived",
       "created_at": "2026-05-14",
       "updated_at": "2026-05-26",
       "attachments": [],
@@ -1109,9 +1109,9 @@
       "id": "000060",
       "lane": "bbt",
       "title": "TaskGraph 060：Graph Compile 与 Superstep Execution Kernel",
-      "status": "done",
+      "status": "archived",
       "created_at": "2026-05-14",
-      "updated_at": "2026-05-22",
+      "updated_at": "2026-05-26",
       "attachments": [
         {
           "kind": "wiki",
@@ -1303,9 +1303,9 @@
       "id": "000073",
       "lane": "bbp",
       "title": "Ticket BDD Schema：结构化 JSON Ticket 重构与旧票清理流水线",
-      "status": "in_progress",
+      "status": "archived",
       "created_at": "2026-05-18",
-      "updated_at": "2026-05-22",
+      "updated_at": "2026-05-26",
       "attachments": [],
       "extra": {
         "area": "Ticket",
@@ -1321,9 +1321,9 @@
       "id": "000074",
       "lane": "bbd",
       "title": "Ticket Detail：JSON Ticket 的文档式 section 与卡片展示",
-      "status": "in_progress",
+      "status": "archived",
       "created_at": "2026-05-18",
-      "updated_at": "2026-05-18",
+      "updated_at": "2026-05-26",
       "attachments": [],
       "extra": {
         "area": "Ticket",
@@ -1342,9 +1342,9 @@
       "id": "000075",
       "lane": "bbt",
       "title": "Schema Tooling：Rust code-to-schema 独立生成器",
-      "status": "done",
+      "status": "archived",
       "created_at": "2026-05-18",
-      "updated_at": "2026-05-18",
+      "updated_at": "2026-05-26",
       "attachments": [],
       "extra": {
         "area": "Schema",
@@ -1360,12 +1360,13 @@
       "id": "000076",
       "lane": "bbq",
       "title": "Ticket Audit：schema 校验与 LLM 修复闭环",
-      "status": "review",
+      "status": "archived",
       "created_at": "2026-05-18",
-      "updated_at": "2026-05-18",
+      "updated_at": "2026-05-26",
       "attachments": [],
       "extra": {
         "area": "ticket-audit",
+        "assignee": "codex",
         "parent": "000075",
         "source": "schema-tooling"
       },
@@ -1378,7 +1379,7 @@
       "id": "000077",
       "lane": "bbd",
       "title": "增强 Task Graph 编辑器支撑 Spec 管线前段",
-      "status": "todo",
+      "status": "review",
       "created_at": "2026-05-18",
       "updated_at": "2026-05-26",
       "attachments": [
@@ -1402,9 +1403,9 @@
       "id": "000078",
       "lane": "bbt",
       "title": "LLM Coordinator 独立节点 MVP",
-      "status": "review",
+      "status": "archived",
       "created_at": "2026-05-19",
-      "updated_at": "2026-05-22",
+      "updated_at": "2026-05-26",
       "attachments": [
         {
           "kind": "ticket",
@@ -1427,9 +1428,9 @@
       "id": "000079",
       "lane": "bbp",
       "title": "Graph Catalog：Graph 分组导航与统一索引",
-      "status": "review",
+      "status": "archived",
       "created_at": "2026-05-21",
-      "updated_at": "2026-05-22",
+      "updated_at": "2026-05-26",
       "attachments": [],
       "extra": {},
       "metadata_error": null,
@@ -1441,7 +1442,7 @@
       "id": "000080",
       "lane": "bbt",
       "title": "TaskGraph 结构化 Tool Lifecycle 事件",
-      "status": "review",
+      "status": "archived",
       "created_at": "2026-05-21",
       "updated_at": "2026-05-26",
       "attachments": [
@@ -1479,7 +1480,7 @@
       "id": "000081",
       "lane": "bbq",
       "title": "Day0 夜间无人值守代码优化验收",
-      "status": "review",
+      "status": "archived",
       "created_at": "2026-05-22",
       "updated_at": "2026-05-26",
       "attachments": [
@@ -1499,7 +1500,7 @@
       "id": "000082",
       "lane": "bbt",
       "title": "LLM 节点统一升级：ResourceBundle / Tool Policy / Output Contract",
-      "status": "done",
+      "status": "archived",
       "created_at": "2026-05-22",
       "updated_at": "2026-05-26",
       "attachments": [
@@ -1529,9 +1530,9 @@
       "id": "000083",
       "lane": "bbt",
       "title": "将 Inbox Note 存储格式 JSON 化并对齐 Ticket",
-      "status": "review",
+      "status": "archived",
       "created_at": "2026-05-22",
-      "updated_at": "2026-05-23",
+      "updated_at": "2026-05-26",
       "attachments": [
         {
           "kind": "inbox",
@@ -1549,7 +1550,7 @@
       "id": "000084",
       "lane": "bbt",
       "title": "MCP / Daemon Agent 工具架构：结构化本机工具层",
-      "status": "done",
+      "status": "archived",
       "created_at": "2026-05-23",
       "updated_at": "2026-05-26",
       "attachments": [
@@ -1579,7 +1580,7 @@
       "id": "000085",
       "lane": "bbp",
       "title": "明确 Desktop 与开发目录的 Blackboard 数据边界",
-      "status": "review",
+      "status": "archived",
       "created_at": "2026-05-25",
       "updated_at": "2026-05-26",
       "attachments": [],
@@ -1593,7 +1594,7 @@
       "id": "000086",
       "lane": "bbq",
       "title": "macOS 兼容性检查与 Pi Connector 安装引导",
-      "status": "review",
+      "status": "archived",
       "created_at": "2026-05-26",
       "updated_at": "2026-05-26",
       "attachments": [],
@@ -1610,11 +1611,31 @@
       "id": "000087",
       "lane": "bbd",
       "title": "前端共享 UI 原语收敛：已完成工作归档与后续产品化跟踪",
-      "status": "in_progress",
+      "status": "review",
       "created_at": "2026-05-26",
       "updated_at": "2026-05-26",
       "attachments": [],
       "extra": {},
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000088-飞书-sdk-cli-消息推送接入.json",
+      "path": "tickets/000088-飞书-sdk-cli-消息推送接入.json",
+      "id": "000088",
+      "lane": "bbt",
+      "title": "飞书 SDK/CLI 消息推送接入",
+      "status": "todo",
+      "created_at": "2026-05-26",
+      "updated_at": "2026-05-26",
+      "attachments": [],
+      "extra": {
+        "area": "TaskGraph",
+        "depends_on": "000065",
+        "kind": "execution-subtrack",
+        "parent": "000065",
+        "scope": "feishu-sdk-cli-push"
+      },
       "metadata_error": null,
       "metadata_warnings": []
     }

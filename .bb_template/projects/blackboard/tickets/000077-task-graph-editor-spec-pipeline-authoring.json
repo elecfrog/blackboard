@@ -111,7 +111,7 @@
       "description": "从 prompt intent 到 Existing Truth、可选 External Research/Skip、artifact 落盘和 evidence bundle join 的小图。"
     }
   ],
-  "status": "todo",
+  "status": "review",
   "created_at": "2026-05-18",
   "updated_at": "2026-05-26",
   "extra": {

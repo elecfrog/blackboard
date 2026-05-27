@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::InboxError;
 
-use super::model::{AgentProfile, AgentRegistryFile};
+use super::model::{AgentProfile, AgentRegistryFile, RuntimeProfile};
 
 /// Warnings emitted during validation that do not block writes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,6 +13,15 @@ pub struct ValidationWarning {
 
 pub(super) fn validate_registry(registry: &AgentRegistryFile) -> Result<(), InboxError> {
     let mut ids = BTreeSet::new();
+    for runtime in &registry.runtimes {
+        validate_runtime(runtime)?;
+        if !ids.insert(runtime.id.clone()) {
+            return Err(InboxError::InvalidInput(format!(
+                "duplicate runtime id `{}` in agents.toml",
+                runtime.id
+            )));
+        }
+    }
     for agent in &registry.agents {
         validate_agent(agent)?;
         if !ids.insert(agent.id.clone()) {
@@ -51,7 +60,6 @@ pub(super) fn validate_registry_with_warnings(
 pub(super) fn validate_agent(agent: &AgentProfile) -> Result<(), InboxError> {
     validate_agent_id(&agent.id)?;
     validate_required_string("agent display_name", &agent.display_name)?;
-    validate_required_string("agent kind", &agent.kind)?;
     match agent.scope.as_str() {
         "global" | "project" => {}
         other => {
@@ -276,6 +284,31 @@ fn validate_custom_args_safety(agent_id: &str, args: &[String]) -> Vec<Validatio
 }
 
 // ── Existing helpers (unchanged) ──
+
+pub(super) fn validate_runtime(runtime: &RuntimeProfile) -> Result<(), InboxError> {
+    validate_runtime_id(&runtime.id)?;
+    validate_required_string("runtime display_name", &runtime.display_name)?;
+    Ok(())
+}
+
+pub(super) fn validate_runtime_id(value: &str) -> Result<&str, InboxError> {
+    let valid = !value.is_empty()
+        && value.len() <= 64
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
+        && value
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit());
+    if valid {
+        Ok(value)
+    } else {
+        Err(InboxError::InvalidInput(format!(
+            "invalid runtime id `{value}`"
+        )))
+    }
+}
 
 pub(super) fn is_active_assignable(agent: &AgentProfile) -> bool {
     agent.status == "active" && agent.assignable

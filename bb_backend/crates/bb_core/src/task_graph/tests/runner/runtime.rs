@@ -1386,7 +1386,6 @@ fn codex_agent_profile_node_creates_agent_session() {
 [[agents]]
 id = "codex-worker"
 display_name = "Codex Worker"
-kind = "platform_agent"
 runtime = "codex"
 "#,
     )
@@ -1591,7 +1590,6 @@ fn codebuddy_agent_profile_node_creates_agent_session() {
 [[agents]]
 id = "codebuddy-worker"
 display_name = "CodeBuddy Worker"
-kind = "platform_agent"
 runtime = "codebuddy"
 "#,
     )

@@ -923,6 +923,8 @@ pub enum TaskGraphError {
 
 // ─── Known runtimes for MVP ──────────────────────────────────────────────────
 
+/// Static fallback list of known runtimes. Prefer `agents_registry::known_runtime_ids()`
+/// when `bb_root` is available.
 pub const KNOWN_RUNTIMES: &[&str] = &["codex", "opencode", "codebuddy", "pi"];
 
 /// Valid end node result values.

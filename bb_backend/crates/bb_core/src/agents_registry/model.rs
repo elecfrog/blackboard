@@ -13,10 +13,28 @@ pub enum AgentRegistrySourceState {
 pub struct AgentRegistryFile {
     #[serde(default)]
     pub version: Option<u32>,
+    #[serde(default)]
+    pub runtimes: Vec<RuntimeProfile>,
     #[serde(default, alias = "employees")]
     pub agents: Vec<AgentProfile>,
     #[serde(default, alias = "project_memberships")]
     pub project_agents: Vec<ProjectAgentRegistration>,
+}
+
+/// Runtime profile — represents an available execution runtime (e.g. codex, opencode).
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeProfile {
+    pub id: String,
+    pub display_name: String,
+    #[serde(default = "default_assignable")]
+    pub assignable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// MCP server configuration for per-agent MCP injection (Ticket #000049).
@@ -45,7 +63,6 @@ pub struct McpServerConfig {
 pub struct AgentProfile {
     pub id: String,
     pub display_name: String,
-    pub kind: String,
     #[serde(default)]
     pub runtime: Option<String>,
     #[serde(default = "default_scope")]
@@ -125,6 +142,7 @@ pub struct RemovedProjectAgentRegistration {
 pub struct AgentRegistryList {
     pub source_state: AgentRegistrySourceState,
     pub source_path: String,
+    pub runtimes: Vec<RuntimeProfile>,
     pub agents: Vec<AgentProfile>,
     pub project_agents: Vec<ProjectAgentRegistration>,
 }

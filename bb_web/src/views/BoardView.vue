@@ -65,6 +65,7 @@ const IdeaCanvasPanel = defineAsyncComponent(() => import('@/components/IdeaCanv
 const InboxPanel = defineAsyncComponent(() => import('@/components/InboxPanel.vue'))
 const LaneManager = defineAsyncComponent(() => import('@/components/LaneManager.vue'))
 const RuntimeConnectorPanel = defineAsyncComponent(() => import('@/components/RuntimeConnectorPanel.vue'))
+const SettingsWorkbench = defineAsyncComponent(() => import('@/components/SettingsWorkbench.vue'))
 const TicketDependencyGraph = defineAsyncComponent(() => import('@/components/TicketDependencyGraph.vue'))
 const TicketDetailPanel = defineAsyncComponent(() => import('@/components/TicketDetailPanel.vue'))
 const TaskGraphCatalogPanel = defineAsyncComponent(() => import('@/components/TaskGraphCatalogPanel.vue'))
@@ -1171,22 +1172,7 @@ async function deprecateSelectedTicket(ticket: BlackboardTicket) {
           />
 
           <section v-else class="bb-settings-workspace">
-            <header class="bb-workspace-head">
-              <div class="bb-workspace-head-main">
-                <h2>{{ t('settings') }}</h2>
-                <p>{{ t('settingsSubtitle') }}</p>
-              </div>
-            </header>
-            <AgentConnectorPanel :project="project" />
-            <details class="bb-settings-advanced" @toggle="setRuntimeSettingsOpen">
-              <summary>
-                <span>
-                  <strong>{{ t('runtimeConnectorTitle') }}</strong>
-                  <span>{{ t('runtimeConnectors') }}</span>
-                </span>
-              </summary>
-              <RuntimeConnectorPanel v-if="runtimeSettingsOpen" />
-            </details>
+            <SettingsWorkbench :project="project" />
           </section>
         </template>
         </main>

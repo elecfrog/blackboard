@@ -402,7 +402,6 @@ function onInstallTool() {
           >
             <span class="target-row-main">
               <strong>{{ agent.display_name }}</strong>
-              <small>{{ agent.kind }}</small>
             </span>
             <span class="target-row-path">{{ sourcePathForAgent(agent) }}</span>
           </button>
@@ -418,7 +417,6 @@ function onInstallTool() {
           </div>
 
           <BbInfoGrid class="target-meta-grid" columns="repeat(2, minmax(0, 1fr))">
-            <BbInfoItem :label="t('connectorMetaKind')" :value="selectedAgent.kind" />
             <BbInfoItem :label="t('connectorMetaRuntime')" :value="selectedAgent.runtime ?? connector.id" />
             <BbInfoItem
               :label="t('connectorMetaAssignable')"

@@ -60,13 +60,13 @@
       "id": "api_payload_missing_spec_fields",
       "description": "当前前端数据模型可能仍以 Markdown content 为中心，如果列表或详情接口没有暴露 stories、risks、progress_record，页面无法直接渲染新 section。",
       "mitigation": "先确认 bb_web/src/data/tickets.ts 和后端 ticket API 的 JSON 字段契约；必要时补齐类型与接口返回，不在前端重新解析 Markdown。",
-      "status": "open"
+      "status": "resolved"
     },
     {
       "id": "card_layout_overcrowded",
       "description": "stories、risks、progress_record 全部用卡片展示时，详情页可能变得过重，影响文档式阅读感。",
       "mitigation": "第一版先做清晰可读的 card section，控制边框、间距和字号；根据实际截图再调整密度。",
-      "status": "open"
+      "status": "resolved"
     },
     {
       "id": "duplicate_attachment_sections",
@@ -107,9 +107,9 @@
     }
   ],
   "attachments": [],
-  "status": "in_progress",
+  "status": "archived",
   "created_at": "2026-05-18",
-  "updated_at": "2026-05-18",
+  "updated_at": "2026-05-26",
   "extra": {
     "area": "Ticket",
     "assignee": "codex",

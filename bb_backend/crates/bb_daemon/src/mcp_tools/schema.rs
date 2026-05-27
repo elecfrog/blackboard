@@ -122,7 +122,6 @@ pub fn tools_list() -> Value {
                     "properties": {
                         "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
                         "display_name": { "type": "string", "minLength": 1 },
-                        "kind": { "type": "string", "minLength": 1 },
                         "runtime": { "type": "string" },
                         "scope": { "type": "string", "enum": ["global", "project"] },
                         "status": { "type": "string", "enum": ["active", "inactive", "archived"] },
@@ -154,7 +153,7 @@ pub fn tools_list() -> Value {
                         },
                         "skills": { "type": "array", "items": { "type": "string" } }
                     },
-                    "required": ["id", "display_name", "kind"],
+                    "required": ["id", "display_name"],
                     "additionalProperties": false
                 }
             },

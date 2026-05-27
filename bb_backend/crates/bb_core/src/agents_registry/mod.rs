@@ -19,7 +19,7 @@ mod validation;
 pub use model::{
     AgentProfile, AgentRegistryFile, AgentRegistryList, AgentRegistrySourceState, McpServerConfig,
     ProjectAgentList, ProjectAgentProfile, ProjectAgentRegistration,
-    RemovedProjectAgentRegistration,
+    RemovedProjectAgentRegistration, RuntimeProfile,
 };
 pub use paths::{registry_path, resolve_source_path};
 
@@ -38,6 +38,7 @@ pub fn list_agents(bb_root: &Path) -> Result<AgentRegistryList, InboxError> {
         return Ok(AgentRegistryList {
             source_state: AgentRegistrySourceState::Missing,
             source_path: path_for_display(&path),
+            runtimes: Vec::new(),
             agents: Vec::new(),
             project_agents: Vec::new(),
         });
@@ -46,6 +47,7 @@ pub fn list_agents(bb_root: &Path) -> Result<AgentRegistryList, InboxError> {
     Ok(AgentRegistryList {
         source_state: AgentRegistrySourceState::Present,
         source_path: path_for_display(&path),
+        runtimes: registry.runtimes,
         agents: registry.agents,
         project_agents: registry.project_agents,
     })
@@ -134,7 +136,6 @@ pub fn upsert_agent(bb_root: &Path, mut agent: AgentProfile) -> Result<AgentProf
     agent.id = validate_agent_id(&agent.id)?.to_string();
     agent.display_name =
         validate_required_string("agent display_name", &agent.display_name)?.to_string();
-    agent.kind = validate_required_string("agent kind", &agent.kind)?.to_string();
     agent.scope = validate_required_string("agent scope", &agent.scope)?.to_string();
     agent.status = validate_required_string("agent status", &agent.status)?.to_string();
     if let Some(runtime) = agent.runtime.as_mut() {
@@ -293,15 +294,23 @@ pub fn validate_assignee_for_project(
     if assignee.is_empty() {
         return Ok(());
     }
-    let Some(_) = load_registry_optional(bb_root)? else {
+    let Some(registry) = load_registry_optional(bb_root)? else {
         return Ok(());
     };
+    // Check if assignee matches an assignable runtime
+    if registry
+        .runtimes
+        .iter()
+        .any(|rt| rt.id == assignee && rt.assignable)
+    {
+        return Ok(());
+    }
     let list = list_project_agents(bb_root, project)?;
     if list.agents.iter().any(|item| item.agent.id == assignee) {
         Ok(())
     } else {
         Err(InboxError::InvalidInput(format!(
-            "assignee `{assignee}` is not an active registered agent for project `{project}`"
+            "assignee `{assignee}` is not an active registered agent or runtime for project `{project}`"
         )))
     }
 }
@@ -327,6 +336,23 @@ pub fn opencode_distribution_sources(
     Ok(out)
 }
 
+pub fn known_runtime_ids(bb_root: &Path) -> Vec<String> {
+    match load_registry_optional(bb_root) {
+        Ok(Some(registry)) if !registry.runtimes.is_empty() => {
+            registry.runtimes.into_iter().map(|rt| rt.id).collect()
+        }
+        _ => {
+            // Fallback to hardcoded list when registry is unavailable
+            vec![
+                "codex".to_string(),
+                "opencode".to_string(),
+                "codebuddy".to_string(),
+                "pi".to_string(),
+            ]
+        }
+    }
+}
+
 fn load_registry_optional(bb_root: &Path) -> Result<Option<AgentRegistryFile>, InboxError> {
     let path = registry_path(bb_root);
     let content = match fs::read_to_string(&path) {
@@ -346,6 +372,7 @@ fn load_registry_optional(bb_root: &Path) -> Result<Option<AgentRegistryFile>, I
 const fn default_registry() -> AgentRegistryFile {
     AgentRegistryFile {
         version: Some(1),
+        runtimes: Vec::new(),
         agents: Vec::new(),
         project_agents: Vec::new(),
     }

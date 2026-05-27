@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "title": "飞书消息推送接入方式调研",
+  "time": "2026-05-27T00:23:00+08:00",
+  "source": "codebuddy",
+  "project": "blackboard",
+  "topic": "飞书接入方式调研：SDK vs Webhook vs CLI 对比与推荐",
+  "done": [
+    "Web 调研飞书开放平台官方文档、feishu-cli GitHub、自定义机器人 Webhook 指南",
+    "确认三种主流接入形式：自定义机器人 Webhook、自建应用 Bot（Server API + SDK）、飞书 CLI（lark-cli）",
+    "对比三种方案的能力边界、认证方式、适用场景",
+    "确认飞书 CLI 于 2026-03-28 正式开源（MIT，Go 语言），提供 200+ 命令 + 19 个 AI Agent Skills"
+  ],
+  "validation": [
+    "feishu-cli.com 文档确认消息发送命令格式",
+    "open.feishu.cn 确认 Webhook v2 接口格式与限制",
+    "GitHub riba2534/feishu-cli 确认 MIT 开源 + Claude Code/Cursor 集成"
+  ],
+  "next_step": [
+    "推荐方案：飞书 CLI（lark-cli）作为主力接入，Webhook 作为降级/极简通道",
+    "bb_backend 集成 lark-cli：通过 subprocess 调用 `lark-cli im +messages-send`",
+    "备选：直接 HTTP 调飞书 Server API（需自行管理 tenant_access_token 续签）",
+    "在 #000088 中开始实现"
+  ],
+  "related_locations": [],
+  "related_tickets": [
+    "000088",
+    "000065"
+  ],
+  "attachments": [
+    {
+      "kind": "url",
+      "target": "https://github.com/riba2534/feishu-cli",
+      "label": "feishu-cli GitHub",
+      "description": "飞书官方开源 CLI 工具，Go 语言 MIT 协议"
+    },
+    {
+      "kind": "url",
+      "target": "https://feishu-cli.com/zh/feishu-cli-messaging.html",
+      "label": "飞书 CLI 消息命令文档",
+      "description": "10 个消息快捷命令的完整参数说明"
+    },
+    {
+      "kind": "url",
+      "target": "https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot?lang=zh-CN",
+      "label": "自定义机器人 Webhook 指南",
+      "description": "飞书官方自定义机器人使用文档"
+    },
+    {
+      "kind": "url",
+      "target": "https://open.feishu.cn/document/server-docs/im-v1/message/create?lang=zh-CN",
+      "label": "Send Message Server API",
+      "description": "飞书 Server API 发送消息接口文档"
+    }
+  ],
+  "extra": {
+    "confidence": "high",
+    "research_type": "external"
+  }
+}
