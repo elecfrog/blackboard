@@ -530,21 +530,6 @@ button {
   border-top: 1px solid var(--bb-hairline);
 }
 
-.bb-project-menu-actions button {
-  min-height: 34px;
-  border: 1px solid var(--bb-hairline);
-  border-radius: 7px;
-  background: var(--bb-surface);
-  color: var(--bb-text-strong);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.bb-project-menu-actions button:hover {
-  border-color: color-mix(in srgb, var(--bb-accent) 32%, var(--bb-hairline));
-  background: color-mix(in srgb, var(--bb-accent) 8%, var(--bb-surface));
-}
-
 .bb-project-action-error {
   margin: 8px 4px 0;
   padding: 6px 8px;
@@ -1713,6 +1698,8 @@ button {
 .bb-settings-workspace {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: 16px;
 }
 
@@ -4472,7 +4459,6 @@ button {
 .bb-top-action-button,
 .bb-btn-upload,
 .aw-btn,
-.btn-base,
 .ticket-json-sample-add-btn {
   box-sizing: border-box;
   display: inline-flex;
@@ -4498,7 +4484,6 @@ button {
 .bb-top-action-button:hover,
 .bb-btn-upload:hover:not(:disabled),
 .aw-btn.secondary:hover,
-.btn-base.btn-outline:hover,
 .ticket-json-sample-add-btn:hover {
   border-color: var(--bb-theme-primary-border);
   background: var(--bb-theme-primary-soft);
@@ -4509,7 +4494,6 @@ button {
 .bb-top-action-button:focus-visible,
 .bb-btn-upload:focus-visible,
 .aw-btn:focus-visible,
-.btn-base:focus-visible,
 .ticket-json-sample-add-btn:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--bb-focus) 22%, transparent);
   outline-offset: 2px;
@@ -4519,31 +4503,27 @@ button {
 .bb-top-action-button:disabled,
 .bb-btn-upload:disabled,
 .aw-btn:disabled,
-.btn-base:disabled,
 .ticket-json-sample-add-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
 .bb-button[data-variant='primary'],
-.aw-btn.primary,
-.btn-base.btn-primary {
+.aw-btn.primary {
   --bb-button-border: var(--bb-theme-primary);
   --bb-button-bg: var(--bb-theme-primary);
   --bb-button-text: var(--bb-theme-on-primary);
 }
 
 .bb-button[data-variant='primary']:hover,
-.aw-btn.primary:hover,
-.btn-base.btn-primary:hover {
+.aw-btn.primary:hover {
   --bb-button-bg: var(--bb-theme-primary-hover);
   --bb-button-border: var(--bb-theme-primary-hover);
   color: var(--bb-theme-on-primary);
 }
 
 .bb-button[data-variant='secondary'],
-.aw-btn.secondary,
-.btn-base.btn-outline {
+.aw-btn.secondary {
   --bb-button-bg: var(--bb-surface);
   --bb-button-border: var(--bb-border-warm-medium);
   --bb-button-text: var(--bb-text-strong);
@@ -6060,9 +6040,7 @@ textarea.bb-dense-control {
 }
 
 :root[data-theme='dark'] .agent-registry-facts .bb-info-item,
-:root[data-theme='dark'] .target-row-item,
-:root[data-theme='dark'] .target-path-preview code,
-:root[data-theme='dark'] .btn-ghost {
+:root[data-theme='dark'] .target-path-preview code {
   border-color: rgba(212, 212, 216, 0.14) !important;
   background: #27272a !important;
   color: #d4d4d8 !important;
@@ -6076,7 +6054,6 @@ textarea.bb-dense-control {
 :root[data-theme='dark'] .agent-registry-card h3,
 :root[data-theme='dark'] .agent-registry-facts .bb-info-item dd,
 :root[data-theme='dark'] .connector-name,
-:root[data-theme='dark'] .target-row-main strong,
 :root[data-theme='dark'] .target-preview h4,
 :root[data-theme='dark'] .target-meta-grid .bb-info-item dd {
   color: #f4f4f5 !important;
@@ -6089,8 +6066,6 @@ textarea.bb-dense-control {
 :root[data-theme='dark'] .state-label,
 :root[data-theme='dark'] .connector-primary-path,
 :root[data-theme='dark'] .connector-details summary,
-:root[data-theme='dark'] .target-row-path,
-:root[data-theme='dark'] .target-row-main small,
 :root[data-theme='dark'] .target-preview p,
 :root[data-theme='dark'] .target-meta-grid .bb-info-item dt,
 :root[data-theme='dark'] .target-path-preview span {
@@ -6099,15 +6074,8 @@ textarea.bb-dense-control {
 
 :root[data-theme='dark'] .connector-primary-path,
 :root[data-theme='dark'] .registration-target code,
-:root[data-theme='dark'] .target-row-path,
 :root[data-theme='dark'] .target-path-preview code {
   color: #bfdbfe !important;
-}
-
-:root[data-theme='dark'] .target-row-item:hover,
-:root[data-theme='dark'] .target-row-item.selected {
-  border-color: color-mix(in srgb, var(--bb-project-blackboard-bg) 28%, var(--bb-hairline)) !important;
-  background: color-mix(in srgb, var(--bb-project-blackboard-bg) 8%, var(--bb-surface)) !important;
 }
 
 :root[data-theme='dark'] .graph-semantic-pin {

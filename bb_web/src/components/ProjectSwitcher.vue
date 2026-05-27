@@ -10,6 +10,7 @@ import {
   type WorkspaceFolderInspection,
   type WorkspaceFolderOpenResult,
 } from '@/data/tickets'
+import { BbButton } from '@/components/common'
 import UnifiedPopupSelect from '@/components/UnifiedPopupSelect.vue'
 import { t } from '@/i18n'
 import { projectBadgeTextColor, projectColor } from '@/utils/projectColor'
@@ -186,9 +187,9 @@ function projectBadge(label: string) {
     >
       <template #footer="{ action }">
         <div class="bb-project-menu-actions">
-          <button type="button" :disabled="projectActionBusy" @click.stop="action('open-folder')">
+          <BbButton size="sm" variant="secondary" :disabled="projectActionBusy" @click.stop="action('open-folder')">
             {{ projectActionBusy ? t('loading') : t('openFolder') }}
-          </button>
+          </BbButton>
         </div>
       </template>
     </UnifiedPopupSelect>
@@ -209,9 +210,9 @@ function projectBadge(label: string) {
               <h2>{{ t('workspaceInitializeTitle') }}</h2>
               <p>{{ workspaceFolderDialog.root }}</p>
             </div>
-            <button type="button" class="btn-base btn-outline" @click="workspaceFolderDialog = null">
+            <BbButton variant="secondary" @click="workspaceFolderDialog = null">
               {{ t('close') }}
-            </button>
+            </BbButton>
           </header>
           <p class="bb-project-dialog-hint">
             {{ t('workspaceInitializeBody') }}
@@ -226,12 +227,12 @@ function projectBadge(label: string) {
             {{ workspaceFolderDialog.error }}
           </p>
           <footer>
-            <button type="button" class="btn-base btn-outline" @click="workspaceFolderDialog = null">
+            <BbButton variant="secondary" @click="workspaceFolderDialog = null">
               {{ t('close') }}
-            </button>
-            <button type="submit" class="btn-base btn-primary" :disabled="workspaceFolderSubmitting">
+            </BbButton>
+            <BbButton type="submit" variant="primary" :disabled="workspaceFolderSubmitting">
               {{ workspaceFolderSubmitting ? t('saving') : t('initialize') }}
-            </button>
+            </BbButton>
           </footer>
         </form>
       </div>

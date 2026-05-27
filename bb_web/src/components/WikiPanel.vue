@@ -18,7 +18,7 @@
 
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Columns2, PanelLeft, PanelLeftClose, Rows2, Upload } from 'lucide-vue-next'
+import { PanelLeft, PanelLeftClose, Upload } from 'lucide-vue-next'
 import { MarkdownRenderer, TableOfContents } from '@/ui/markdown'
 import {
   buildCodeMarkdown,
@@ -29,7 +29,7 @@ import {
 import type { WikiTreeNode } from '@/data/wiki'
 import { loadWikiContent, loadWikiTree, uploadWikiFiles, wikiAssetUrl } from '@/data/wiki'
 import WikiTreeItem from '@/components/WikiTreeItem.vue'
-import { BbToolbar } from '@/components/common'
+import { BbButton, BbSegmentedControl, BbToolbar } from '@/components/common'
 import { locale, t } from '@/i18n'
 
 const props = defineProps<{
@@ -56,6 +56,10 @@ const uploadSuccess = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const documentRef = ref<HTMLElement | null>(null)
 const svgLayout = ref<'side' | 'stack'>('side')
+const svgLayoutOptions = computed(() => [
+  { value: 'side', label: t('wikiLayoutSide') },
+  { value: 'stack', label: t('wikiLayoutStack') },
+])
 
 const STORAGE_KEY_TREE_WIDTH = 'blackboard.wiki.treeWidth'
 const STORAGE_KEY_TREE_COLLAPSED = 'blackboard.wiki.treeCollapsed'
@@ -387,6 +391,10 @@ function openUploadDialog() {
   fileInputRef.value?.click()
 }
 
+function setSvgLayout(value: string) {
+  if (value === 'side' || value === 'stack') svgLayout.value = value
+}
+
 const isEmpty = computed(() => !loading.value && !error.value && wikiTree.value.length === 0)
 
 const renderKind = computed<WikiRenderKind | null>(() => {
@@ -417,15 +425,17 @@ const selectedAssetUrl = computed(() =>
         <span v-else-if="uploadSuccess" class="bb-wiki-upload-msg ok">
           {{ t('wikiUploadSuccess') }}
         </span>
-        <button
-          type="button"
-          class="bb-btn-upload"
+        <BbButton
+          variant="secondary"
+          size="md"
           :disabled="uploading"
           @click="openUploadDialog"
         >
-          <Upload :size="14" />
+          <template #leading>
+            <Upload :size="14" />
+          </template>
           <span>{{ uploading ? t('saving') : t('upload') }}</span>
-        </button>
+        </BbButton>
         </template>
       </BbToolbar>
     </header>
@@ -513,26 +523,12 @@ const selectedAssetUrl = computed(() =>
               <div class="bb-wiki-svg-source">
                 <div class="bb-wiki-preview-head">
                   <span>{{ t('wikiSource') }}</span>
-                  <div class="bb-wiki-layout-toggle" :aria-label="t('wikiLayout')">
-                    <button
-                      type="button"
-                      class="bb-wiki-layout-btn"
-                      :class="{ active: svgLayout === 'side' }"
-                      :title="t('wikiLayoutSide')"
-                      @click="svgLayout = 'side'"
-                    >
-                      <Columns2 :size="14" />
-                    </button>
-                    <button
-                      type="button"
-                      class="bb-wiki-layout-btn"
-                      :class="{ active: svgLayout === 'stack' }"
-                      :title="t('wikiLayoutStack')"
-                      @click="svgLayout = 'stack'"
-                    >
-                      <Rows2 :size="14" />
-                    </button>
-                  </div>
+                  <BbSegmentedControl
+                    :model-value="svgLayout"
+                    :options="svgLayoutOptions"
+                    :aria-label="t('wikiLayout')"
+                    @update:model-value="setSvgLayout"
+                  />
                 </div>
                 <MarkdownRenderer :content="buildCodeMarkdown(wikiContent, 'xml')" :locale="locale" />
               </div>
@@ -734,35 +730,6 @@ const selectedAssetUrl = computed(() =>
   flex-shrink: 0;
 }
 
-.bb-wiki-layout-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.125rem;
-  padding: 0.125rem;
-  border: 1px solid var(--bb-hairline);
-  border-radius: 0.375rem;
-  background: var(--bb-surface);
-}
-
-.bb-wiki-layout-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 0;
-  border-radius: 0.25rem;
-  color: var(--bb-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.bb-wiki-layout-btn:hover,
-.bb-wiki-layout-btn.active {
-  color: var(--bb-text-strong);
-  background: var(--bb-surface-soft);
-}
-
 .bb-wiki-svg-canvas {
   flex: 1;
   min-height: 0;
@@ -850,27 +817,6 @@ const selectedAssetUrl = computed(() =>
 }
 .bb-wiki-upload-msg.ok {
   color: var(--bb-success);
-}
-
-.bb-btn-upload {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.75rem;
-  border: 1px solid var(--bb-hairline);
-  background: var(--bb-project-blackboard-bg);
-  color: var(--bb-project-blackboard-fg);
-  cursor: pointer;
-  border-radius: 0.375rem;
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-.bb-btn-upload:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--bb-project-blackboard-bg) 86%, var(--bb-surface));
-}
-.bb-btn-upload:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .bb-hidden-file-input {

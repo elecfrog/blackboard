@@ -906,7 +906,7 @@
             "upstream_artifacts": {
               "scout_plan_path": "{{nodes.scout-plan-final.output.artifact_path}}",
               "scout_outputs_path": "{{data.scout-output-final.artifact_path}}",
-              "output_path": "{{env.workspace}}/wiki/research/{{inputs.run-marker}}-taskgraph-research-l2-resource-bundle.md"
+"output_path": "{{env.workspace}}/projects/{{env.project}}/wiki/research/{{inputs.run-marker}}-taskgraph-research-l2-resource-bundle.md"
             }
           }
         },
@@ -983,7 +983,7 @@
         "inputs": {
           "content": "{{data.synthesize.output}}"
         },
-        "output_path": "{{env.workspace}}/wiki/research/{{inputs.output-slug}}.md",
+        "output_path": "{{env.workspace}}/projects/{{env.project}}/wiki/research/{{inputs.output-slug}}.md",
         "overwrite": true
       },
       "pins": [

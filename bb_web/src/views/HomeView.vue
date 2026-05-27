@@ -8,6 +8,7 @@ import {
   type WorkspaceFolderInspection,
   type WorkspaceFolderOpenResult,
 } from '@/data/tickets'
+import { BbButton } from '@/components/common'
 import { t } from '@/i18n'
 
 interface WorkspaceFolderDialog {
@@ -107,9 +108,15 @@ async function navigateToWorkspaceResult(result: WorkspaceFolderOpenResult) {
         <p class="bb-home-kicker">{{ t('workspace') }}</p>
         <h1>{{ t('workspaceEmptyTitle') }}</h1>
         <p>{{ loading ? t('loading') : t('workspaceEmptySubtitle') }}</p>
-        <button type="button" :disabled="busy || loading" @click="openFolder">
+        <BbButton
+          class="bb-home-primary-action"
+          size="lg"
+          variant="primary"
+          :disabled="busy || loading"
+          @click="openFolder"
+        >
           {{ busy ? t('loading') : t('openFolder') }}
-        </button>
+        </BbButton>
         <p v-if="error" class="bb-home-error" role="alert">{{ error }}</p>
         <p class="bb-home-hint">{{ t('workspaceGitignoreHint') }}</p>
       </div>
@@ -128,9 +135,9 @@ async function navigateToWorkspaceResult(result: WorkspaceFolderOpenResult) {
               <h2>{{ t('workspaceInitializeTitle') }}</h2>
               <p>{{ workspaceFolderDialog.root }}</p>
             </div>
-            <button type="button" class="btn-base btn-outline" @click="workspaceFolderDialog = null">
+            <BbButton variant="secondary" @click="workspaceFolderDialog = null">
               {{ t('close') }}
-            </button>
+            </BbButton>
           </header>
           <p class="bb-project-dialog-hint">
             {{ t('workspaceInitializeBody') }}
@@ -145,12 +152,12 @@ async function navigateToWorkspaceResult(result: WorkspaceFolderOpenResult) {
             {{ workspaceFolderDialog.error }}
           </p>
           <footer>
-            <button type="button" class="btn-base btn-outline" @click="workspaceFolderDialog = null">
+            <BbButton variant="secondary" @click="workspaceFolderDialog = null">
               {{ t('close') }}
-            </button>
-            <button type="submit" class="btn-base btn-primary" :disabled="workspaceFolderSubmitting">
+            </BbButton>
+            <BbButton type="submit" variant="primary" :disabled="workspaceFolderSubmitting">
               {{ workspaceFolderSubmitting ? t('saving') : t('initialize') }}
-            </button>
+            </BbButton>
           </footer>
         </form>
       </div>
@@ -201,19 +208,8 @@ async function navigateToWorkspaceResult(result: WorkspaceFolderOpenResult) {
   line-height: 1.65;
 }
 
-.bb-home-empty button {
+.bb-home-primary-action {
   justify-self: flex-start;
-  min-height: 44px;
-  padding: 0 18px;
-  border: 1px solid var(--bb-theme-primary);
-  border-radius: 8px;
-  background: var(--bb-theme-primary);
-  color: var(--bb-theme-on-primary);
-  font-weight: 800;
-}
-
-.bb-home-empty button:disabled {
-  opacity: 0.62;
 }
 
 .bb-home-error {

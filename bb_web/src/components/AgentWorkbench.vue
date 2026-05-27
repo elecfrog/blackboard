@@ -14,7 +14,6 @@ import AgentRuntimeConfig from './agents/AgentRuntimeConfig.vue'
 import AgentMcpTable from './agents/AgentMcpTable.vue'
 import AgentSkillsTable from './agents/AgentSkillsTable.vue'
 import AgentAssignments from './agents/AgentAssignments.vue'
-import RuntimeDetailSection from './agents/RuntimeDetailSection.vue'
 
 interface ProjectTickets {
   project: ProjectEntry
@@ -32,7 +31,6 @@ const agents = ref<AgentProfile[]>([])
 const availableSkills = ref<SkillInfo[]>([])
 const projects = ref<ProjectTickets[]>([])
 const selectedId = ref('')
-const selectedKind = ref<SelectionKind>('runtime')
 const skillSaving = ref(false)
 const skillSaveError = ref('')
 
@@ -52,15 +50,11 @@ const newAgentForm = ref({
 const newAgentSaving = ref(false)
 
 const selectedAgentProfile = computed(() =>
-  selectedKind.value === 'agent'
-    ? agents.value.find((agent) => agent.id === selectedId.value) ?? null
-    : null,
+  agents.value.find((agent) => agent.id === selectedId.value) ?? null,
 )
 
-const selectedRuntimeProfile = computed(() =>
-  selectedKind.value === 'runtime'
-    ? runtimes.value.find((rt) => rt.id === selectedId.value) ?? null
-    : null,
+const isSystemAgent = computed(() =>
+  selectedAgentProfile.value?.scope === 'system',
 )
 
 const assignedProjects = computed(() =>
@@ -87,9 +81,8 @@ const assignmentCountByAgent = computed(() => {
   return counts
 })
 
-function onSelect(id: string, kind: SelectionKind) {
+function onSelect(id: string, _kind: SelectionKind) {
   selectedId.value = id
-  selectedKind.value = kind
   skillSaveError.value = ''
 }
 
@@ -105,7 +98,6 @@ async function createNewAgent() {
     const created = await upsertAgent(newAgentForm.value as AgentProfile)
     agents.value.push(created)
     selectedId.value = created.id
-    selectedKind.value = 'agent'
     showNewAgent.value = false
     newAgentForm.value = {
       id: '',
@@ -145,13 +137,8 @@ async function updateAgentSkills(skills: string[]) {
 
 function chooseDefault() {
   if (selectedId.value) return
-  // Prefer first runtime
-  if (runtimes.value.length > 0) {
-    selectedId.value = runtimes.value[0].id
-    selectedKind.value = 'runtime'
-  } else if (agents.value.length > 0) {
+  if (agents.value.length > 0) {
     selectedId.value = agents.value[0].id
-    selectedKind.value = 'agent'
   }
 }
 
@@ -205,34 +192,27 @@ onMounted(reload)
     <div v-else-if="error" class="bb-state-panel bb-error">{{ error }}</div>
     <template v-else>
       <div class="aw-layout">
-        <!-- Left: Runtime + Agent list -->
+        <!-- Left: System + Project Agent list -->
         <AgentListPanel
-          :runtimes="runtimes"
           :agents="agents"
           :selected-id="selectedId"
-          :selected-kind="selectedKind"
           :assignment-counts="assignmentCountByAgent"
           @select="onSelect"
         />
 
         <!-- Right: Content area -->
         <main class="aw-content">
-          <!-- Runtime detail view -->
-          <RuntimeDetailSection
-            v-if="selectedRuntimeProfile"
-            :runtime="selectedRuntimeProfile"
-            :agents="agents"
-          />
-
           <!-- Agent detail view -->
           <template v-if="selectedAgentProfile">
             <AgentProfileSection
               :agent="selectedAgentProfile"
+              :readonly="isSystemAgent"
               @updated="onAgentUpdated"
             />
 
             <AgentRuntimeConfig
               :agent="selectedAgentProfile"
+              :readonly="isSystemAgent"
               @updated="onAgentUpdated"
             />
 
@@ -246,6 +226,7 @@ onMounted(reload)
               :available-skills="availableSkills"
               :saving="skillSaving"
               :save-error="skillSaveError"
+              :readonly="isSystemAgent"
               @update:skills="updateAgentSkills"
             />
 

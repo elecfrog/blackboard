@@ -141,27 +141,6 @@ function runIdLabel(runId: string) {
   font-size: 13px;
 }
 
-.task-graph-run-history header button:not(.bb-button),
-.task-graph-run-history-table button:not(.bb-button) {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--bb-border-warm-medium);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 760;
-}
-
-.task-graph-run-history header button:not(.bb-button) svg {
-  width: 14px;
-  height: 14px;
-}
-
 .task-graph-run-history-table {
   overflow-x: auto;
 }

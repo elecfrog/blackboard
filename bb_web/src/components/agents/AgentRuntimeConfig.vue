@@ -7,6 +7,7 @@ import { t } from '@/i18n'
 
 const props = defineProps<{
   agent: AgentProfile
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -94,7 +95,7 @@ watch(
   <div class="aw-section aw-runtime-section">
     <BbSectionHeader class="aw-section-header" :title="t('runtimeConfigTitle')" title-tag="h4" :divider="false">
       <template #actions>
-        <template v-if="!editMode">
+        <template v-if="!editMode && !readonly">
           <BbButton size="sm" variant="secondary" @click="openEdit">{{ t('agentProfileEditInline') }}</BbButton>
         </template>
         <template v-else>

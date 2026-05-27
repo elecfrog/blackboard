@@ -129,11 +129,26 @@ fn dispatch_project_due_schedules(
     project: &str,
     now: DateTime<Utc>,
 ) -> Result<usize, TaskGraphApiError> {
-    refresh_project_schedule_statuses(root, project)?;
+    // 单次 list_schedules 调用，内联 refresh 逻辑避免重复扫描
     let schedules = task_graph::list_schedules(root, project)?;
     let mut dispatched = 0;
 
     for schedule in schedules {
+        // 内联 refresh: 同步 last_status（lazy，仅在遍历时更新）
+        if let Some(run_id) = schedule.state.last_run_id.as_deref() {
+            if let Ok(run) = task_graph::read_run(root, project, run_id) {
+                let status = run_status_label(run.status);
+                if schedule.state.last_status.as_deref() != Some(status.as_str()) {
+                    let _ = task_graph::refresh_schedule_last_status(
+                        root,
+                        project,
+                        &schedule.id,
+                        &status,
+                    );
+                }
+            }
+        }
+
         let Some(planned_fire_at) = task_graph::due_planned_fire_at(&schedule, now)? else {
             continue;
         };

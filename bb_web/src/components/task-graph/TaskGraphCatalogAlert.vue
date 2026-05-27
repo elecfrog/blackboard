@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { AlertCircle, X } from 'lucide-vue-next'
+import { BbButton } from '@/components/common'
 import { t } from '@/i18n'
 
 defineProps<{
@@ -29,9 +30,15 @@ const emit = defineEmits<{
         <header>
           <AlertCircle aria-hidden="true" />
           <h3 id="task-graph-alert-title">{{ t('taskGraphAlertTitle') }}</h3>
-          <button type="button" :title="t('close')" @click="emit('close')">
+          <BbButton
+            variant="ghost"
+            size="mini"
+            icon-only
+            :title="t('close')"
+            @click="emit('close')"
+          >
             <X aria-hidden="true" />
-          </button>
+          </BbButton>
         </header>
         <p>{{ message }}</p>
       </section>
@@ -98,15 +105,4 @@ const emit = defineEmits<{
   height: 18px;
 }
 
-.task-graph-alert-dialog button {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--bb-hairline);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  color: var(--bb-text-muted);
-  cursor: pointer;
-}
 </style>

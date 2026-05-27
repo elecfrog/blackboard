@@ -5,7 +5,7 @@
 
 import { computed, ref } from 'vue'
 import { ChevronDown } from 'lucide-vue-next'
-import { BbInfoGrid, BbInfoItem } from '@/components/common'
+import { BbActionGroup, BbButton, BbInfoGrid, BbInfoItem, BbObjectItem } from '@/components/common'
 import { t } from '@/i18n'
 import type { AgentProfile } from '@/data/agents'
 import type {
@@ -354,33 +354,33 @@ function onInstallTool() {
           </div>
         </div>
       </div>
-      <div class="connector-actions">
-        <button
+      <BbActionGroup class="connector-actions" align="end" gap="sm">
+        <BbButton
           v-if="tool"
-          type="button"
-          class="btn btn-ghost"
+          size="sm"
+          variant="secondary"
           :disabled="!canInstallTool"
           @click="onInstallTool"
         >
           {{ toolActionLabel }}
-        </button>
-        <button
-          type="button"
-          class="btn btn-primary"
+        </BbButton>
+        <BbButton
+          size="sm"
+          variant="primary"
           :disabled="!canConnect"
           @click="onConnect"
         >
           {{ connectLabel }}
-        </button>
-        <button
-          type="button"
-          class="btn btn-danger"
+        </BbButton>
+        <BbButton
+          size="sm"
+          variant="danger"
           :disabled="!canDisconnect"
           @click="onDisconnect"
         >
           {{ disconnectLabel }}
-        </button>
-      </div>
+        </BbButton>
+      </BbActionGroup>
     </div>
 
     <details class="connector-details" open>
@@ -392,19 +392,13 @@ function onInstallTool() {
 
       <div class="connector-detail-body">
         <div class="target-rows">
-          <button
+          <BbObjectItem
             v-for="agent in managedAgents"
             :key="agent.id"
-            type="button"
-            class="target-row-item"
-            :class="{ selected: selectedAgent?.id === agent.id }"
-            @click="selectAgent(agent)"
-          >
-            <span class="target-row-main">
-              <strong>{{ agent.display_name }}</strong>
-            </span>
-            <span class="target-row-path">{{ sourcePathForAgent(agent) }}</span>
-          </button>
+            :title="agent.display_name"
+            :active="selectedAgent?.id === agent.id"
+            @select="selectAgent(agent)"
+          />
         </div>
 
         <aside v-if="selectedAgent" class="target-preview">
@@ -413,7 +407,9 @@ function onInstallTool() {
               <h4>{{ selectedAgent.display_name }}</h4>
               <p>{{ selectedAgent.id }}</p>
             </div>
-            <button type="button" class="btn btn-ghost" @click="handleCopyPath">{{ t('connectorCopiedPath') }}</button>
+            <BbButton size="sm" variant="secondary" @click="handleCopyPath">
+              {{ t('connectorCopiedPath') }}
+            </BbButton>
           </div>
 
           <BbInfoGrid class="target-meta-grid" columns="repeat(2, minmax(0, 1fr))">
@@ -668,50 +664,6 @@ function onInstallTool() {
   padding-right: 4px;
 }
 
-.target-row-item {
-  width: 100%;
-  border: 1px solid var(--bb-hairline);
-  background: var(--bb-surface);
-  border-radius: 6px;
-  padding: 8px 10px;
-  gap: 2px;
-  display: grid;
-  font-family: var(--bb-font-mono);
-  font-size: 12px;
-  color: var(--bb-text);
-  text-align: left;
-  cursor: pointer;
-}
-
-.target-row-item:hover,
-.target-row-item.selected {
-  border-color: color-mix(in srgb, var(--bb-project-blackboard-bg) 28%, var(--bb-hairline));
-  background: color-mix(in srgb, var(--bb-project-blackboard-bg) 6%, var(--bb-surface));
-}
-
-.target-row-main {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.target-row-main strong {
-  color: var(--bb-text-strong);
-}
-
-.target-row-main small {
-  color: var(--bb-text-muted);
-}
-
-.target-row-path {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--bb-text-muted);
-  font-family: var(--bb-font-mono);
-}
-
 .target-preview {
   border: 1px solid var(--bb-hairline);
   border-radius: 8px;
@@ -862,67 +814,11 @@ function onInstallTool() {
 }
 
 .connector-actions {
-  display: flex;
-  gap: 8px;
   flex-shrink: 0;
-}
-
-.btn {
-  font-size: 13px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--bb-project-blackboard-bg);
-  color: var(--bb-project-blackboard-fg);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--bb-project-blackboard-bg) 86%, var(--bb-surface));
-}
-
-.btn-danger {
-  background: var(--bb-surface);
-  color: var(--bb-error);
-  border-color: var(--bb-error);
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: var(--bb-md-error-bg);
-  border-color: var(--bb-error);
-}
-
-.btn-ghost {
-  background: var(--bb-surface);
-  color: var(--bb-text);
-  border-color: var(--bb-hairline);
-}
-
-.btn-ghost:hover:not(:disabled) {
-  background: var(--bb-surface-soft);
 }
 
 :global(:root[data-theme='dark']) .connector-details {
   border-color: var(--bb-hairline);
-}
-
-:global(:root[data-theme='dark']) .target-row-item:hover,
-:global(:root[data-theme='dark']) .target-row-item.selected {
-  border-color: color-mix(in srgb, var(--bb-project-blackboard-bg) 28%, var(--bb-hairline));
-  background: color-mix(in srgb, var(--bb-project-blackboard-bg) 8%, var(--bb-surface));
-}
-
-:global(:root[data-theme='dark']) .btn-ghost:hover:not(:disabled) {
-  background: var(--bb-surface-muted);
 }
 
 @media (max-width: 920px) {

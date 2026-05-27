@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { BbInfoGrid, BbInfoItem, BbSectionHeader } from '@/components/common'
+import { BbButton, BbInfoGrid, BbInfoItem, BbSectionHeader } from '@/components/common'
 import type { BlackboardTicket } from '@/data/tickets'
 import { t } from '@/i18n'
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-vue-next'
@@ -144,37 +144,43 @@ function saveStories() {
       <section class="ticket-detail-section ticket-json-section">
         <BbSectionHeader :title="t('ticketJsonSummary')" :count="summaryCount">
           <template #actions>
-            <button
+            <BbButton
               v-if="!summaryEditing"
-              class="ticket-detail-small-action"
-              type="button"
+              variant="secondary"
+              size="mini"
               :aria-label="t('edit')"
               :disabled="specSaving"
               @click="startSummaryEdit"
             >
-              <Pencil class="bb-top-action-svg" aria-hidden="true" />
+              <template #leading>
+                <Pencil class="bb-top-action-svg" aria-hidden="true" />
+              </template>
               {{ t('edit') }}
-            </button>
+            </BbButton>
             <template v-else>
-              <button
-                class="ticket-detail-small-action"
-                type="button"
+              <BbButton
+                variant="secondary"
+                size="mini"
                 :aria-label="t('cancel')"
                 :disabled="specSaving"
                 @click="cancelSummaryEdit"
               >
-                <X class="bb-top-action-svg" aria-hidden="true" />
+                <template #leading>
+                  <X class="bb-top-action-svg" aria-hidden="true" />
+                </template>
                 {{ t('cancel') }}
-              </button>
-              <button
-                class="ticket-detail-small-action"
-                type="button"
+              </BbButton>
+              <BbButton
+                variant="secondary"
+                size="mini"
                 :disabled="specSaving || !summaryDirty"
                 @click="saveSummary"
               >
-                <Check class="bb-top-action-svg" aria-hidden="true" />
+                <template #leading>
+                  <Check class="bb-top-action-svg" aria-hidden="true" />
+                </template>
                 {{ specSaving ? t('saving') : t('save') }}
-              </button>
+              </BbButton>
             </template>
           </template>
         </BbSectionHeader>
@@ -191,41 +197,49 @@ function saveStories() {
       <section class="ticket-detail-section ticket-json-section">
         <BbSectionHeader :title="t('ticketJsonStories')" :count="storiesEditing ? storyDrafts.length : stories.length">
           <template #actions>
-            <button
+            <BbButton
               v-if="!storiesEditing"
-              class="ticket-detail-small-action"
-              type="button"
+              variant="secondary"
+              size="mini"
               :aria-label="t('edit')"
               :disabled="specSaving"
               @click="startStoriesEdit"
             >
-              <Pencil class="bb-top-action-svg" aria-hidden="true" />
+              <template #leading>
+                <Pencil class="bb-top-action-svg" aria-hidden="true" />
+              </template>
               {{ t('edit') }}
-            </button>
+            </BbButton>
             <template v-else>
-              <button
-                class="ticket-detail-small-action"
-                type="button"
+              <BbButton
+                variant="secondary"
+                size="mini"
                 :aria-label="t('cancel')"
                 :disabled="specSaving"
                 @click="cancelStoriesEdit"
               >
-                <X class="bb-top-action-svg" aria-hidden="true" />
+                <template #leading>
+                  <X class="bb-top-action-svg" aria-hidden="true" />
+                </template>
                 {{ t('cancel') }}
-              </button>
-              <button class="ticket-detail-small-action" type="button" :disabled="specSaving" @click="addStory">
-                <Plus class="bb-top-action-svg" aria-hidden="true" />
+              </BbButton>
+              <BbButton variant="secondary" size="mini" :disabled="specSaving" @click="addStory">
+                <template #leading>
+                  <Plus class="bb-top-action-svg" aria-hidden="true" />
+                </template>
                 {{ t('add') }}
-              </button>
-              <button
-                class="ticket-detail-small-action"
-                type="button"
+              </BbButton>
+              <BbButton
+                variant="secondary"
+                size="mini"
                 :disabled="specSaving || !storiesDirty"
                 @click="saveStories"
               >
-                <Check class="bb-top-action-svg" aria-hidden="true" />
+                <template #leading>
+                  <Check class="bb-top-action-svg" aria-hidden="true" />
+                </template>
                 {{ specSaving ? t('saving') : t('save') }}
-              </button>
+              </BbButton>
             </template>
           </template>
         </BbSectionHeader>
@@ -238,15 +252,17 @@ function saveStories() {
           >
             <div class="ticket-json-card-kicker ticket-json-card-kicker--with-action">
               <span>{{ ticket.id }} / {{ index + 1 }}</span>
-              <button
-                class="bb-icon-button ticket-json-card-delete"
-                type="button"
+              <BbButton
+                class="ticket-json-card-delete"
+                variant="ghost"
+                size="mini"
+                icon-only
                 :aria-label="t('removeAttachment')"
                 :disabled="specSaving"
                 @click="removeStory(index)"
               >
                 <Trash2 class="bb-icon-glyph" aria-hidden="true" />
-              </button>
+              </BbButton>
             </div>
             <dl class="ticket-json-story-lines">
               <div>
@@ -289,15 +305,17 @@ function saveStories() {
               />
             </div>
             <div v-else class="ticket-json-sample-add">
-              <button
-                class="ticket-json-sample-add-btn"
-                type="button"
+              <BbButton
+                variant="secondary"
+                size="mini"
                 :disabled="specSaving"
                 @click="story.sample = ''"
               >
-                <Plus class="bb-top-action-svg" aria-hidden="true" />
+                <template #leading>
+                  <Plus class="bb-top-action-svg" aria-hidden="true" />
+                </template>
                 {{ t('ticketJsonSample') }}
-              </button>
+              </BbButton>
             </div>
           </article>
         </div>

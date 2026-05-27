@@ -144,7 +144,17 @@ pub fn list_schedules(
         })?;
         let path = entry.path();
         if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
-            schedules.push(read_json(&path)?);
+            match read_json::<TaskSchedule>(&path) {
+                Ok(schedule) => schedules.push(schedule),
+                Err(err) => {
+                    eprintln!(
+                        "[bb-core] warning: skipping malformed schedule file {}: {}",
+                        path.display(),
+                        err
+                    );
+                    continue;
+                }
+            }
         }
     }
     schedules.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));

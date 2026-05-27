@@ -2,8 +2,8 @@
   "notes": [
     {
       "name": "2026-05-26-codebuddy-飞书接入方式调研-sdk-vs-webhook-vs-cli-对比与推荐.json",
-      "size": 2351,
-      "modified_at": "2026-05-26T16:24:20Z",
+      "size": 2411,
+      "modified_at": "2026-05-27T04:02:49Z",
       "excerpt": "Web 调研飞书开放平台官方文档、feishu-cli GitHub、自定义机器人 Webhook 指南",
       "title": "飞书消息推送接入方式调研",
       "time": "2026-05-27T00:23:00+08:00",
@@ -12,13 +12,23 @@
     },
     {
       "name": "2026-05-26-codebuddy-飞书消息推送接入迭代草案-research-iteration-draft-模拟输出.json",
-      "size": 1776,
-      "modified_at": "2026-05-26T16:32:06Z",
+      "size": 1822,
+      "modified_at": "2026-05-27T04:02:49Z",
       "excerpt": "模拟 research-iteration-draft 管线：内部代码调研 + 外部资料调研 → 合成迭代草案",
       "title": "飞书接入迭代草案 iteration-draft",
       "time": "2026-05-27T00:28:00+08:00",
       "source": "codebuddy",
       "topic": "飞书消息推送接入迭代草案 — research-iteration-draft 模拟输出"
+    },
+    {
+      "name": "2026-05-27-dev-agent-settings-agents-页面拆分实施完成.json",
+      "size": 1318,
+      "modified_at": "2026-05-27T07:34:16Z",
+      "excerpt": "后端 validation.rs: scope 验证增加 'system' 选项",
+      "title": "Inbox Note",
+      "time": "2026-05-27T07:34:16Z",
+      "source": "dev-agent",
+      "topic": "Settings/Agents 页面拆分实施完成"
     }
   ]
 }

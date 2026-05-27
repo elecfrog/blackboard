@@ -61,7 +61,7 @@ pub(super) fn validate_agent(agent: &AgentProfile) -> Result<(), InboxError> {
     validate_agent_id(&agent.id)?;
     validate_required_string("agent display_name", &agent.display_name)?;
     match agent.scope.as_str() {
-        "global" | "project" => {}
+        "system" | "global" | "project" => {}
         other => {
             return Err(InboxError::InvalidInput(format!(
                 "agent `{}` has invalid scope `{other}`",

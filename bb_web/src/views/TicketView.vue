@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
+import { BbButton } from '@/components/common'
 import TicketStructuredDocument from '@/components/TicketStructuredDocument.vue'
 import type { BlackboardPayload, LaneDef, TicketSpec } from '@/data/tickets'
 import {
@@ -118,7 +119,9 @@ async function updateTicketSpec(spec: TicketSpec | undefined) {
       :subtitle="`${project} · ${t('ticketDetailSubtitle')}`"
     >
       <template #actions>
-        <button class="btn-base btn-outline" @click="router.push(boardRoute(project))">{{ t('ticketBackToBoard') }}</button>
+        <BbButton variant="secondary" @click="router.push(boardRoute(project))">
+          {{ t('ticketBackToBoard') }}
+        </BbButton>
       </template>
     </AppNav>
 

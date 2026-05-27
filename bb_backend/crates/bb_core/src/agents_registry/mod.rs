@@ -206,6 +206,61 @@ pub fn upsert_agent(bb_root: &Path, mut agent: AgentProfile) -> Result<AgentProf
 
     let mut registry = load_registry_optional(bb_root)?.unwrap_or_else(default_registry);
     if let Some(existing) = registry.agents.iter_mut().find(|item| item.id == agent.id) {
+        // ── System Agent write protection (Ticket #000090) ──
+        if existing.scope == "system" {
+            // System agents: reject changes to core identity fields.
+            // Allowed mutable fields: description, model, variant, instructions,
+            // instructions_path, custom_env, custom_args, max_concurrent_tasks,
+            // mcp_servers, skills.
+            if agent.scope != "system" {
+                return Err(InboxError::InvalidInput(format!(
+                    "cannot change scope of system agent `{}`",
+                    agent.id
+                )));
+            }
+            if agent.display_name != existing.display_name {
+                return Err(InboxError::InvalidInput(format!(
+                    "cannot change display_name of system agent `{}`",
+                    agent.id
+                )));
+            }
+            if agent.runtime != existing.runtime {
+                return Err(InboxError::InvalidInput(format!(
+                    "cannot change runtime of system agent `{}`",
+                    agent.id
+                )));
+            }
+            if agent.assignable != existing.assignable {
+                return Err(InboxError::InvalidInput(format!(
+                    "cannot change assignable of system agent `{}`",
+                    agent.id
+                )));
+            }
+            if agent.distribute != existing.distribute {
+                return Err(InboxError::InvalidInput(format!(
+                    "cannot change distribute of system agent `{}`",
+                    agent.id
+                )));
+            }
+            if agent.roles != existing.roles {
+                return Err(InboxError::InvalidInput(format!(
+                    "cannot change roles of system agent `{}`",
+                    agent.id
+                )));
+            }
+            if agent.source_path != existing.source_path {
+                return Err(InboxError::InvalidInput(format!(
+                    "cannot change source_path of system agent `{}`",
+                    agent.id
+                )));
+            }
+            if agent.status != existing.status {
+                return Err(InboxError::InvalidInput(format!(
+                    "cannot change status of system agent `{}`",
+                    agent.id
+                )));
+            }
+        }
         *existing = agent.clone();
     } else {
         registry.agents.push(agent.clone());

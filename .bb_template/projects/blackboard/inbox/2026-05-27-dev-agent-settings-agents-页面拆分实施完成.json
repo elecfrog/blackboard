@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "title": "Inbox Note",
+  "time": "2026-05-27T07:34:16Z",
+  "source": "dev-agent",
+  "project": "blackboard",
+  "topic": "Settings/Agents 页面拆分实施完成",
+  "done": [
+    "后端 validation.rs: scope 验证增加 'system' 选项",
+    "后端 agents_registry/mod.rs: upsert_agent 增加 System Agent 写保护（拒绝修改 display_name/runtime/assignable/distribute/roles/source_path/status/scope）",
+    "agents.toml: 内置 Agent (bb-pm, spec-*) 标记 scope=system",
+    "前端 SettingsWorkbench: 移除 Agent 列表和 Agent 详情，只保留 Runtime 管理",
+    "前端 AgentListPanel: 从 Runtimes/Agents 分组改为 System Agents/Project Agents 分组",
+    "前端 AgentWorkbench: 移除 RuntimeDetailSection，只展示 Agent 详情",
+    "前端 AgentProfileSection/AgentRuntimeConfig/AgentSkillsTable: 增加 readonly prop，system agent 时隐藏编辑按钮"
+  ],
+  "validation": [
+    "cargo check 通过",
+    "vue-tsc --noEmit 通过"
+  ],
+  "next_step": [
+    "验证 UI 效果：Settings 页面只显示 Runtime，Agents 页面分 System/Project 两组",
+    "确认 System Agent 编辑按钮不可见",
+    "确认 Project Agent 可正常编辑"
+  ],
+  "related_locations": [],
+  "related_tickets": [
+    "000090"
+  ],
+  "attachments": [],
+  "extra": {}
+}

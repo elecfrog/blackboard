@@ -166,7 +166,7 @@ pub struct ProjectAgentProfile {
 }
 
 pub(super) fn default_scope() -> String {
-    "global".to_string()
+    "project".to_string()
 }
 
 pub(super) fn default_status() -> String {

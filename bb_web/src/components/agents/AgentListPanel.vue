@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import BbObjectItem from '@/components/common/BbObjectItem.vue'
-import type { AgentProfile, RuntimeProfile } from '@/data/agents'
+import type { AgentProfile } from '@/data/agents'
 import { t } from '@/i18n'
 
-export type SelectionKind = 'runtime' | 'agent'
+export type SelectionKind = 'agent'
 
 const props = defineProps<{
-  runtimes: RuntimeProfile[]
   agents: AgentProfile[]
   selectedId: string
-  selectedKind: SelectionKind
   assignmentCounts: Map<string, number>
 }>()
 
@@ -20,20 +18,22 @@ const emit = defineEmits<{
 
 const searchQuery = ref('')
 
-const filteredRuntimes = computed(() => {
+const systemAgents = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
-  if (!q) return props.runtimes
-  return props.runtimes.filter(
-    (rt) =>
-      rt.id.toLowerCase().includes(q) ||
-      rt.display_name.toLowerCase().includes(q),
+  const list = props.agents.filter((a) => a.scope === 'system')
+  if (!q) return list
+  return list.filter(
+    (a) =>
+      a.id.toLowerCase().includes(q) ||
+      a.display_name.toLowerCase().includes(q),
   )
 })
 
-const filteredAgents = computed(() => {
+const projectAgents = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
-  if (!q) return props.agents
-  return props.agents.filter(
+  const list = props.agents.filter((a) => a.scope !== 'system')
+  if (!q) return list
+  return list.filter(
     (a) =>
       a.id.toLowerCase().includes(q) ||
       a.display_name.toLowerCase().includes(q),
@@ -51,23 +51,19 @@ function itemColor(id: string): string {
   return `hsl(${hue}, 55%, 50%)`
 }
 
-function runtimeColor(id: string): string {
+function systemColor(id: string): string {
   let hash = 0
   for (const ch of id) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0
   const hue = Math.abs(hash) % 360
-  return `hsl(${hue}, 65%, 42%)`
-}
-
-function selectRuntime(id: string) {
-  emit('select', id, 'runtime')
+  return `hsl(${hue}, 40%, 45%)`
 }
 
 function selectAgent(id: string) {
   emit('select', id, 'agent')
 }
 
-function isActive(id: string, kind: SelectionKind) {
-  return props.selectedId === id && props.selectedKind === kind
+function isActive(id: string) {
+  return props.selectedId === id
 }
 </script>
 
@@ -85,34 +81,37 @@ function isActive(id: string, kind: SelectionKind) {
       />
     </div>
     <div class="bb-object-list aw-list-items">
-      <!-- Runtimes group -->
-      <div v-if="filteredRuntimes.length > 0" class="aw-list-group">
-        <div class="aw-list-group-label">Runtimes ({{ filteredRuntimes.length }})</div>
+      <!-- System Agents group -->
+      <div v-if="systemAgents.length > 0" class="aw-list-group">
+        <div class="aw-list-group-label">System Agents ({{ systemAgents.length }})</div>
         <BbObjectItem
-          v-for="rt in filteredRuntimes"
-          :key="`rt-${rt.id}`"
+          v-for="agent in systemAgents"
+          :key="`sys-${agent.id}`"
           class="aw-list-item"
-          :title="rt.display_name"
-          :active="isActive(rt.id, 'runtime')"
-          @select="selectRuntime(rt.id)"
+          :title="agent.display_name"
+          :active="isActive(agent.id)"
+          @select="selectAgent(agent.id)"
         >
           <template #leading>
-            <span class="aw-list-avatar aw-list-avatar--runtime" :style="{ background: runtimeColor(rt.id) }">
-              {{ itemInitial(rt.display_name, rt.id) }}
+            <span class="aw-list-avatar aw-list-avatar--system" :style="{ background: systemColor(agent.id) }">
+              {{ itemInitial(agent.display_name, agent.id) }}
             </span>
+          </template>
+          <template #trailing>
+            <span class="aw-scope-badge aw-scope-badge--system">SYS</span>
           </template>
         </BbObjectItem>
       </div>
 
-      <!-- Agents group -->
-      <div v-if="filteredAgents.length > 0" class="aw-list-group">
-        <div class="aw-list-group-label">Agents ({{ filteredAgents.length }})</div>
+      <!-- Project Agents group -->
+      <div v-if="projectAgents.length > 0" class="aw-list-group">
+        <div class="aw-list-group-label">Project Agents ({{ projectAgents.length }})</div>
         <BbObjectItem
-          v-for="agent in filteredAgents"
-          :key="`ag-${agent.id}`"
+          v-for="agent in projectAgents"
+          :key="`prj-${agent.id}`"
           class="aw-list-item"
           :title="agent.display_name"
-          :active="isActive(agent.id, 'agent')"
+          :active="isActive(agent.id)"
           @select="selectAgent(agent.id)"
         >
           <template #leading>
@@ -123,7 +122,7 @@ function isActive(id: string, kind: SelectionKind) {
         </BbObjectItem>
       </div>
 
-      <div v-if="filteredRuntimes.length === 0 && filteredAgents.length === 0" class="aw-list-empty">
+      <div v-if="systemAgents.length === 0 && projectAgents.length === 0" class="aw-list-empty">
         {{ t('agentNoResults') }}
       </div>
     </div>
@@ -149,7 +148,21 @@ function isActive(id: string, kind: SelectionKind) {
   color: var(--bb-text-muted);
 }
 
-.aw-list-avatar--runtime {
+.aw-list-avatar--system {
   border-radius: 4px;
+}
+
+.aw-scope-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.aw-scope-badge--system {
+  color: var(--bb-text-muted);
+  background: var(--bb-surface-muted);
 }
 </style>

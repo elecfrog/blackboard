@@ -10,6 +10,7 @@ const props = defineProps<{
   availableSkills: SkillInfo[]
   saving?: boolean
   saveError?: string
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -64,6 +65,7 @@ watch(() => props.skills, cancelAdd)
     <BbSectionHeader class="aw-section-header" :title="t('skillsSectionTitle')" title-tag="h4" :divider="false">
       <template #actions>
         <BbButton
+          v-if="!readonly"
           size="sm"
           variant="secondary"
           :disabled="saving || adding"
@@ -88,6 +90,7 @@ watch(() => props.skills, cancelAdd)
             </td>
             <td class="aw-table-action-cell">
               <BbButton
+                v-if="!readonly"
                 size="mini"
                 variant="danger"
                 icon-only

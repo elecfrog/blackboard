@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "id": "000090",
+  "lane": "bbd",
+  "title": "Settings 与 Agents 页面拆分：Settings 管 Runtime，Agents 分 System/Project 两组",
+  "summary": "将 Settings 页面职责收窄为纯 Runtime 管理，Agents 页面按 System Agent（Blackboard 内置必需）和 Project Agent（用户自建）分组展示，学习 Task Graph 中 system + project 配置分层的实践。涉及后端数据模型变更（scope 字段）、API 写保护逻辑、以及前端 UI 拆分。",
+  "stories": [
+    {
+      "id": "917180ff-df58-4a38-b89a-ed8804dfdcb0",
+      "given": "用户打开 Settings 页面",
+      "when": "查看页面内容",
+      "then": "只看到 Runtime 列表及其详情（command、concurrency、CLI Tool、Connector），不再出现 Agent 相关内容"
+    },
+    {
+      "id": "7605673e-1d71-4b26-a07e-e414cd48c367",
+      "given": "用户打开 Agents 页面",
+      "when": "查看左侧列表",
+      "then": "看到两组分类：System Agents（Blackboard 内置的 inbox/graph 必需 Agent，标记为 system）和 Project Agents（用户自建的 Agent）"
+    },
+    {
+      "id": "c9692d6f-4837-4e21-85d2-b85c8a536e61",
+      "given": "用户查看一个 System Agent 的详情",
+      "when": "尝试编辑",
+      "then": "核心字段只读不可编辑，不可删除，仅允许查看 Profile、Runtime 绑定、MCP Servers、Skills、Active Assignments"
+    },
+    {
+      "id": "58f2bdba-4314-4bdd-9b17-6011952171bb",
+      "given": "用户查看一个 Project Agent 的详情",
+      "when": "尝试编辑",
+      "then": "所有字段均可编辑，可删除，可完全自由配置"
+    },
+    {
+      "id": "0ff7c466-ff44-4b91-b43d-c65823b4ea8a",
+      "given": "后端收到对 System Agent 的 DELETE 或修改核心字段的 PUT 请求",
+      "when": "请求到达 API 层",
+      "then": "返回 403 Forbidden，拒绝操作，System Agent 不可被删除或修改核心定义"
+    },
+    {
+      "id": "9d92544c-3ba5-4457-8f6f-391720269c92",
+      "given": "后端启动或项目初始化时",
+      "when": "检测到 System Agent 定义缺失",
+      "then": "自动从 .bb_template/agents/ 中的 seed 配置注册/恢复 System Agent，确保系统必需 Agent 始终存在"
+    },
+    {
+      "id": "4fdf5122-072a-4bfa-af08-d05761bb4805",
+      "given": "已有 Agent 数据没有 scope 字段",
+      "when": "后端加载 Agent 数据",
+      "then": "根据 Agent ID/名称匹配规则自动推断 scope（匹配内置列表的标记为 system，其余标记为 project），兼容旧数据无需手动迁移"
+    }
+  ],
+  "risks": [
+    {
+      "id": "scope-boundary",
+      "description": "System 与 Project Agent 的边界定义不清晰，可能导致用户困惑哪些 Agent 属于 system",
+      "mitigation": "在 Agent 数据模型中使用 scope 字段明确标记，UI 上用视觉标签区分；后端维护一份 system agent ID 白名单"
+    },
+    {
+      "id": "migration",
+      "description": "现有 Agent 数据没有 scope 字段，需要迁移或默认值策略",
+      "mitigation": "后端为已有 Agent 提供默认 scope 推断逻辑（基于 ID 白名单匹配），前端兼容无 scope 字段的旧数据"
+    },
+    {
+      "id": "system-agent-recovery",
+      "description": "System Agent 被意外损坏或配置丢失后系统功能受损",
+      "mitigation": "后端启动时从 seed 模板校验并恢复缺失的 System Agent，确保 inbox/graph 流程不中断"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-27",
+      "summary": "agent 开始执行：开始实施：后端 scope 写保护 + 前端 Settings/Agents 页面拆分",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "dev-agent 完成阶段工作，handoff 写入 `2026-05-27-dev-agent-settings-agents-页面拆分实施完成.json`。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Record: 验证：cargo check 通过",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Record: 验证：vue-tsc --noEmit 通过",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Next step: 验证 UI 效果：Settings 页面只显示 Runtime，Agents 页面分 System/Project 两组",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Next step: 确认 System Agent 编辑按钮不可见",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Next step: 确认 Project Agent 可正常编辑",
+      "evidence": []
+    }
+  ],
+  "attachments": [],
+  "status": "review",
+  "created_at": "2026-05-27",
+  "updated_at": "2026-05-27",
+  "extra": {}
+}

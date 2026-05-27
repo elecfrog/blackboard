@@ -1,5 +1,5 @@
 {
-  "current_counter": "000088",
+  "current_counter": "000090",
   "tickets": [
     {
       "name": "000001-产品基线-多agent工具管理dashboard.json",
@@ -1164,9 +1164,9 @@
       "id": "000065",
       "lane": "bbt",
       "title": "TaskGraph 第三方生态：飞书通知、Webhook、本地工具与插件接入",
-      "status": "todo",
+      "status": "in_progress",
       "created_at": "2026-05-14",
-      "updated_at": "2026-05-22",
+      "updated_at": "2026-05-27",
       "attachments": [],
       "extra": {
         "area": "TaskGraph",
@@ -1613,7 +1613,7 @@
       "title": "前端共享 UI 原语收敛：已完成工作归档与后续产品化跟踪",
       "status": "review",
       "created_at": "2026-05-26",
-      "updated_at": "2026-05-26",
+      "updated_at": "2026-05-27",
       "attachments": [],
       "extra": {},
       "metadata_error": null,
@@ -1625,9 +1625,9 @@
       "id": "000088",
       "lane": "bbt",
       "title": "飞书 SDK/CLI 消息推送接入",
-      "status": "todo",
+      "status": "in_progress",
       "created_at": "2026-05-26",
-      "updated_at": "2026-05-26",
+      "updated_at": "2026-05-27",
       "attachments": [],
       "extra": {
         "area": "TaskGraph",
@@ -1636,6 +1636,20 @@
         "parent": "000065",
         "scope": "feishu-sdk-cli-push"
       },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000090-settings-与-agents-页面拆分-settings-管-runtime-agents-分-system-project-两组.json",
+      "path": "tickets/000090-settings-与-agents-页面拆分-settings-管-runtime-agents-分-system-project-两组.json",
+      "id": "000090",
+      "lane": "bbd",
+      "title": "Settings 与 Agents 页面拆分：Settings 管 Runtime，Agents 分 System/Project 两组",
+      "status": "review",
+      "created_at": "2026-05-27",
+      "updated_at": "2026-05-27",
+      "attachments": [],
+      "extra": {},
       "metadata_error": null,
       "metadata_warnings": []
     }

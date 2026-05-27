@@ -249,16 +249,16 @@
               "source_policy": "Use child reports as primary facts. Internal child report covers source_root code facts; external child report covers external sources. Label every recommendation as internal fact, external fact, or inference.",
               "write_policy": "Parent synthesizer must not write files. system_write_output writes the final iteration draft under wiki/research.",
               "final_output_dir": "wiki/research",
-              "final_output_path": "{{env.workspace}}/wiki/research/{{inputs.output-slug}}.md",
+              "final_output_path": "{{env.workspace}}/projects/{{env.project}}/wiki/research/{{inputs.output-slug}}.md",
               "llm_input": "resource_bundle",
               "child_output_policy": "Child sub_graph node raw outputs are advisory only. The canonical child reports are the deterministic system_write_output files declared in upstream_artifacts.internal_report_path and external_report_path."
             },
             "upstream_artifacts": {
               "internal_child_output": "{{nodes.research-internal.output}}",
               "external_child_output": "{{nodes.research-external.output}}",
-              "internal_report_path": "{{env.workspace}}/wiki/research/{{inputs.run-marker}}-internal-research.md",
-              "external_report_path": "{{env.workspace}}/wiki/research/{{inputs.run-marker}}-external-research.md",
-              "output_path": "{{env.workspace}}/wiki/research/{{inputs.output-slug}}.md"
+              "internal_report_path": "{{env.workspace}}/projects/{{env.project}}/wiki/research/{{inputs.run-marker}}-internal-research.md",
+              "external_report_path": "{{env.workspace}}/projects/{{env.project}}/wiki/research/{{inputs.run-marker}}-external-research.md",
+              "output_path": "{{env.workspace}}/projects/{{env.project}}/wiki/research/{{inputs.output-slug}}.md"
             }
           }
         },
@@ -344,7 +344,7 @@
         "inputs": {
           "content": "{{data.synthesize-draft.output}}"
         },
-        "output_path": "{{env.workspace}}/wiki/research/{{inputs.output-slug}}.md",
+        "output_path": "{{env.workspace}}/projects/{{env.project}}/wiki/research/{{inputs.output-slug}}.md",
         "overwrite": true
       },
       "pins": [

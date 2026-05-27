@@ -178,7 +178,7 @@
             "scout_output": "JSON object with findings[], risks[], coverage_notes[]. source_anchors should be URLs, repo files, docs, papers, commits, issues, wiki pages, news articles, datasets, or market/finance source anchors.",
             "write_policy": "LLM nodes may use scratch_dir for temporary exploration, but final research reports must be written only by system_write_output under wiki/research.",
             "final_output_dir": "wiki/research",
-            "final_output_path": "{{env.workspace}}/wiki/research/{{inputs.output-slug}}.md",
+"final_output_path": "{{env.workspace}}/projects/{{env.project}}/wiki/research/{{inputs.output-slug}}.md",
             "llm_input": "resource_bundle"
           },
           "upstream_artifacts": {}
@@ -909,7 +909,7 @@
             "upstream_artifacts": {
               "scout_plan_path": "{{nodes.scout-plan-final.output.artifact_path}}",
               "scout_outputs_path": "{{data.scout-output-final.artifact_path}}",
-              "output_path": "{{env.workspace}}/wiki/research/{{inputs.output-slug}}.md"
+"output_path": "{{env.workspace}}/projects/{{env.project}}/wiki/research/{{inputs.output-slug}}.md"
             }
           }
         },
@@ -986,7 +986,7 @@
         "inputs": {
           "content": "{{data.synthesize.output}}"
         },
-        "output_path": "{{env.workspace}}/wiki/research/{{inputs.output-slug}}.md",
+        "output_path": "{{env.workspace}}/projects/{{env.project}}/wiki/research/{{inputs.output-slug}}.md",
         "overwrite": true
       },
       "pins": [

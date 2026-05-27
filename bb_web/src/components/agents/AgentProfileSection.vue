@@ -7,6 +7,7 @@ import { t } from '@/i18n'
 
 const props = defineProps<{
   agent: AgentProfile | null
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -97,7 +98,8 @@ const descriptionLength = computed(() => (editForm.value.description || '').leng
           </div>
         </div>
         <div class="aw-profile-actions">
-          <template v-if="!editMode">
+          <span v-if="readonly" class="aw-system-badge">System</span>
+          <template v-if="!editMode && !readonly">
             <button type="button" class="aw-edit-link" @click="openEdit">{{ t('agentProfileEditInline') }}</button>
           </template>
           <div v-else class="aw-edit-actions">
@@ -113,3 +115,16 @@ const descriptionLength = computed(() => (editForm.value.description || '').leng
     </div>
   </section>
 </template>
+
+<style scoped>
+.aw-system-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--bb-text-muted);
+  background: var(--bb-surface-muted);
+}
+</style>
