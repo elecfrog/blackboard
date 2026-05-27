@@ -84,6 +84,24 @@ function toolPrimaryStatusLabel(tool: AgentTool) {
   return toolStatusLabel(tool.status)
 }
 
+function compareVersionStrings(left?: string, right?: string) {
+  const leftParts = left?.match(/\d+/g)?.map(Number) ?? []
+  const rightParts = right?.match(/\d+/g)?.map(Number) ?? []
+  const length = Math.max(leftParts.length, rightParts.length)
+  for (let index = 0; index < length; index += 1) {
+    const diff = (leftParts[index] ?? 0) - (rightParts[index] ?? 0)
+    if (diff !== 0) return diff > 0 ? 1 : -1
+  }
+  return 0
+}
+
+function versionLockActionLabel(tool: AgentTool) {
+  const direction = compareVersionStrings(tool.current_version, tool.target_version)
+  if (direction > 0) return t('agentToolDowngradeToLocked')
+  if (direction < 0) return t('agentToolUpgradeToLocked')
+  return t('agentToolApplyVersionLock')
+}
+
 function toolTone(status: AgentToolStatus) {
   switch (status) {
     case 'installed':
@@ -145,20 +163,21 @@ const toolActionLabel = computed(() => {
   if (isToolBusy.value) return t('connectorBusy')
   const tool = props.tool
   if (!tool) return t('agentToolInstall')
-  if (tool.install_source === 'brew') return t('agentToolUpdate')
-  if (tool.status === 'version_mismatch' && lockedToolIds.has(tool.id)) return t('agentToolLockOpenCode')
-  if (tool.status === 'installed' && lockedToolIds.has(tool.id)) return t('agentToolLocked')
-  if (tool.status === 'incomplete') return t('agentToolRepair')
+  if (tool.status === 'version_mismatch' && lockedToolIds.has(tool.id)) return versionLockActionLabel(tool)
   if (tool.status === 'installed') return t('agentToolUpdate')
+  if (tool.install_source === 'brew') return t('agentToolUpdate')
+  if (tool.status === 'incomplete') return t('agentToolRepair')
   if (tool.status === 'external_install') return t('agentToolRepair')
   return t('agentToolInstall')
 })
+const hasToolAction = computed(() => {
+  return props.tool !== null
+})
 const canInstallTool = computed(() => {
-  if (!props.tool || isToolBusy.value || anyToolBusy.value || anyBusy.value) return false
-  if (props.tool.status === 'npm_missing') return false
-  if (props.tool.install_source === 'brew') return true
-  if (props.tool.status === 'installed' && lockedToolIds.has(props.tool.id)) return false
-  return true
+  if (isToolBusy.value || anyToolBusy.value || anyBusy.value) return false
+  if (props.tool?.status === 'npm_missing') return false
+  if (props.tool?.status === 'installed') return false
+  return hasToolAction.value
 })
 const visibleToolComponents = computed(() =>
   props.tool?.components?.filter((component) => component.status !== 'installed') ?? [],
@@ -356,7 +375,7 @@ function onInstallTool() {
       </div>
       <BbActionGroup class="connector-actions" align="end" gap="sm">
         <BbButton
-          v-if="tool"
+          v-if="tool && hasToolAction"
           size="sm"
           variant="secondary"
           :disabled="!canInstallTool"

@@ -12,5 +12,7 @@ run_timeout_secs = 1800
 # bb-server process. Parent graph concurrency still controls run admission;
 # this guard also covers dynamic fanout scouts.
 [runtime_max_concurrency]
+codebuddy = 3
+codex = 3
 opencode = 3
 pi = 3

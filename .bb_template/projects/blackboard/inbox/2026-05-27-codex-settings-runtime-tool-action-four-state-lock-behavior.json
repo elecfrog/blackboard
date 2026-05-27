@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "title": "Settings runtime 工具按钮改为安装/升级/降级/禁用更新四态",
+  "time": "2026-05-27T12:02:18Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "settings runtime tool action four-state lock behavior",
+  "done": [
+    "按用户定义重做 runtime 工具按钮四态：未安装显示安装；版本不匹配显示升级到锁定版本或降级到锁定版本；已安装且符合期望显示不可点击的更新；组件不完整/外部安装显示修复。",
+    "OpenCode 当前 1.15.10 高于锁定目标 1.15.0，因此 Settings 显示可点击的降级到锁定版本。",
+    "后端 bb_core 的 install_agent_tool 在 Homebrew CLI 版本与固定 target_version 不匹配时，改走 npm install -g 精确版本，而不是 brew upgrade；API 现在返回 opencode install_command = npm install -g opencode-ai@1.15.0。",
+    "重启 scripts/dev.py 开发服务，使本地 8060/3001 使用新的后端行为。"
+  ],
+  "validation": [
+    "cargo fmt --manifest-path bb_backend/Cargo.toml --all: 通过。",
+    "cargo test --manifest-path bb_backend/Cargo.toml -p bb_core agent_tools: 通过，10 tests。",
+    "npm run build --prefix bb_web: 通过。",
+    "curl http://localhost:8060/api/agents/tools: OpenCode 返回 status=version_mismatch，install_command=npm install -g opencode-ai@1.15.0，current_version=1.15.10，target_version=1.15.0。",
+    "Browser in-app page check http://localhost:8060/#/projects/blackboard/settings: CodeBuddy/Codex/Pi 显示 disabled 更新；OpenCode 显示 enabled 降级到锁定版本，版本锁定数据仍显示 需锁定至 1.15.0。"
+  ],
+  "next_step": [
+    "如点击 OpenCode 降级按钮后 PATH 仍优先 Homebrew，需要继续定义 install method 优先级/切换策略。"
+  ],
+  "related_locations": [
+    "bb_backend/crates/bb_core/src/agent_tools.rs",
+    "bb_web/src/components/SettingsWorkbench.vue",
+    "bb_web/src/components/AgentConnectorRow.vue",
+    "bb_web/src/i18n.ts"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

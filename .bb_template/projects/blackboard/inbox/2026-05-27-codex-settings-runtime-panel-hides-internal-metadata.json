@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "title": "Settings runtime 面板收起无意义内部详情",
+  "time": "2026-05-27T11:33:40Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "settings runtime panel hides internal metadata",
+  "done": [
+    "在 bb_web/src/components/SettingsWorkbench.vue 隐藏规则同步下方的 source/target sha256 与 mtime 元数据。",
+    "移除 runtime 卡片内独立的 CLI 工具详情块，避免展示 CLI 路径、安装命令等调试型信息。",
+    "保留卡片上方摘要里的版本、版本锁定、安装方式与规则同步目标列表，让用户能直接感知 version 和 install method。"
+  ],
+  "validation": [
+    "npm run build --prefix bb_web: 通过。",
+    "Browser in-app page check http://localhost:8060/#/projects/blackboard/settings: 通过；runtime-block headings 仅剩 命令配置/规则同步；未发现 事实源 sha256/修改时间；AGENTS.md/MCP、版本锁定、安装方式仍可见。"
+  ],
+  "next_step": [
+    "继续按用户现场标注收敛 Settings runtime 面板信息层级。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/SettingsWorkbench.vue"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

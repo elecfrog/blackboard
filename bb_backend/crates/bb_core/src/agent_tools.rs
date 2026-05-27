@@ -175,12 +175,20 @@ pub fn install_agent_tool(id: &str) -> Result<AgentToolInstallResult, InboxError
     let spec = find_tool_spec(id)?;
     if let Some(cli_path) = resolve_command_path(spec.cli_name) {
         if detect_brew_install(&cli_path, spec).is_some() {
+            let current_version = command_version(&cli_path).ok().flatten();
+            if should_apply_locked_version_with_npm(spec, current_version.as_deref()) {
+                return install_npm_tool(spec);
+            }
             return install_brew_tool(spec);
         }
     }
     if spec.id == "pi" {
         return install_pi_tool(spec);
     }
+    install_npm_tool(spec)
+}
+
+fn install_npm_tool(spec: &AgentToolSpec) -> Result<AgentToolInstallResult, InboxError> {
     let npm_program = resolve_command_path("npm").ok_or_else(|| {
         InboxError::InvalidInput("npm is not available; install Node.js/npm first".to_string())
     })?;
@@ -206,6 +214,13 @@ pub fn install_agent_tool(id: &str) -> Result<AgentToolInstallResult, InboxError
         stdout_tail: optional_tail(&stdout, 4096),
         stderr_tail: optional_tail(&stderr, 4096),
     })
+}
+
+fn should_apply_locked_version_with_npm(
+    spec: &AgentToolSpec,
+    current_version: Option<&str>,
+) -> bool {
+    spec.target_version != "latest" && current_version != Some(spec.target_version)
 }
 
 fn find_tool_spec(id: &str) -> Result<&'static AgentToolSpec, InboxError> {
@@ -463,6 +478,25 @@ fn status_from_probe(
         if let Some(err) = check_error {
             return (AgentToolStatus::CheckFailed, Some(err.to_string()));
         }
+        if spec.target_version != "latest" {
+            if current_version.is_none() {
+                return (
+                    AgentToolStatus::CheckFailed,
+                    Some(format!("failed to parse `{}` version", spec.cli_name)),
+                );
+            }
+            if current_version != Some(spec.target_version) {
+                return (
+                    AgentToolStatus::VersionMismatch,
+                    Some(format!(
+                        "{} must be locked to {}, found {}",
+                        spec.display_name,
+                        spec.target_version,
+                        current_version.unwrap_or("unknown")
+                    )),
+                );
+            }
+        }
         return (AgentToolStatus::Installed, None);
     }
     if !npm_available {
@@ -689,6 +723,9 @@ fn tool_install_command_display(
     install_source: Option<AgentToolInstallSource>,
 ) -> String {
     if matches!(install_source, Some(AgentToolInstallSource::Brew)) {
+        if spec.target_version != "latest" {
+            return install_command_display(spec);
+        }
         if let Some(formula) = spec.brew_formula {
             return brew_update_command_display(formula);
         }
@@ -983,7 +1020,7 @@ mod tests {
     }
 
     #[test]
-    fn brew_install_is_accepted_as_installed() {
+    fn brew_install_still_respects_locked_target_version() {
         let spec = find_tool_spec("opencode").unwrap();
         let (status, _) = status_from_probe(
             spec,
@@ -994,10 +1031,28 @@ mod tests {
             Some(AgentToolInstallSource::Brew),
             None,
         );
+        assert_eq!(status, AgentToolStatus::VersionMismatch);
+        let (status, _) = status_from_probe(
+            spec,
+            true,
+            true,
+            Some("1.15.0"),
+            None,
+            Some(AgentToolInstallSource::Brew),
+            None,
+        );
         assert_eq!(status, AgentToolStatus::Installed);
         assert_eq!(
             super::tool_install_command_display(spec, Some(AgentToolInstallSource::Brew)),
-            "brew upgrade opencode"
+            "npm install -g opencode-ai@1.15.0"
         );
+        assert!(super::should_apply_locked_version_with_npm(
+            spec,
+            Some("1.15.10")
+        ));
+        assert!(!super::should_apply_locked_version_with_npm(
+            spec,
+            Some("1.15.0")
+        ));
     }
 }

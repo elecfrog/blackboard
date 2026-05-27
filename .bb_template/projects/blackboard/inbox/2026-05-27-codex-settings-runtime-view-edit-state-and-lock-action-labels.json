@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "title": "Settings runtime 明确查看/编辑态并改锁定按钮文案",
+  "time": "2026-05-27T11:50:39Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "settings runtime view edit state and lock action labels",
+  "done": [
+    "在 bb_web/src/components/SettingsWorkbench.vue 为命令配置增加显式查看态/编辑态：默认显示 查看 标签、当前命令/最大并发和 编辑 按钮；进入编辑态后显示 编辑中 标签、输入框、保存 runtime、取消。",
+    "保存 runtime 只在编辑态出现，并在配置有变更时可用；保存成功后回到查看态。",
+    "将 OpenCode 等锁定动作从抽象的 锁定指定版本 改为带目标的动作文案：锁定到 1.15.0；同步更新旧 AgentConnectorRow 的同类文案。"
+  ],
+  "validation": [
+    "npm run build --prefix bb_web: 通过。",
+    "Browser in-app page check http://localhost:8060/#/projects/blackboard/settings: 通过；默认命令配置块显示 查看/编辑、inputCount=0；OpenCode action 显示 锁定到 1.15.0，旧文案 锁定指定版本 不再出现。",
+    "Browser click verification note: 当前 in-app browser 的评论覆盖层 codex-browser-sidebar-comments-root 拦截页面点击；未将该覆盖层行为记为 Blackboard 应用问题。"
+  ],
+  "next_step": [
+    "若需要让 Homebrew 安装的 OpenCode 也能一键锁定到 1.15.0，需要另行定义安装方式切换/卸载策略，避免误用 brew upgrade。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/SettingsWorkbench.vue",
+    "bb_web/src/components/AgentConnectorRow.vue",
+    "bb_web/src/i18n.ts"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

@@ -52,6 +52,7 @@ pub struct PiRuntimeConnector {
     settings_path: Option<String>,
     settings_exists: bool,
     settings_error: Option<String>,
+    shell_resolution_required: bool,
     configured_shell_path: Option<String>,
     effective_shell_path: Option<String>,
     shell_path_source: PiShellPathSource,
@@ -66,6 +67,7 @@ pub struct PiRuntimeConnector {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PiShellPathSource {
+    Default,
     Settings,
     GitBashDefault,
     Path,
@@ -229,8 +231,11 @@ fn display_name(id: &str) -> &str {
 fn inspect_pi_runtime() -> PiRuntimeConnector {
     let agent_dir = bb_core::platform::user_home_dir().map(|home| home.join(".pi"));
     let settings_path = agent_dir.as_ref().map(|dir| dir.join("settings.json"));
-    let recommended_shell_path = recommended_git_bash();
-    let path_bash = path_bash();
+    let shell_resolution_required = cfg!(windows);
+    let recommended_shell_path = shell_resolution_required
+        .then(recommended_git_bash)
+        .flatten();
+    let path_bash = shell_resolution_required.then(path_bash).flatten();
     let (settings_exists, settings_error, settings) = read_pi_settings(settings_path.as_ref());
     let configured_shell_path = settings.as_ref().and_then(|value| {
         string_field(value, "shellPath").or_else(|| string_field(value, "shell_path"))
@@ -245,21 +250,23 @@ fn inspect_pi_runtime() -> PiRuntimeConnector {
         string_field(value, "defaultThinkingLevel")
             .or_else(|| string_field(value, "default_thinking_level"))
     });
-    let (effective_shell_path, shell_path_source) =
-        if configured_shell_path.as_deref().is_some_and(path_exists) {
-            (configured_shell_path.clone(), PiShellPathSource::Settings)
-        } else if recommended_shell_path.as_deref().is_some_and(path_exists) {
-            (
-                recommended_shell_path.clone(),
-                PiShellPathSource::GitBashDefault,
-            )
-        } else if path_bash.as_deref().is_some_and(path_exists) {
-            (path_bash.clone(), PiShellPathSource::Path)
-        } else {
-            (configured_shell_path.clone(), PiShellPathSource::Missing)
-        };
-    let shell_path_exists = effective_shell_path.as_deref().is_some_and(path_exists);
-    let workaround_required = cfg!(windows)
+    let (effective_shell_path, shell_path_source) = if !shell_resolution_required {
+        (None, PiShellPathSource::Default)
+    } else if configured_shell_path.as_deref().is_some_and(path_exists) {
+        (configured_shell_path.clone(), PiShellPathSource::Settings)
+    } else if recommended_shell_path.as_deref().is_some_and(path_exists) {
+        (
+            recommended_shell_path.clone(),
+            PiShellPathSource::GitBashDefault,
+        )
+    } else if path_bash.as_deref().is_some_and(path_exists) {
+        (path_bash.clone(), PiShellPathSource::Path)
+    } else {
+        (configured_shell_path.clone(), PiShellPathSource::Missing)
+    };
+    let shell_path_exists =
+        !shell_resolution_required || effective_shell_path.as_deref().is_some_and(path_exists);
+    let workaround_required = shell_resolution_required
         && !matches!(shell_path_source, PiShellPathSource::Settings)
         && recommended_shell_path.is_some();
 
@@ -268,6 +275,7 @@ fn inspect_pi_runtime() -> PiRuntimeConnector {
         settings_path: settings_path.map(|path| path.display().to_string()),
         settings_exists,
         settings_error,
+        shell_resolution_required,
         configured_shell_path,
         effective_shell_path,
         shell_path_source,

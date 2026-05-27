@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "title": "Spec Arena 补充 Draft Admission Human Gate",
+  "time": "2026-05-27T12:34:29Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "spec-arena-draft-admission-human-gate",
+  "done": [
+    "将用户补充的 draft -> spec human gate 写入 000091。",
+    "更新 000091 summary：Draft 生成后必须先经过 Draft Admission Human Gate，由人判断 draft 质量是否准入下一阶段，通过后才进入 4+1 Spec Arena。",
+    "新增 story：系统准备从 draft 进入 Spec Arena 或完整 spec 生成阶段时，必须有人基于质量 rubric 选择 approve、request rewrite、request more research 或 reject；系统不得自动晋级。",
+    "新增风险 `draft-admission-rubric-ambiguity`：如果 human gate 没有清晰 rubric，准入标准会漂移。"
+  ],
+  "validation": [
+    "mcp__bb__.update_ticket 000091: 通过"
+  ],
+  "next_step": [
+    "后续需要把 Draft Admission Human Gate 的 rubric 做成可执行/可视化字段：BDD 覆盖、事实源充分性、证据标注、目标/非目标、风险/验收可审计性、open questions。"
+  ],
+  "related_locations": [
+    "/Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/tickets/000091-spec-arena-single-draft-multi-agent-audit.json"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

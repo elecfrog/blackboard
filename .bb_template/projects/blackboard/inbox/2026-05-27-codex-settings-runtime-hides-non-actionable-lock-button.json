@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "title": "Settings runtime 移除不可执行版本锁定按钮",
+  "time": "2026-05-27T11:54:24Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "settings runtime hides non-actionable lock button",
+  "done": [
+    "在 bb_web/src/components/SettingsWorkbench.vue 中将工具按钮限制为可执行动作；OpenCode 这种 Homebrew 安装且目标版本不匹配的情况不再显示不可点击的锁定按钮。",
+    "将版本目标从按钮文案移到状态数据：版本锁定显示为 需锁定至 {version}，目标版本来自后端 target_version。",
+    "将可执行的版本锁定动作文案改为泛化的 应用版本锁定，并同步到旧 AgentConnectorRow；未来目标版本变化不需要改 UI 文案。"
+  ],
+  "validation": [
+    "npm run build --prefix bb_web: 通过。",
+    "Browser in-app page check http://localhost:8060/#/projects/blackboard/settings: 通过；OpenCode header action buttons 仅剩 重新同步；未出现 锁定到 1.15.0 或 锁定指定版本；状态数据仍显示 需锁定至 1.15.0。"
+  ],
+  "next_step": [
+    "如果产品需要真正一键从 Homebrew 切换到 npm 锁定版本，需要新增明确的 install method 切换行为，而不是复用更新按钮。"
+  ],
+  "related_locations": [
+    "bb_web/src/components/SettingsWorkbench.vue",
+    "bb_web/src/components/AgentConnectorRow.vue",
+    "bb_web/src/i18n.ts"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

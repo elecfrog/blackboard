@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import {
   loadRuntimeConnectors,
   patchRuntimeConnectors,
+  type PiRuntimeConnector,
   type PiShellPathSource,
   type RuntimeConnector,
   type RuntimeConnectorList,
@@ -122,6 +123,7 @@ function runtimeDescription(runtime: RuntimeConnector) {
 }
 
 function shellSourceLabel(source: PiShellPathSource) {
+  if (source === 'default') return t('runtimeShellDefault')
   if (source === 'settings') return 'settings.json'
   if (source === 'git_bash_default') return t('runtimeShellGitBashDefault')
   if (source === 'path') return t('runtimeShellPath')
@@ -130,6 +132,10 @@ function shellSourceLabel(source: PiShellPathSource) {
 
 function isPi(runtime: RuntimeConnector) {
   return runtime.id === 'pi'
+}
+
+function hasPiModelConfig(pi: PiRuntimeConnector | null) {
+  return Boolean(pi?.default_provider || pi?.default_model)
 }
 </script>
 
@@ -230,7 +236,7 @@ function isPi(runtime: RuntimeConnector) {
             </label>
           </div>
 
-          <section v-if="isPi(runtime) && piRuntime" class="runtime-platform-block">
+          <section v-if="isPi(runtime) && piRuntime?.shell_resolution_required" class="runtime-platform-block">
             <div class="runtime-platform-head">
               <div>
                 <h4>{{ t('runtimeWindowsShell') }}</h4>
@@ -274,7 +280,7 @@ function isPi(runtime: RuntimeConnector) {
                 variant="mono"
                 overflow="truncate"
               />
-              <BbInfoItem :label="t('runtimeModel')" variant="mono" overflow="truncate">
+              <BbInfoItem v-if="hasPiModelConfig(piRuntime)" :label="t('runtimeModel')" variant="mono" overflow="truncate">
                 {{ piRuntime.default_provider || '-' }} /
                 {{ piRuntime.default_model || '-' }}
               </BbInfoItem>
@@ -294,16 +300,18 @@ function isPi(runtime: RuntimeConnector) {
               <BbInfoItem v-if="runtime.error" :label="t('runtimeError')" :value="runtime.error" variant="mono" />
               <template v-if="isPi(runtime) && piRuntime">
                 <BbInfoItem :label="t('runtimePiSettings')" :value="piRuntime.settings_path || '-'" variant="mono" />
-                <BbInfoItem
-                  :label="t('runtimeEffectiveShell')"
-                  :value="piRuntime.effective_shell_path || '-'"
-                  variant="mono"
-                />
-                <BbInfoItem
-                  :label="t('runtimeRecommendedGitBash')"
-                  :value="piRuntime.recommended_shell_path || t('runtimeRecommendedGitBashNotFound')"
-                  variant="mono"
-                />
+                <template v-if="piRuntime.shell_resolution_required">
+                  <BbInfoItem
+                    :label="t('runtimeEffectiveShell')"
+                    :value="piRuntime.effective_shell_path || '-'"
+                    variant="mono"
+                  />
+                  <BbInfoItem
+                    :label="t('runtimeRecommendedGitBash')"
+                    :value="piRuntime.recommended_shell_path || t('runtimeRecommendedGitBashNotFound')"
+                    variant="mono"
+                  />
+                </template>
                 <BbInfoItem
                   v-if="piRuntime.settings_error"
                   :label="t('runtimeConfigError')"

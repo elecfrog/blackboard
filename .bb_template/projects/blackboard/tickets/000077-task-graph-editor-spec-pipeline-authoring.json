@@ -101,6 +101,16 @@
         "Title: TaskGraph LLM 统一工具层初版落地\nTime: 2026-05-24T08:35:41Z\nSource: codex\nProject: blackboard\nTopic: taskgraph-unified-tool-layer-runtime-renderers\nDone:\n- 新增 `task_graph::tool_layer` 模块，将工具能力从 LLM resolver 中抽出：节点声明 toolkits，tool_layer 解析为 provider-neutral `ToolInjectionPlan`。\n- 定义 `ToolTransportKind` 与 `ToolEndpointSpec`，统一表示 MCP / CLI / REST / Shell 四类工具入口；当前 concrete toolkit 仍是 `browser_use`，但 plan 已具备多 transport 承载形态。\n- 将 Codex / Pi / OpenCode / CodeBuddy 的 MCP 配置渲染迁移到 tool_layer：Codex 输出 `--config mcp_servers.*`，Pi 输出 `.pi/mcp.json` 形态，OpenCode/CodeBuddy 保持各自 provider-specific 格式。\n- LLM resolver 改为只合并 opts/profile/node/toolkit 的 skills 与 MCP，再调用 `render_runtime_tool_config`；不再在 `nodes/llm.rs` 内直接维护 provider config 细节。\n- 保留 `nodes::llm::*` builder re-export，避免已有测试和调用点断裂；同时在 `task_graph::mod` 公开新的 tool_layer 类型和 renderer。\n- 前端 LLM 节点 Toolkits 文案更新为统一工具层语义，Browser Use 仍可在节点级按需开启。\nValidation:\n- cargo fmt --all: 通过。\n- cargo test -p bb_core task_graph::tool_layer: 通过，6/6。\n- cargo test -p bb_core task_graph::nodes::llm::tests: 通过，17/17。\n- cargo check -p bb_core: 通过。\n- cargo check -p bb_daemon: 通过。\n- npm run build --prefix bb_web: 通过。\n- git diff --check（本次相关文件）: 通过，仅 CRLF warning。\nNe...",
         "cleanup reason: TaskGraph 统一工具层初版落地，新建 tool_layer 模块并统一 MCP/CLI/REST/Shell renderer，000077 spec 聚焦 graph 编辑器支撑与工具层能力，done 涵盖 tool_layer 模块落地与前端表单更新。"
       ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Record: 扩展定义已拆出新票 000091：Spec Arena 接在 077 前段 Draft 生成之后，语义是同一个 draft 被多个 agent 审计，而不是多个 draft 竞争。首批 perspective 包含 reviewer 与 perspective attacker。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Next step: 按 000091 继续定义 arena 的结构化 review 输出 schema、perspective 配置、aggregator 合并规则和最小 Task Graph 模板。",
+      "evidence": []
     }
   ],
   "attachments": [
@@ -113,7 +123,7 @@
   ],
   "status": "review",
   "created_at": "2026-05-18",
-  "updated_at": "2026-05-26",
+  "updated_at": "2026-05-27",
   "extra": {
     "scope": "graph-editor-authoring",
     "source_request": "用户要求先落 sub graph 和 graph 编辑增强 ticket，后续再详细讨论，不写代码。"

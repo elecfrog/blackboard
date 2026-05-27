@@ -1,5 +1,5 @@
 {
-  "current_counter": "000090",
+  "current_counter": "000093",
   "tickets": [
     {
       "name": "000001-产品基线-多agent工具管理dashboard.json",
@@ -1381,7 +1381,7 @@
       "title": "增强 Task Graph 编辑器支撑 Spec 管线前段",
       "status": "review",
       "created_at": "2026-05-18",
-      "updated_at": "2026-05-26",
+      "updated_at": "2026-05-27",
       "attachments": [
         {
           "kind": "task_graph",
@@ -1624,17 +1624,24 @@
       "path": "tickets/000088-飞书-sdk-cli-消息推送接入.json",
       "id": "000088",
       "lane": "bbt",
-      "title": "飞书 SDK/CLI 消息推送接入",
+      "title": "飞书 Webhook 消息推送（TaskGraph 终态通知）",
       "status": "in_progress",
       "created_at": "2026-05-26",
       "updated_at": "2026-05-27",
-      "attachments": [],
+      "attachments": [
+        {
+          "kind": "wiki",
+          "target": "wiki/research/088-feishu-push-implementation-draft.md",
+          "label": "实现 Draft",
+          "description": "正式实现方案（综合 4 份调研结论）"
+        }
+      ],
       "extra": {
         "area": "TaskGraph",
         "depends_on": "000065",
         "kind": "execution-subtrack",
         "parent": "000065",
-        "scope": "feishu-sdk-cli-push"
+        "scope": "feishu-webhook-push"
       },
       "metadata_error": null,
       "metadata_warnings": []
@@ -1650,6 +1657,126 @@
       "updated_at": "2026-05-27",
       "attachments": [],
       "extra": {},
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000091-spec-arena-single-draft-multi-agent-audit.json",
+      "path": "tickets/000091-spec-arena-single-draft-multi-agent-audit.json",
+      "id": "000091",
+      "lane": "bbp",
+      "title": "定义 Spec Arena：4+1 单 Draft 多 Agent 审计管线",
+      "status": "todo",
+      "created_at": "2026-05-27",
+      "updated_at": "2026-05-27",
+      "attachments": [
+        {
+          "kind": "ticket",
+          "target": "000077",
+          "label": "077 Spec 管线前段",
+          "description": "Spec Arena 接在 077 定义的 Draft 生成之后。"
+        },
+        {
+          "kind": "wiki",
+          "target": "wiki/specs/_experiments/pregel-topology-mutation/spec_draft.md",
+          "label": "Arena 原型 Draft",
+          "description": "单 draft 多 agent review 实验中的被审计草案。"
+        },
+        {
+          "kind": "wiki",
+          "target": "wiki/specs/_experiments/pregel-topology-mutation/review-quality-analysis.md",
+          "label": "Review 汇总分析",
+          "description": "对多 agent review 做 sorting/rating/summary 的实验结果。"
+        }
+      ],
+      "extra": {
+        "arena_subject": "single-draft",
+        "parent_ticket": "000077",
+        "perspectives": "4-reviewers-plus-1-attacker",
+        "scope": "spec-pipeline-arena",
+        "source_request": "用户澄清 Spec Arena 是 4+1：4 个 reviewer 先审同一 draft，再互相 sorting/starring；1 个 attacker 攻击 draft、reviews、互评结果和多份证据文件；澄清质疑后只 merge accepted viewpoints，最终生成完整 spec。"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000092-blackboard-symphony-ticket-graph-autonomous-orchestration.json",
+      "path": "tickets/000092-blackboard-symphony-ticket-graph-autonomous-orchestration.json",
+      "id": "000092",
+      "lane": "bbp",
+      "title": "定义 Blackboard Symphony：Ticket 驱动、TaskGraph 执行的自治编排层",
+      "status": "todo",
+      "created_at": "2026-05-27",
+      "updated_at": "2026-05-27",
+      "attachments": [
+        {
+          "kind": "wiki",
+          "target": "wiki/research/2026-05-26-openai-symphony-codex-orchestration.md",
+          "label": "Symphony 调研报告",
+          "description": "OpenAI Symphony Codex 编排框架调研，作为 Blackboard 自治编排层的参考事实源。"
+        },
+        {
+          "kind": "ticket",
+          "target": "000091",
+          "label": "Spec Arena 4+1",
+          "description": "可作为复杂 ticket 从 draft 到完整 implementation spec 的质量 gate。"
+        },
+        {
+          "kind": "ticket",
+          "target": "000077",
+          "label": "Spec 管线前段",
+          "description": "生成 draft/evidence bundle 的前段管线。"
+        }
+      ],
+      "extra": {
+        "execution_engine": "taskgraph",
+        "related_spec_arena": "000091",
+        "scope": "autonomous-orchestration",
+        "source_request": "用户纠正：Symphony 是 Blackboard 复用 ticket 和 graph 能力的自治编排层，不是旁路小 POC。",
+        "tracker_source": "blackboard-ticket",
+        "transition": "human-in-the-loop-to-human-out-of-the-loop"
+      },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000093-对-088-飞书推送-draft-执行-spec-arena-4-1-审计.json",
+      "path": "tickets/000093-对-088-飞书推送-draft-执行-spec-arena-4-1-审计.json",
+      "id": "000093",
+      "lane": "bbq",
+      "title": "对 088 飞书推送 Draft 执行 Spec Arena 4+1 审计",
+      "status": "in_progress",
+      "created_at": "2026-05-27",
+      "updated_at": "2026-05-27",
+      "attachments": [
+        {
+          "kind": "ticket",
+          "target": "000088",
+          "label": "Arena subject ticket",
+          "description": "飞书 Webhook 消息推送 BDD 行为边界。"
+        },
+        {
+          "kind": "wiki",
+          "target": "wiki/research/088-feishu-push-implementation-draft.md",
+          "label": "Arena subject draft",
+          "description": "088 已准入的实现 draft。"
+        },
+        {
+          "kind": "ticket",
+          "target": "000091",
+          "label": "Spec Arena protocol",
+          "description": "4+1 Spec Arena 管线定义。"
+        }
+      ],
+      "extra": {
+        "area": "Spec Arena",
+        "arena_subject_draft": "wiki/research/088-feishu-push-implementation-draft.md",
+        "arena_subject_ticket": "000088",
+        "protocol_ticket": "000091",
+        "scope": "088-feishu-push-arena",
+        "source_request": "用户表示 088 draft 已有，可直接进入 Spec Arena。",
+        "stage": "reviewer-fanout"
+      },
       "metadata_error": null,
       "metadata_warnings": []
     }

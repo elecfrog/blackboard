@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "id": "000091",
+  "lane": "bbp",
+  "title": "定义 Spec Arena：4+1 单 Draft 多 Agent 审计管线",
+  "summary": "Spec 管线在 077 的前段 Draft 生成之后，需要先经过 Draft Admission Human Gate，由人判断 draft 质量是否准入下一阶段；通过后进入 4+1 Spec Arena：同一个 draft 由 4 个 reviewer 独立 review，随后 4 个 reviewer 互相对 review 质量做 sorting 和 star rating，再由 1 个 perspective attacker 对 draft、四份 review、互评排序/评分、existing truth、external research 和其他证据文件进行攻击。Attacker 提出的质疑进入 clarification gate；澄清后只合并被接受的观点，最终产出一份完整 implementation spec。Ticket 仍然是行为定义层，以 BDD 决定产品行为；Spec 不能取代 ticket，而是承接 ticket 的行为边界，定义具体实现方案、风险控制、测试策略和验收映射。",
+  "stories": [
+    {
+      "id": "2a28090f-c62b-4eb5-8e67-2a00cc5f15f3",
+      "given": "用户已经通过内外调研到 draft 的前段管线生成一份 spec draft",
+      "when": "用户启动 Spec Arena",
+      "then": "系统以这同一份 draft 作为唯一被审计对象，连同 existing truth、external research、原始 intent、约束和相关证据文件一起打包成 arena input，不得把多个 draft 互相比较误当成 arena。"
+    },
+    {
+      "id": "06f0cb42-f608-4ac8-b707-feeb7509f381",
+      "given": "内外调研到 draft 的前段管线已经生成 draft",
+      "when": "系统准备从 draft 进入 Spec Arena 或完整 spec 生成阶段",
+      "then": "必须先进入 Draft Admission Human Gate；人需要基于质量 rubric 判断 draft 是否准入下一阶段，可选择 approve、request rewrite、request more research 或 reject，系统不得在没有 human gate 决策时自动把 draft 晋级为 spec 输入。"
+    },
+    {
+      "id": "c4f18b99-d0dd-4048-9f94-5edf1dd05a49",
+      "given": "Spec Arena 收到已通过 Draft Admission Human Gate 的 draft 和事实源",
+      "when": "arena fan out 到 reviewer 阶段",
+      "then": "系统启动 4 个 reviewer 独立审计同一 draft；每个 reviewer 必须输出结构化 review，包括 P0/P1/P2 findings、证据引用、事实/推断标注、可落地性判断、验收标准缺口和建议修改。"
+    },
+    {
+      "id": "b4ba75da-c9b2-46f3-8286-617df49554db",
+      "given": "4 个 reviewer 都已经完成各自 review",
+      "when": "arena 进入 reviewer 互评阶段",
+      "then": "每个 reviewer 都需要阅读另外 3 份 review，并对全部 4 份 review 做 sorting 与 star rating；互评输出必须说明排序理由、独特贡献、遗漏项、误报项和高价值 finding。"
+    },
+    {
+      "id": "edf78721-e4b1-413e-b098-6af095d2d0f7",
+      "given": "4 份 review 和 4 组互评排序/评分已经完成",
+      "when": "arena 启动 perspective attacker",
+      "then": "attacker 需要攻击多份文件：原始 draft、4 份 review、互评 sorting/starring、existing truth、external research、原始 intent 和约束；它要寻找被集体忽略的边界、矛盾、证据断裂、虚假共识、不可执行验收、范围漂移和实现失败路径。"
+    },
+    {
+      "id": "93057b72-25ea-4106-a9a4-e1106ef8640e",
+      "given": "attacker 提出质疑、反例或 blocking concerns",
+      "when": "arena 进入 clarification gate",
+      "then": "系统必须把 attacker 的关键质疑转成待澄清问题；未澄清的攻击项只能保留为 open concern 或 hypothesis，不能直接被合并为事实；已澄清并被接受的攻击项才进入最终 merge。"
+    },
+    {
+      "id": "520753e0-5b07-46d2-ac1b-583b98f0fc8e",
+      "given": "reviewer findings、互评结果和 attacker clarification 都已完成",
+      "when": "arena aggregator 汇总观点",
+      "then": "系统只 merge accepted viewpoints，并保留 rejected/deferred viewpoints 的理由；汇总时按 evidence、severity、novelty、reviewer rating、attacker impact 和 blast radius 排序，而不是按多数投票。"
+    },
+    {
+      "id": "fa06b10c-09ae-435b-9408-3f7b7190f3cf",
+      "given": "accepted viewpoints 已经完成归并",
+      "when": "系统产出 arena 最终结果",
+      "then": "系统生成一份完整 implementation spec，必须包含目标/非目标、关联 ticket 行为边界、事实源、设计决策、具体实现方案、数据/接口/Task Graph 变更、风险与回滚、测试策略、验收映射、采纳的 review/attack 观点、未采纳理由和剩余 open questions。"
+    },
+    {
+      "id": "461ebc76-3848-4ef8-8dae-c73277663e30",
+      "given": "ticket 与最终 spec 同时存在",
+      "when": "agent 或用户查看 Spec Arena 的输出",
+      "then": "ticket 只承担 BDD 行为定义，描述用户可观察行为、边界和验收语义；spec 承担实现定义，描述如何改代码/数据/接口/图、主要风险、测试矩阵和上线/回滚计划，不得把实现细节反向塞回 ticket 作为产品行为。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "draft-admission-rubric-ambiguity",
+      "description": "如果 Draft Admission Human Gate 没有清晰 rubric，人只能凭感觉判断 draft 能否进入下一阶段，导致准入标准不稳定。",
+      "mitigation": "为 human gate 定义质量 rubric：是否覆盖 ticket BDD 行为边界、事实源是否充分、内部/外部证据是否标注、目标/非目标是否清楚、验收和风险是否可审计、是否存在明显 open questions。",
+      "status": "open"
+    },
+    {
+      "id": "arena-role-drift",
+      "description": "4 个 reviewer 如果没有明确输出契约，会退化成四份风格不同的普通评论，后续互评也会缺乏可比较对象。",
+      "mitigation": "为 reviewer review 定义结构化 schema：findings、severity、evidence、fact/inference、acceptance gaps、implementation risks、recommended changes。",
+      "status": "open"
+    },
+    {
+      "id": "peer-rating-bias",
+      "description": "reviewer 互相 sorting/starring 可能变成人情投票、模型偏好或文字风格偏好，而不是 finding 质量评估。",
+      "mitigation": "互评评分必须按 rubric 输出：evidence strength、novelty、severity calibration、actionability、false-positive risk，并解释排序理由。",
+      "status": "open"
+    },
+    {
+      "id": "false-consensus",
+      "description": "多个 reviewer 可能重复同一浅层问题，aggregator 若只看数量会误判为强共识，掩盖少数但关键的 attacker finding。",
+      "mitigation": "汇总时按 evidence、severity、novelty 和 blast radius 加权，而不是按出现次数投票；attacker 的高影响 finding 即使孤立也必须进入 clarification。",
+      "status": "open"
+    },
+    {
+      "id": "attacker-overreach",
+      "description": "attacker 可能凭想象攻击 draft，把猜测或极端假设写成 blocking fact。",
+      "mitigation": "attacker findings 必须标注 evidence/fact/inference/hypothesis；无法锚定证据的项只能进入 clarification 或 open concern，不得直接进入 accepted viewpoints。",
+      "status": "open"
+    },
+    {
+      "id": "clarification-deadlock",
+      "description": "attacker 的质疑可能需要用户或额外调研澄清，如果没有状态机，arena 会卡在无法 merge 的中间态。",
+      "mitigation": "clarification gate 区分 accepted/rejected/deferred/open；deferred/open 可进入最终 spec 的 open questions，但不得伪装成已解决事实。",
+      "status": "open"
+    },
+    {
+      "id": "ticket-spec-boundary-blur",
+      "description": "如果 ticket 和 spec 的职责混在一起，ticket 会被实现细节污染，spec 又会重复定义产品行为，后续 agent 很难判断哪些是行为事实、哪些是实现选择。",
+      "mitigation": "强制最终 spec 引用 ticket 的 BDD 行为边界，并把实现方案、风险、测试和回滚留在 spec；ticket 只更新用户可观察行为变化，不承载实现计划。",
+      "status": "open"
+    },
+    {
+      "id": "scope-creep-to-implementation",
+      "description": "arena 可能直接跳到写代码或 implementation spec，绕过 draft 修订和完整 spec 生成门槛。",
+      "mitigation": "MVP 限定输出完整 spec 与 arena report，不直接执行实现；实现阶段由后续 ticket 或 graph 接管。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "summary": "根据用户澄清建立产品定义：Spec Arena 是一个 draft 被多个 agent 审计的 arena，不是多个 draft 的竞争场。首批角色包含 reviewer 与 perspective attacker。",
+      "evidence": [
+        "mcp__bb__.read_ticket_by_id 000077: 077 已覆盖 Prompt Intent、Existing Truth、External Research/Skip、Evidence Bundle 到 Draft 的前段。",
+        ".bb_template/projects/blackboard/wiki/specs/_experiments/pregel-topology-mutation/: 已有 spec_draft + 多份 agent review + review-quality-analysis，可作为 arena 原型素材。"
+      ]
+    },
+    {
+      "summary": "根据用户进一步澄清，将 arena 收敛为 4+1 管线：4 个 reviewer 独立 review，同组 reviewer 互相 sorting/starring，1 个 perspective attacker 对 draft/reviews/互评/事实源等多份文件攻击，澄清质疑后只合并 accepted viewpoints，最终产出完整 spec。",
+      "evidence": [
+        "用户说明：`4 + 1`，`4 review`，`4个互相给review sort 和 staring`，`attacker 对多份文件进行 attack`，`澄清质疑后 merge所有接受了的观点，最终给出完整spec`。"
+      ]
+    },
+    {
+      "summary": "补充 ticket 与 spec 的职责边界：ticket 决定 BDD 行为；Spec Arena 最终产出的 implementation spec 决定具体实现、风险、测试和验收映射。",
+      "evidence": [
+        "用户说明：`ticket决定行为，bdd。 spec决定具体实现，风险，测试`。"
+      ]
+    },
+    {
+      "summary": "补充 Draft Admission Human Gate：draft 到 spec/arena 下一阶段之间必须由人判断 draft 质量并决定准入，系统不得自动晋级。",
+      "evidence": [
+        "用户说明：`draft -> spec 需要有human gate 决定draft的质量，是否准入下一阶段`。"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Record: 评估 Symphony 调研文档 `wiki/research/2026-05-26-openai-symphony-codex-orchestration.md`：394 行，适合作为 Spec Arena dogfood/pilot 的真实素材，但它是 research report，不是 draft；应先从该调研派生一个窄范围 draft，再进入 Draft Admission Human Gate 和 4+1 Arena。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Record: 范围边界：000091 只定义 arena 机制和输出契约；Symphony pilot 必须拆成独立子票/实验，不得把 Symphony 上层 dispatcher、TaskGraph 整合、workspace isolation 等大活混入 091 机制实现。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Next step: 若使用 Symphony 作为 pilot，先单独创建 pilot ticket，限定一个问题，例如“是否引入 Symphony-style tracker dispatcher 到 Blackboard TaskGraph 之上”，并明确非目标：不实现完整 Symphony、不改 TaskGraph 执行内核、不接 Linear。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Record: 纠正前一条 Symphony 边界判断：Symphony 不是旁路小 POC，也不是不使用 Blackboard ticket/graph 的外部系统。正确理解是：Symphony-style 自治编排应复用 Blackboard ticket 作为工作事实源、TaskGraph 作为执行引擎，是 Blackboard 从 human-in-the-loop 走向 human-out-of-the-loop 的战略级能力。091 仍只定义 Spec Arena 机制，不能被 Symphony 大活吞掉；但 Symphony 可以作为 091 的重要 dogfood 对象。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Next step: 为 Symphony 单独创建战略级 ticket/epic，定义 ticket-driven + graph-executed 的 Blackboard autonomous orchestration，而不是把它塞进 091。",
+      "evidence": []
+    }
+  ],
+  "attachments": [
+    {
+      "kind": "ticket",
+      "target": "000077",
+      "label": "077 Spec 管线前段",
+      "description": "Spec Arena 接在 077 定义的 Draft 生成之后。"
+    },
+    {
+      "kind": "wiki",
+      "target": "wiki/specs/_experiments/pregel-topology-mutation/spec_draft.md",
+      "label": "Arena 原型 Draft",
+      "description": "单 draft 多 agent review 实验中的被审计草案。"
+    },
+    {
+      "kind": "wiki",
+      "target": "wiki/specs/_experiments/pregel-topology-mutation/review-quality-analysis.md",
+      "label": "Review 汇总分析",
+      "description": "对多 agent review 做 sorting/rating/summary 的实验结果。"
+    }
+  ],
+  "status": "todo",
+  "created_at": "2026-05-27",
+  "updated_at": "2026-05-27",
+  "extra": {
+    "arena_subject": "single-draft",
+    "parent_ticket": "000077",
+    "perspectives": "4-reviewers-plus-1-attacker",
+    "scope": "spec-pipeline-arena",
+    "source_request": "用户澄清 Spec Arena 是 4+1：4 个 reviewer 先审同一 draft，再互相 sorting/starring；1 个 attacker 攻击 draft、reviews、互评结果和多份证据文件；澄清质疑后只 merge accepted viewpoints，最终生成完整 spec。"
+  }
+}

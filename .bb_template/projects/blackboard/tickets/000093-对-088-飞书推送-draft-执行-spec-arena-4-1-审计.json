@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "id": "000093",
+  "lane": "bbq",
+  "title": "对 088 飞书推送 Draft 执行 Spec Arena 4+1 审计",
+  "summary": "以 000088 `飞书 Webhook 消息推送（TaskGraph 终态通知）` 的 BDD ticket 作为行为边界，以 `wiki/research/088-feishu-push-implementation-draft.md` 作为已通过 Draft Admission Human Gate 的 draft，执行 000091 定义的 4+1 Spec Arena：4 个 reviewer 独立审计同一 draft，随后 reviewer 对 review 质量做 sorting/starring，再由 1 个 perspective attacker 攻击 draft、reviews、互评结果和事实源；澄清质疑后只合并 accepted viewpoints，最终产出一份可交给实现阶段使用的完整 implementation spec。",
+  "stories": [
+    {
+      "id": "a03cc2f8-fbb7-4df0-b69f-253b3d8a624c",
+      "given": "000088 已有 BDD ticket 和实现 draft，且用户明确表示“088 draft 已经有了，可以直接进 spec arena”",
+      "when": "启动 088 的 Spec Arena",
+      "then": "系统记录 Draft Admission Human Gate 已由用户准入，并冻结 arena input：000088 ticket、088 draft、000091 arena 协议和相关事实源；不得重新把 088 当作普通实现任务直接开工。"
+    },
+    {
+      "id": "3323d2fd-ed56-4601-a5fd-7d810758af96",
+      "given": "088 arena input 已冻结",
+      "when": "进入 reviewer fan-out 阶段",
+      "then": "4 个 reviewer 必须独立审计同一份 088 draft，并分别输出结构化 review：P0/P1/P2 findings、证据引用、事实/推断标注、验收缺口、实现风险、测试缺口和建议修改。"
+    },
+    {
+      "id": "bdefa9c1-e930-4116-a435-f7e3c8b0c134",
+      "given": "4 份 reviewer review 均已完成",
+      "when": "进入 reviewer 互评阶段",
+      "then": "每个 reviewer 需要阅读全部 4 份 review，并对 review 质量做 sorting/starring；排序理由必须基于 evidence strength、novelty、severity calibration、actionability 和 false-positive risk。"
+    },
+    {
+      "id": "5b5aaa93-90bd-4685-986f-2a6d79c5c4a3",
+      "given": "review 与互评均已完成",
+      "when": "启动 perspective attacker",
+      "then": "attacker 必须攻击 088 draft、4 份 review、4 组互评、000088 BDD 边界和相关事实源，寻找被集体忽略的矛盾、证据断裂、不可执行验收、范围漂移、安全/可靠性失败路径。"
+    },
+    {
+      "id": "8e572f59-c3e4-45d1-985d-4ff64821904a",
+      "given": "attacker 产出质疑和反例",
+      "when": "进入 clarification gate",
+      "then": "系统将攻击项分为 accepted、rejected、deferred、open；只有 accepted viewpoints 可进入最终 merge，deferred/open 只能作为 open question 或后续风险保留。"
+    },
+    {
+      "id": "37826e59-7bf3-46d8-b0a6-e22a4f02fb71",
+      "given": "accepted viewpoints 已归并",
+      "when": "产出 088 arena 最终结果",
+      "then": "生成完整 implementation spec，包含目标/非目标、行为边界、事实源、设计决策、具体代码/配置/CLI/TaskGraph 改动、风险与回滚、测试矩阵、验收映射、采纳/未采纳的 review 与 attack 观点，以及剩余 open questions。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "arena-overhead-for-small-ticket",
+      "description": "088 是较小的实现题，完整 4+1 流程可能显得过重，影响验证效率。",
+      "mitigation": "把 088 作为真实但可控的 dogfood：只产出 arena report 与 implementation spec，不在本轮直接实现代码。",
+      "status": "open"
+    },
+    {
+      "id": "reviewer-duplication",
+      "description": "4 个 reviewer 可能重复指出同一类浅层问题，导致最终汇总信息密度低。",
+      "mitigation": "为每个 reviewer 指定不同审计视角，并在汇总时按 evidence、novelty、severity 和 actionability 去重。",
+      "status": "open"
+    },
+    {
+      "id": "ticket-spec-boundary-drift",
+      "description": "arena 输出可能把具体实现细节写回 000088 ticket，污染 BDD 行为定义。",
+      "mitigation": "000088 只在行为定义变化时更新；实现细节进入最终 implementation spec 和本质量票 progress。",
+      "status": "open"
+    },
+    {
+      "id": "attacker-overblocking",
+      "description": "attacker 可能把假设性攻击写成事实，导致小功能无法进入实现。",
+      "mitigation": "clarification gate 强制区分 evidence-backed accepted finding、hypothesis、deferred concern 和 rejected false positive。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "at": "2026-05-27",
+      "summary": "Draft Admission Human Gate: 用户明确表示 `088 draft已经有了 可以直接进spec arena`，因此 088 draft 被准入本次 arena。",
+      "evidence": [
+        "000088",
+        "wiki/research/088-feishu-push-implementation-draft.md",
+        "000091"
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "kind": "ticket",
+      "target": "000088",
+      "label": "Arena subject ticket",
+      "description": "飞书 Webhook 消息推送 BDD 行为边界。"
+    },
+    {
+      "kind": "wiki",
+      "target": "wiki/research/088-feishu-push-implementation-draft.md",
+      "label": "Arena subject draft",
+      "description": "088 已准入的实现 draft。"
+    },
+    {
+      "kind": "ticket",
+      "target": "000091",
+      "label": "Spec Arena protocol",
+      "description": "4+1 Spec Arena 管线定义。"
+    }
+  ],
+  "status": "in_progress",
+  "created_at": "2026-05-27",
+  "updated_at": "2026-05-27",
+  "extra": {
+    "area": "Spec Arena",
+    "arena_subject_draft": "wiki/research/088-feishu-push-implementation-draft.md",
+    "arena_subject_ticket": "000088",
+    "protocol_ticket": "000091",
+    "scope": "088-feishu-push-arena",
+    "source_request": "用户表示 088 draft 已有，可直接进入 Spec Arena。",
+    "stage": "reviewer-fanout"
+  }
+}

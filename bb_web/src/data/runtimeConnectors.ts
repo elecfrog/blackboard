@@ -1,6 +1,6 @@
 export type RuntimeConnectorStatus = 'connected' | 'missing' | 'check_failed'
 
-export type PiShellPathSource = 'settings' | 'git_bash_default' | 'path' | 'missing'
+export type PiShellPathSource = 'default' | 'settings' | 'git_bash_default' | 'path' | 'missing'
 
 export interface RuntimeConnector {
   id: string
@@ -21,6 +21,7 @@ export interface PiRuntimeConnector {
   settings_path?: string
   settings_exists: boolean
   settings_error?: string
+  shell_resolution_required: boolean
   configured_shell_path?: string
   effective_shell_path?: string
   shell_path_source: PiShellPathSource

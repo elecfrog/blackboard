@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "title": "Spec Arena 定义已拆出 000091",
+  "time": "2026-05-27T12:29:15Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "spec-arena-single-draft-multi-agent-audit",
+  "done": [
+    "读取 000077，确认其范围是 Spec 管线前段：Prompt Intent、Existing Truth、External Research/Skip、Evidence Bundle 到 Draft。",
+    "检查既有实验目录 `wiki/specs/_experiments/pregel-topology-mutation/`，确认已有单 draft + 多 agent review + review-quality-analysis 的原型素材。",
+    "根据用户澄清，将 Spec Arena 定义为“一个 draft 被多个 agent 审计”的 arena，而不是多个 draft 的竞争场。",
+    "新建 ticket 000091：定义 Spec Arena：单 Draft 多 Agent 审计管线。首批 perspective 包含 reviewer 与 perspective attacker。",
+    "在 000077 追加记录，标明后段扩展已拆到 000091。"
+  ],
+  "validation": [
+    "mcp__bb__.read_ticket_by_id 000077: 通过",
+    "mcp__bb__.search_tickets Spec Arena / review attacker / draft 多 agent 审计: 通过，无重复命中",
+    "mcp__bb__.list_lanes: 通过，选择 bbp lane 记录产品定义",
+    "mcp__bb__.create_ticket 000091: 通过",
+    "mcp__bb__.append_ticket_sections 000077: 通过"
+  ],
+  "next_step": [
+    "围绕 000091 继续定义结构化 review output schema、perspective 配置、aggregator 合并规则和最小 Task Graph 模板。",
+    "Perspective attacker 需要明确：它只能把无证据项标为 hypothesis，不能把猜测升级为 blocking fact。"
+  ],
+  "related_locations": [
+    "/Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/tickets/000091-spec-arena-single-draft-multi-agent-audit.json",
+    "/Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/tickets/000077-task-graph-editor-spec-pipeline-authoring.json",
+    "/Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/wiki/specs/_experiments/pregel-topology-mutation/spec_draft.md",
+    "/Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/wiki/specs/_experiments/pregel-topology-mutation/review-quality-analysis.md"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

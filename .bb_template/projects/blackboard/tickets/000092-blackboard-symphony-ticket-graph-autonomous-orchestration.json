@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "id": "000092",
+  "lane": "bbp",
+  "title": "定义 Blackboard Symphony：Ticket 驱动、TaskGraph 执行的自治编排层",
+  "summary": "Blackboard 需要一个 Symphony-inspired 自治编排层，推动系统从 human-in-the-loop 的手动选择/手动运行，演进到 human-out-of-the-loop 的默认自治执行。该能力不引入 Linear 作为事实源，也不替代 Blackboard：它复用 Blackboard ticket 作为工作单元和行为契约，复用 TaskGraph 作为执行引擎，通过 Orchestrator/Dispatcher 扫描 eligible tickets、选择合适 graph、启动/恢复 run、处理重试与 stall、写回 ticket/inbox/wiki，并只在 draft admission、spec arena、权限风险、失败恢复等关键 gate 处把人拉回 loop。",
+  "stories": [
+    {
+      "id": "34ee1d69-995b-42ad-adc3-121773850c10",
+      "given": "Blackboard 项目中存在 ticket、lane、status、BDD spec、attachments 和 TaskGraph catalog",
+      "when": "自治编排层扫描可执行工作",
+      "then": "它必须以 Blackboard ticket 作为唯一工作事实源，基于 lane/status/labels/attachments/gates 判断 eligibility，不依赖 Linear 或其他外部 tracker。"
+    },
+    {
+      "id": "68a5b7c0-85c5-479d-925b-620236b1a7a5",
+      "given": "某个 ticket 已经具备明确 BDD 行为边界，并关联可执行或可生成的 TaskGraph",
+      "when": "Orchestrator 决定执行该 ticket",
+      "then": "它应启动或恢复对应 TaskGraph run，把 ticket、spec、wiki/research、inbox 和 workspace 信息作为 graph input/resource bundle，而不是让 agent 脱离 Blackboard 自行理解任务。"
+    },
+    {
+      "id": "fe2cb350-be84-4b0e-be7f-bf8c48e728b7",
+      "given": "TaskGraph run 产出 draft、spec、review、implementation、verification 或 handoff artifact",
+      "when": "运行完成或进入阶段边界",
+      "then": "Orchestrator 应通过 Blackboard MCP/内部 API 将结果结构化写回 ticket progress、inbox、wiki 或 graph run log，保持 ticket 是协作状态入口，graph 是执行事实入口。"
+    },
+    {
+      "id": "aaf178b5-8472-41ee-b090-b588e7d3e255",
+      "given": "流程到达高风险或质量准入点",
+      "when": "需要人判断 draft 质量、Spec Arena 准入、危险权限、实现范围扩大、失败恢复或最终发布",
+      "then": "系统必须进入 human gate；除这些 gate 和异常外，流程可以继续 human-out-of-the-loop 自治推进。"
+    },
+    {
+      "id": "50cd438b-67d2-4391-97d9-9d0441a15dcd",
+      "given": "agent run 卡住、失败、超时或输出不符合 contract",
+      "when": "Orchestrator reconciliation 发现异常",
+      "then": "系统应执行 stall detection、指数退避、重试上限、失败归因和 ticket 状态更新；无法自动恢复时升级为 human action required。"
+    },
+    {
+      "id": "24b6fc00-15cf-4de8-9e9e-b705f1d0b027",
+      "given": "用户查看 Blackboard UI",
+      "when": "自治编排层运行中",
+      "then": "界面应展示 autonomous queue、running graph、blocked gates、retry/backoff、当前风险、最近写回和人工待决项，而不是只显示单次 graph run 详情。"
+    },
+    {
+      "id": "9bd87d4f-2183-4b14-abdb-62aac6f1987e",
+      "given": "Spec Arena 000091 已定义 draft 到完整 implementation spec 的质量管线",
+      "when": "Symphony-style orchestrator 准备推进复杂 ticket",
+      "then": "它可以把 000091 作为规格成熟度 gate 使用：先让 ticket 产出 draft，经过 human admission 和 4+1 arena，得到完整 spec 后再进入实现/验证 graph。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "autonomy-runaway",
+      "description": "human-out-of-the-loop 默认推进可能让 agent 在错误目标上持续运行、写入或消耗资源。",
+      "mitigation": "引入 eligibility rules、graph-level tool policy、并发上限、budget、retry 上限、write scope、human gates 和 kill switch。",
+      "status": "open"
+    },
+    {
+      "id": "ticket-graph-contract-blur",
+      "description": "如果 ticket、spec、graph 的职责混乱，Orchestrator 会把行为定义、实现方案和执行状态混成一团。",
+      "mitigation": "保持 ticket=BDD 行为契约，spec=实现/风险/测试，graph=执行计划和运行事实；Orchestrator 只编排三者，不重新定义它们。",
+      "status": "open"
+    },
+    {
+      "id": "linear-model-misapplied",
+      "description": "照搬 Symphony/Linear 的 tracker 模型会破坏 Blackboard 自有 ticket/lane/inbox/graph 语义。",
+      "mitigation": "只借鉴 Symphony 的 Orchestrator、workspace isolation、policy-as-code、stall/retry、reconciliation 思路；事实源必须是 Blackboard ticket 与 graph。",
+      "status": "open"
+    },
+    {
+      "id": "graph-execution-overload",
+      "description": "把所有自治能力一次性压到 TaskGraph 执行内核会导致范围爆炸。",
+      "mitigation": "先定义上层 Orchestrator 与 TaskGraph 的接口边界：选择 ticket、启动 graph、观察 run、写回状态；内核改动另行拆票。",
+      "status": "open"
+    },
+    {
+      "id": "hidden-human-gate",
+      "description": "如果 human gates 不可见，用户会感觉系统突然停住或越权运行。",
+      "mitigation": "UI 和 ticket progress 必须明确展示 gate 类型、阻塞原因、可选动作和后果。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [
+    {
+      "summary": "根据用户纠正建立正确方向：Symphony 是 Blackboard 从 human-in-the-loop 到 human-out-of-the-loop 的战略级转变；它应复用 Blackboard ticket 和 graph 能力，而不是旁路替换。",
+      "evidence": [
+        "用户说明：`symphony本身这个活太大了，他是blackboard从human in loop 到 human out of the loop 到巨大转变`。",
+        "用户纠正：`symphony 是要复用blackboard的ticket 和 graph能力的`。",
+        "wiki/research/2026-05-26-openai-symphony-codex-orchestration.md: 已有 Symphony 调研报告。"
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "kind": "wiki",
+      "target": "wiki/research/2026-05-26-openai-symphony-codex-orchestration.md",
+      "label": "Symphony 调研报告",
+      "description": "OpenAI Symphony Codex 编排框架调研，作为 Blackboard 自治编排层的参考事实源。"
+    },
+    {
+      "kind": "ticket",
+      "target": "000091",
+      "label": "Spec Arena 4+1",
+      "description": "可作为复杂 ticket 从 draft 到完整 implementation spec 的质量 gate。"
+    },
+    {
+      "kind": "ticket",
+      "target": "000077",
+      "label": "Spec 管线前段",
+      "description": "生成 draft/evidence bundle 的前段管线。"
+    }
+  ],
+  "status": "todo",
+  "created_at": "2026-05-27",
+  "updated_at": "2026-05-27",
+  "extra": {
+    "execution_engine": "taskgraph",
+    "related_spec_arena": "000091",
+    "scope": "autonomous-orchestration",
+    "source_request": "用户纠正：Symphony 是 Blackboard 复用 ticket 和 graph 能力的自治编排层，不是旁路小 POC。",
+    "tracker_source": "blackboard-ticket",
+    "transition": "human-in-the-loop-to-human-out-of-the-loop"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "title": "Spec Arena 补充 ticket/spec 职责边界",
+  "time": "2026-05-27T12:32:52Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "spec-arena-ticket-vs-spec-boundary",
+  "done": [
+    "将用户补充的职责边界写入 000091：ticket 决定行为，采用 BDD；Spec Arena 最终产物是 implementation spec，决定具体实现、风险、测试和验收映射。",
+    "更新 000091 summary：Spec 不能取代 ticket，而是承接 ticket 的行为边界。",
+    "新增 story：ticket 与最终 spec 同时存在时，ticket 只描述用户可观察行为、边界和验收语义；spec 描述如何改代码/数据/接口/图、主要风险、测试矩阵和上线/回滚计划。",
+    "新增风险 `ticket-spec-boundary-blur`，避免 ticket 被实现细节污染或 spec 重复定义产品行为。"
+  ],
+  "validation": [
+    "mcp__bb__.update_ticket 000091: 通过"
+  ],
+  "next_step": [
+    "后续定义 final implementation spec 模板时，固定章节应包含：关联 ticket/BDD 行为边界、事实源、设计决策、实现计划、风险与回滚、测试矩阵、验收映射、采纳/拒绝观点和 open questions。"
+  ],
+  "related_locations": [
+    "/Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/tickets/000091-spec-arena-single-draft-multi-agent-audit.json"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}
