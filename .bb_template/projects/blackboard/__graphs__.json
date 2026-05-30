@@ -151,6 +151,13 @@
       "group_id": "project-ungrouped",
       "favorite": false,
       "sort_order": 17
+    },
+    {
+      "scope": "project",
+      "id": "spec-arena-4-plus-1",
+      "group_id": "project-ungrouped",
+      "favorite": false,
+      "sort_order": 17
     }
   ]
 }

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bb://schema/spec-arena/resource-bundle-v1",
+  "title": "Spec Arena Resource Bundle",
+  "description": "Frozen input contract for one draft-to-spec arena run.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "task",
+    "data_sources",
+    "contracts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "kind": { "type": "string", "const": "spec_arena_resource_bundle" },
+    "task": {
+      "type": "object",
+      "required": [
+        "type",
+        "goal",
+        "ticket_path",
+        "draft_path",
+        "output_dir",
+        "llm_runtime",
+        "model"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "draft_to_implementation_spec_arena" },
+        "goal": { "type": "string", "minLength": 1 },
+        "ticket_path": { "type": "string", "minLength": 1 },
+        "draft_path": { "type": "string", "minLength": 1 },
+        "output_dir": { "type": "string", "minLength": 1 },
+        "llm_runtime": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 }
+      }
+    },
+    "data_sources": {
+      "type": "object",
+      "required": [
+        "workspace",
+        "project",
+        "ticket_path",
+        "draft_path",
+        "arena_ticket_path",
+        "protocol_ticket_path",
+        "extra_context"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "workspace": { "type": "string", "minLength": 1 },
+        "project": { "type": "string", "minLength": 1 },
+        "ticket_path": { "type": "string", "minLength": 1 },
+        "draft_path": { "type": "string", "minLength": 1 },
+        "arena_ticket_path": { "type": "string", "minLength": 1 },
+        "protocol_ticket_path": { "type": "string", "minLength": 1 },
+        "extra_context": { "type": "string" }
+      }
+    },
+    "contracts": {
+      "type": "object",
+      "required": [
+        "behavior_boundary",
+        "draft_role",
+        "review_schema",
+        "review_schema_ref",
+        "rating_schema",
+        "rating_schema_ref",
+        "aggregate_schema_ref",
+        "attacker_schema",
+        "attacker_schema_ref",
+        "code_facts_schema_ref",
+        "merge_policy",
+        "final_spec_path",
+        "arena_report_path"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "behavior_boundary": { "type": "string", "minLength": 1 },
+        "draft_role": { "type": "string", "minLength": 1 },
+        "review_schema": { "type": "string", "minLength": 1 },
+        "review_schema_ref": { "type": "string", "minLength": 1 },
+        "rating_schema": { "type": "string", "minLength": 1 },
+        "rating_schema_ref": { "type": "string", "minLength": 1 },
+        "aggregate_schema_ref": { "type": "string", "minLength": 1 },
+        "attacker_schema": { "type": "string", "minLength": 1 },
+        "attacker_schema_ref": { "type": "string", "minLength": 1 },
+        "code_facts_schema_ref": { "type": "string", "minLength": 1 },
+        "merge_policy": { "type": "string", "minLength": 1 },
+        "final_spec_path": { "type": "string", "minLength": 1 },
+        "arena_report_path": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

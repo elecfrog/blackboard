@@ -69,6 +69,47 @@ fn json_text_parser_accepts_wrapped_task_graph() {
 }
 
 #[test]
+fn json_artifact_rejects_invalid_document_instead_of_salvaging_inner_object() {
+    let config: LlmConfig = serde_json::from_value(serde_json::json!({
+        "runtime": "pi",
+        "agent": "native",
+        "prompt": {},
+        "output": {
+            "artifact_type": "json",
+            "required": true
+        }
+    }))
+    .unwrap();
+    let text = r#"{"reviewer_id":"R2","findings":[{"id":"r2-001","suggested_change":"write "quoted" text"}],"risk_updates":[]}"#;
+
+    let output = output_value_for_llm_config(&config, text, text);
+
+    assert!(output.is_string());
+}
+
+#[test]
+fn json_artifact_still_accepts_embedded_json_after_intro_text() {
+    let config: LlmConfig = serde_json::from_value(serde_json::json!({
+        "runtime": "pi",
+        "agent": "native",
+        "prompt": {},
+        "output": {
+            "artifact_type": "json",
+            "required": true
+        }
+    }))
+    .unwrap();
+    let text = "Here is the JSON:\n{\"processed\":true,\"continue\":false}";
+
+    let output = output_value_for_llm_config(&config, text, text);
+
+    assert_eq!(
+        output,
+        serde_json::json!({"processed": true, "continue": false})
+    );
+}
+
+#[test]
 fn markdown_llm_output_uses_artifact_text_for_data_output() {
     let config: LlmConfig = serde_json::from_value(serde_json::json!({
         "runtime": "pi",

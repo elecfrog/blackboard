@@ -315,8 +315,22 @@ pub(super) fn output_value_for_llm_config(
             }
             .to_string(),
         ),
+        Some("json") => parse_json_artifact_value(parse_source),
         _ => try_parse_json_or_text(parse_source),
     }
+}
+
+fn parse_json_artifact_value(parse_source: &str) -> serde_json::Value {
+    let trimmed = parse_source.trim();
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        return value;
+    }
+
+    if matches!(trimmed.chars().next(), Some('{') | Some('[')) {
+        return serde_json::Value::String(parse_source.to_string());
+    }
+
+    try_parse_json_or_text(parse_source)
 }
 
 fn is_task_graph_like_json(value: &serde_json::Value) -> bool {

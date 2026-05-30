@@ -100,6 +100,96 @@
       "at": "2026-05-27",
       "summary": "Next step: 确认 Project Agent 可正常编辑",
       "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-settings-runtime-first-panel-cleanup.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-settings-runtime-first-panel-cleanup.json",
+        "Title: Settings 面板改为 runtime 配置数据可视化\nTime: 2026-05-27T11:21:57Z\nSource: Codex\nProject: blackboard\nTopic: Settings runtime-first panel cleanup\nDone:\n- 确认最近 tmp 提交把较完整的 runtime/connector/tool 信息压扁成粗略列表，导致状态灯、批量同步和工具更新入口在当前 UI 上丢失。\n- 将 bb_web/src/components/SettingsWorkbench.vue 重写为 runtime-first 配置数据面板：每个 runtime 卡片展示状态灯、版本、规则同步状态、CLI 工具状态、并发、命令配置、同步目标和工具信息。\n- 根据用户确认移除 Agent 定义详情块，Settings 不再呈现 Agent 面板式内容。\n- 补充 bb_web/src/i18n.ts 中 runtime 面板所需中英文文案，并把 Settings subtitle 调整为 runtime 配置数据可视化语义。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- Chrome headless DOM 检查 http://localhost:8060/#/projects/blackboard/settings: 通过；页面包含 runtime 可用性、规则同步、CLI 工具、同步全部/更新工具，未出现 Agent 定义或受管 Agent。\n- Chrome headless screenshot /tmp/blackboard-settings-runtime.png: 通过。\n- mcp__bb__.list_projects: 通过。\nNext step:\n- 如继续打磨，可进一步压缩每张 runtime 卡片的垂直高度，或把命令配置/同步目标/CLI 工具做成可折叠分区。",
+        "cleanup reason: Settings runtime-first panel cleanup 已归档到 000090 实施范围内，related_locations 命中 bb_web/src/components/SettingsWorkbench.vue"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-settings-runtime-hides-non-actionable-lock-button.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-settings-runtime-hides-non-actionable-lock-button.json",
+        "Title: Settings runtime 移除不可执行版本锁定按钮\nTime: 2026-05-27T11:54:24Z\nSource: codex\nProject: blackboard\nTopic: settings runtime hides non-actionable lock button\nDone:\n- 在 bb_web/src/components/SettingsWorkbench.vue 中将工具按钮限制为可执行动作；OpenCode 这种 Homebrew 安装且目标版本不匹配的情况不再显示不可点击的锁定按钮。\n- 将版本目标从按钮文案移到状态数据：版本锁定显示为 需锁定至 {version}，目标版本来自后端 target_version。\n- 将可执行的版本锁定动作文案改为泛化的 应用版本锁定，并同步到旧 AgentConnectorRow；未来目标版本变化不需要改 UI 文案。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- Browser in-app page check http://localhost:8060/#/projects/blackboard/settings: 通过；OpenCode header action buttons 仅剩 重新同步；未出现 锁定到 1.15.0 或 锁定指定版本；状态数据仍显示 需锁定至 1.15.0。\nNext step:\n- 如果产品需要真正一键从 Homebrew 切换到 npm 锁定版本，需要新增明确的 install method 切换行为，而不是复用更新按钮。\nRelated locations:\n- bb_web/src/components/SettingsWorkbench.vue\n- bb_web/src/components/AgentConnectorRow.vue\n- bb_web/src/i18n.ts",
+        "cleanup reason: 移除不可执行版本锁定按钮是 Settings runtime 面板 UI 细节收敛，命中 000090 范围"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-settings-runtime-panel-hides-internal-metadata.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-settings-runtime-panel-hides-internal-metadata.json",
+        "Title: Settings runtime 面板收起无意义内部详情\nTime: 2026-05-27T11:33:40Z\nSource: codex\nProject: blackboard\nTopic: settings runtime panel hides internal metadata\nDone:\n- 在 bb_web/src/components/SettingsWorkbench.vue 隐藏规则同步下方的 source/target sha256 与 mtime 元数据。\n- 移除 runtime 卡片内独立的 CLI 工具详情块，避免展示 CLI 路径、安装命令等调试型信息。\n- 保留卡片上方摘要里的版本、版本锁定、安装方式与规则同步目标列表，让用户能直接感知 version 和 install method。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- Browser in-app page check http://localhost:8060/#/projects/blackboard/settings: 通过；runtime-block headings 仅剩 命令配置/规则同步；未发现 事实源 sha256/修改时间；AGENTS.md/MCP、版本锁定、安装方式仍可见。\nNext step:\n- 继续按用户现场标注收敛 Settings runtime 面板信息层级。\nRelated locations:\n- bb_web/src/components/SettingsWorkbench.vue",
+        "cleanup reason: 隐藏无意义内部元数据（sha256/mtime）是 Settings runtime 信息层级收敛，命中 000090"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-settings-runtime-panel-hides-runtime-descriptions.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-settings-runtime-panel-hides-runtime-descriptions.json",
+        "Title: Settings runtime 卡片隐藏低价值描述行\nTime: 2026-05-27T11:37:02Z\nSource: codex\nProject: blackboard\nTopic: settings runtime panel hides runtime descriptions\nDone:\n- 在 bb_web/src/components/SettingsWorkbench.vue 移除 runtime 卡片标题下方的描述行，例如 CodeBuddy runtime for codebase work。\n- 删除 SettingsWorkbench 内只为该描述行服务的 runtimeDescription helper 和 RuntimeProfile 类型导入；保留 i18n 描述 key，因为 RuntimeConnectorPanel 仍在使用。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- Browser in-app page check http://localhost:8060/#/projects/blackboard/settings: 通过；首个 runtime titleText 为 CodeBuddy，titleParagraphCount 为 0，未出现 CodeBuddy runtime for codebase work；版本锁定、安装方式、AGENTS.md/MCP 仍可见。\nNext step:\n- 继续根据用户现场标注隐藏 Settings runtime 面板里低决策价值的信息。\nRelated locations:\n- bb_web/src/components/SettingsWorkbench.vue\n- bb_web/src/i18n.ts",
+        "cleanup reason: 隐藏低价值 runtime 描述行命中 000090 Settings 面板职责收窄范围"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-settings-runtime-panel-pi-shell-details-become-platform-aware.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-settings-runtime-panel-pi-shell-details-become-platform-aware.json",
+        "Title: Settings runtime Pi shell platform cleanup\nTime: 2026-05-27T12:17:10Z\nSource: codex\nProject: blackboard\nTopic: Settings runtime panel: Pi shell details become platform-aware\nDone:\n- 后端 runtime connector 新增 `shell_resolution_required`，非 Windows 下 Pi shell source 返回 `default`，不再解析或暴露 Git Bash / PATH bash.exe。\n- Settings runtime 面板只在 Windows 需要 shell 解析时展示 Pi 的来源、有效 shell、推荐 Git Bash；macOS/Linux 默认隐藏这块无意义详情。\n- 旧 RuntimeConnectorPanel 同步按 `shell_resolution_required` 隐藏 Windows shell block 和诊断中的 Git Bash 字段。\nValidation:\n- cargo fmt --manifest-path bb_backend/Cargo.toml --all: 通过\n- cargo check --manifest-path bb_backend/Cargo.toml -p bb_daemon: 通过\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core agent_tools: 通过，10 passed\n- npm run build --prefix bb_web: 通过\n- curl http://localhost:8060/api/agents/runtime-connectors: Pi 返回 shell_resolution_required=false, shell_path_source=default, effective/recommended shell 为 null\n- Browser iab: Settings 页面 Pi 卡片无 Git Bash / PATH bash.exe / 有效 shell 文案，Pi 更新按钮为 disabled 更新\n- mcp__bb__.list_projects: 通过\n- mcp__bb__.create_inbox_note: 通过\nNext step:\n- 继续按用户反馈压缩 Settings runtime 卡片中的低价值实现细节，优先保留版本、安装方式、规则同步和可执行动作。\nRelated locations:\n- ...",
+        "cleanup reason: Pi shell platform cleanup 命中 000090 Settings runtime 面板信息收敛；related_locations 包含 SettingsWorkbench.vue"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-settings-runtime-panel-user-facing-information-compression.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-settings-runtime-panel-user-facing-information-compression.json",
+        "Title: Settings runtime 面板继续压缩用户无意义信息\nTime: 2026-05-27T11:35:29Z\nSource: codex\nProject: blackboard\nTopic: settings runtime panel user-facing information compression\nDone:\n- 在 bb_web/src/components/SettingsWorkbench.vue 继续隐藏命令配置下方的实际启动、已配置命令、默认命令、启动参数等内部实现详情；仅保留命令与最大并发输入、保存反馈和错误提示。\n- 隐藏 runtime 标题旁的内部 id，例如 CodeBuddy 后不再显示 codebuddy。\n- 保留用户需要明确感知的版本、版本锁定、安装方式、规则同步状态与规则同步目标。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- Browser in-app page check http://localhost:8060/#/projects/blackboard/settings: 通过；首个 runtime 标题为 CodeBuddy；命令配置文本仅为 命令配置/保存 runtime/命令/最大并发；未出现 实际启动/已配置命令/默认命令/事实源 sha256/修改时间/CLI 工具详情块；AGENTS.md/MCP、版本锁定、安装方式仍可见。\nNext step:\n- 继续根据用户在 Settings 页面标注的噪音点收敛 runtime 配置可视化的信息层级。\nRelated locations:\n- bb_web/src/components/SettingsWorkbench.vue",
+        "cleanup reason: 压缩用户无意义信息命中 000090 Settings 面板职责收窄范围"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-settings-runtime-tool-action-four-state-lock-behavior.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-settings-runtime-tool-action-four-state-lock-behavior.json",
+        "Title: Settings runtime 工具按钮改为安装/升级/降级/禁用更新四态\nTime: 2026-05-27T12:02:18Z\nSource: codex\nProject: blackboard\nTopic: settings runtime tool action four-state lock behavior\nDone:\n- 按用户定义重做 runtime 工具按钮四态：未安装显示安装；版本不匹配显示升级到锁定版本或降级到锁定版本；已安装且符合期望显示不可点击的更新；组件不完整/外部安装显示修复。\n- OpenCode 当前 1.15.10 高于锁定目标 1.15.0，因此 Settings 显示可点击的降级到锁定版本。\n- 后端 bb_core 的 install_agent_tool 在 Homebrew CLI 版本与固定 target_version 不匹配时，改走 npm install -g 精确版本，而不是 brew upgrade；API 现在返回 opencode install_command = npm install -g opencode-ai@1.15.0。\n- 重启 scripts/dev.py 开发服务，使本地 8060/3001 使用新的后端行为。\nValidation:\n- cargo fmt --manifest-path bb_backend/Cargo.toml --all: 通过。\n- cargo test --manifest-path bb_backend/Cargo.toml -p bb_core agent_tools: 通过，10 tests。\n- npm run build --prefix bb_web: 通过。\n- curl http://localhost:8060/api/agents/tools: OpenCode 返回 status=version_mismatch，install_command=npm install -g opencode-ai@1.15.0，current_version=1.15.10，target_version=1.15.0。\n- Browser in-app page check http://localhost:8060/#/projects/blackboard/settings: CodeBuddy/Codex/Pi 显示 disabled 更新；OpenCode 显示 enabled 降级到锁定版本，版本锁定数据仍显示 需锁定至 1.15.0。\nNext step:\n- 如点击 OpenCode 降级按钮后 PATH 仍优先 Homebrew，需要继续定义 install method 优先级/切换策略。\nRelated ...",
+        "cleanup reason: 工具按钮四态（安装/升级/降级/禁用）命中 000090 runtime 配置数据面板；related_locations 包含 SettingsWorkbench.vue 和 bb_core/agent_tools.rs"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-settings-runtime-tool-version-and-install-method-separation.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-settings-runtime-tool-version-and-install-method-separation.json",
+        "Title: Settings 拆分 runtime 工具版本锁定与安装方式\nTime: 2026-05-27T11:30:25Z\nSource: Codex\nProject: blackboard\nTopic: Settings runtime tool version and install method separation\nDone:\n- 响应用户反馈，将 Settings runtime 卡片中的 CLI 工具语义拆成“版本锁定”和“安装方式”两个独立字段，避免把版本锁定状态和 brew/npm 更新能力混成一个按钮状态。\n- 修正 bb_web/src/components/SettingsWorkbench.vue：OpenCode 当前 1.15.10、目标 1.15.0 时显示“版本需锁定 + Homebrew”，并显示 mismatch 提示；Pi 当前 0.75.4、目标 0.75.4 时显示已锁定。\n- 同步修正 bb_web/src/components/AgentConnectorRow.vue 中旧的工具按钮优先级，避免 brew 优先盖过 version_mismatch。\n- 修正 bb_backend/crates/bb_core/src/agent_tools.rs：Homebrew 安装源也需要尊重精确 target_version，不能直接判定为 installed。\nValidation:\n- cargo test -p bb_core agent_tools: 通过，10 个 agent_tools 单测全部通过。\n- npm run build --prefix bb_web: 通过。\n- Chrome headless DOM 检查 /#/projects/blackboard/settings: 通过；页面出现版本锁定、安装方式、Homebrew、OpenCode mismatch 提示。\nNext step:\n- 如果要进一步完善执行动作，需要明确当 Homebrew 安装的 OpenCode 需要锁到 npm 目标版本时，产品上应提示用户切换安装方式，还是由后端提供安全的迁移动作。",
+        "cleanup reason: 拆分版本锁定与安装方式命中 000090 runtime 配置可视化范围；related_locations 包含 SettingsWorkbench.vue"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-settings-runtime-view-edit-state-and-lock-action-labels.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-settings-runtime-view-edit-state-and-lock-action-labels.json",
+        "Title: Settings runtime 明确查看/编辑态并改锁定按钮文案\nTime: 2026-05-27T11:50:39Z\nSource: codex\nProject: blackboard\nTopic: settings runtime view edit state and lock action labels\nDone:\n- 在 bb_web/src/components/SettingsWorkbench.vue 为命令配置增加显式查看态/编辑态：默认显示 查看 标签、当前命令/最大并发和 编辑 按钮；进入编辑态后显示 编辑中 标签、输入框、保存 runtime、取消。\n- 保存 runtime 只在编辑态出现，并在配置有变更时可用；保存成功后回到查看态。\n- 将 OpenCode 等锁定动作从抽象的 锁定指定版本 改为带目标的动作文案：锁定到 1.15.0；同步更新旧 AgentConnectorRow 的同类文案。\nValidation:\n- npm run build --prefix bb_web: 通过。\n- Browser in-app page check http://localhost:8060/#/projects/blackboard/settings: 通过；默认命令配置块显示 查看/编辑、inputCount=0；OpenCode action 显示 锁定到 1.15.0，旧文案 锁定指定版本 不再出现。\n- Browser click verification note: 当前 in-app browser 的评论覆盖层 codex-browser-sidebar-comments-root 拦截页面点击；未将该覆盖层行为记为 Blackboard 应用问题。\nNext step:\n- 若需要让 Homebrew 安装的 OpenCode 也能一键锁定到 1.15.0，需要另行定义安装方式切换/卸载策略，避免误用 brew upgrade。\nRelated locations:\n- bb_web/src/components/SettingsWorkbench.vue\n- bb_web/src/components/AgentConnectorRow.vue\n- bb_web/src/i18n.ts",
+        "cleanup reason: 查看/编辑态与锁定按钮文案命中 000090 runtime 面板 UI 细节收敛；related_locations 包含 SettingsWorkbench.vue"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-dev-agent-settings-agents-页面拆分实施完成.json`.",
+      "evidence": [
+        "inbox/2026-05-27-dev-agent-settings-agents-页面拆分实施完成.json",
+        "Title: Inbox Note\nTime: 2026-05-27T07:34:16Z\nSource: dev-agent\nProject: blackboard\nTopic: Settings/Agents 页面拆分实施完成\nDone:\n- 后端 validation.rs: scope 验证增加 'system' 选项\n- 后端 agents_registry/mod.rs: upsert_agent 增加 System Agent 写保护（拒绝修改 display_name/runtime/assignable/distribute/roles/source_path/status/scope）\n- agents.toml: 内置 Agent (bb-pm, spec-*) 标记 scope=system\n- 前端 SettingsWorkbench: 移除 Agent 列表和 Agent 详情，只保留 Runtime 管理\n- 前端 AgentListPanel: 从 Runtimes/Agents 分组改为 System Agents/Project Agents 分组\n- 前端 AgentWorkbench: 移除 RuntimeDetailSection，只展示 Agent 详情\n- 前端 AgentProfileSection/AgentRuntimeConfig/AgentSkillsTable: 增加 readonly prop，system agent 时隐藏编辑按钮\nValidation:\n- cargo check 通过\n- vue-tsc --noEmit 通过\nNext step:\n- 验证 UI 效果：Settings 页面只显示 Runtime，Agents 页面分 System/Project 两组\n- 确认 System Agent 编辑按钮不可见\n- 确认 Project Agent 可正常编辑\nRelated tickets:\n- 000090",
+        "cleanup reason: Settings/Agents 页面拆分实施完成，document.related_tickets 包含 000090，Done 内容与 000090 标题范围完全吻合"
+      ]
     }
   ],
   "attachments": [],

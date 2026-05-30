@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bb://schema/spec-arena/peer-rating-aggregate-v1",
+  "title": "Spec Arena Peer Rating Aggregate",
+  "description": "Contract for the aggregate node that merges four peer-rating outputs.",
+  "type": "object",
+  "required": [
+    "verdict",
+    "aggregate_sorted_reviews",
+    "high_value_findings",
+    "accepted_modification_advice_candidates",
+    "conflicts_between_reviews",
+    "possible_false_positives",
+    "minority_but_high_impact_points",
+    "open_questions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "ready_for_attack",
+        "needs_re_review",
+        "blocked"
+      ]
+    },
+    "aggregate_sorted_reviews": {
+      "type": "array",
+      "minItems": 4,
+      "items": { "$ref": "#/$defs/aggregate_review" }
+    },
+    "high_value_findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/high_value_finding" }
+    },
+    "accepted_modification_advice_candidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/accepted_advice" }
+    },
+    "conflicts_between_reviews": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/conflict" }
+    },
+    "possible_false_positives": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          { "type": "string", "minLength": 1 },
+          { "type": "object" }
+        ]
+      }
+    },
+    "minority_but_high_impact_points": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          { "type": "string", "minLength": 1 },
+          { "type": "object" }
+        ]
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "reviewer_id": { "type": "string", "minLength": 1 },
+    "severity": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3", "info"]
+    },
+    "aggregate_review": {
+      "type": "object",
+      "required": ["reviewer_id", "rank", "aggregate_stars", "rationale"],
+      "additionalProperties": false,
+      "properties": {
+        "reviewer_id": { "$ref": "#/$defs/reviewer_id" },
+        "rank": { "type": "integer", "minimum": 1 },
+        "aggregate_stars": { "type": "number", "minimum": 0 },
+        "rationale": { "type": "string", "minLength": 1 },
+        "supporting_peer_raters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reviewer_id" }
+        },
+        "dissenting_peer_raters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reviewer_id" }
+        }
+      }
+    },
+    "high_value_finding": {
+      "type": "object",
+      "required": ["reviewer_id", "finding_id", "severity", "summary", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "reviewer_id": { "$ref": "#/$defs/reviewer_id" },
+        "finding_id": { "type": "string", "minLength": 1 },
+        "severity": { "$ref": "#/$defs/severity" },
+        "summary": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "must_accept": { "type": "boolean" }
+      }
+    },
+    "accepted_advice": {
+      "type": "object",
+      "required": ["advice", "priority", "finding_ids"],
+      "additionalProperties": false,
+      "properties": {
+        "advice": { "type": "string", "minLength": 1 },
+        "priority": { "$ref": "#/$defs/severity" },
+        "finding_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "must_accept": { "type": "boolean" }
+      }
+    },
+    "conflict": {
+      "type": "object",
+      "required": ["topic", "resolution"],
+      "properties": {
+        "topic": { "type": "string", "minLength": 1 },
+        "resolution": { "type": "string", "minLength": 1 },
+        "disagreement": { "type": "string" },
+        "reviewer_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reviewer_id" }
+        }
+      }
+    }
+  }
+}

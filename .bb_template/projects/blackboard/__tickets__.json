@@ -1626,23 +1626,21 @@
       "lane": "bbt",
       "title": "飞书 Webhook 消息推送（TaskGraph 终态通知）",
       "status": "in_progress",
-      "created_at": "2026-05-26",
-      "updated_at": "2026-05-27",
+      "created_at": "2026-05-28",
+      "updated_at": "2026-05-28",
       "attachments": [
         {
           "kind": "wiki",
           "target": "wiki/research/088-feishu-push-implementation-draft.md",
-          "label": "实现 Draft",
-          "description": "正式实现方案（综合 4 份调研结论）"
+          "label": "Implementation Draft"
+        },
+        {
+          "kind": "ticket",
+          "target": "000093",
+          "label": "Spec Arena dogfood"
         }
       ],
-      "extra": {
-        "area": "TaskGraph",
-        "depends_on": "000065",
-        "kind": "execution-subtrack",
-        "parent": "000065",
-        "scope": "feishu-webhook-push"
-      },
+      "extra": {},
       "metadata_error": null,
       "metadata_warnings": []
     },
@@ -1744,38 +1742,105 @@
       "path": "tickets/000093-对-088-飞书推送-draft-执行-spec-arena-4-1-审计.json",
       "id": "000093",
       "lane": "bbq",
-      "title": "对 088 飞书推送 Draft 执行 Spec Arena 4+1 审计",
-      "status": "in_progress",
+      "title": "用 088 Dogfood Spec Arena 4+1 Graph",
+      "status": "review",
       "created_at": "2026-05-27",
-      "updated_at": "2026-05-27",
+      "updated_at": "2026-05-28",
       "attachments": [
         {
           "kind": "ticket",
           "target": "000088",
           "label": "Arena subject ticket",
-          "description": "飞书 Webhook 消息推送 BDD 行为边界。"
+          "description": "飞书推送 BDD 行为边界。"
         },
         {
           "kind": "wiki",
           "target": "wiki/research/088-feishu-push-implementation-draft.md",
           "label": "Arena subject draft",
-          "description": "088 已准入的实现 draft。"
+          "description": "已由 human gate 准入的实现 draft。"
         },
         {
           "kind": "ticket",
           "target": "000091",
           "label": "Spec Arena protocol",
           "description": "4+1 Spec Arena 管线定义。"
+        },
+        {
+          "kind": "task_graph",
+          "target": "project/spec-arena-4-plus-1",
+          "label": "Spec Arena 4+1 Graph v9",
+          "description": "项目级 Spec Arena Graph：四 reviewer、互评、attacker、schema_ref contract、native repair、human gate、final spec merge。"
+        },
+        {
+          "kind": "schema",
+          "target": "schemas/spec-arena/attacker-output-v1.schema.json",
+          "label": "Attacker output schema v1",
+          "description": "validate-attacker-schema 使用的 registry schema handle。"
+        },
+        {
+          "kind": "task_graph_run",
+          "target": "run-20260527-165448-7cbcd56c",
+          "label": "Spec Arena v9 schema-ref successful run",
+          "description": "v9 使用 bb://schema/spec-arena/attacker-output-v1 并完成 19/19 nodes 的成功 run。"
+        },
+        {
+          "kind": "task_graph_run",
+          "target": "run-20260528-063947-a87d8a12",
+          "label": "Strict runtime guard live run",
+          "description": "LLM runtime JSON output guard 后的 live run：attacker schema valid，verdict=needs_rework，Human Gate 选择 hold-for-revision 后 run cancelled。"
+        },
+        {
+          "kind": "wiki",
+          "target": "wiki/specs/088-feishu-push/implementation_spec.md",
+          "label": "Final implementation spec",
+          "description": "v9 schema-ref run 产出的 088 implementation spec；最新 attacker run 认为需要按 P0 修订后再合并。"
+        },
+        {
+          "kind": "wiki",
+          "target": "wiki/specs/088-feishu-push/arena_report.md",
+          "label": "Arena report",
+          "description": "v9 schema-ref run 产出的 Spec Arena report。"
         }
       ],
       "extra": {
         "area": "Spec Arena",
+        "arena_report_path": "wiki/specs/088-feishu-push/arena_report.md",
         "arena_subject_draft": "wiki/research/088-feishu-push-implementation-draft.md",
         "arena_subject_ticket": "000088",
+        "attacker_output_normalizer": "native-repair-only",
+        "attacker_schema_gate": "validate-attacker-schema",
+        "attacker_schema_repair": "attacker_output_v1",
+        "final_spec_path": "wiki/specs/088-feishu-push/implementation_spec.md",
+        "last_run_attacker_p0_count": "3",
+        "last_run_attacker_verdict": "needs_rework",
+        "last_run_caveat": "Strict runtime JSON output guard is loaded in daemon; latest live run produced schema-valid semantic attacker output, not a lifecycle-event fake green. Attacker verdict is needs_rework with 3 P0 blockers, so the Human Gate was resumed with hold-for-revision and the run correctly ended cancelled instead of merging.",
+        "last_run_failed_node": "none",
+        "last_run_gate_action": "hold-for-revision",
+        "last_run_graph_version": "9",
+        "last_run_id": "run-20260528-063947-a87d8a12",
+        "last_run_paused_node": "accept-attack-gate",
+        "last_run_repair_notes": "none",
+        "last_run_schema_valid": "true",
+        "last_run_status": "cancelled_after_hold_for_revision",
+        "llm_model": "minimax-cn/MiniMax-M2.7-highspeed",
+        "llm_runtime": "pi",
+        "native_repair_validated": "true",
+        "prompt_guard": "Spec Arena Runtime Guard v4",
         "protocol_ticket": "000091",
+        "runtime_json_guard_rejects_lifecycle_events": "true",
+        "runtime_json_output_guard": "true",
+        "schema_ref": "bb://schema/spec-arena/attacker-output-v1",
+        "schema_ref_validated": "true",
+        "schema_registry_path": "schemas/spec-arena/attacker-output-v1.schema.json",
         "scope": "088-feishu-push-arena",
-        "source_request": "用户表示 088 draft 已有，可直接进入 Spec Arena。",
-        "stage": "reviewer-fanout"
+        "source_request": "用户要求继续推进 graph/schema/repair 产品化；本轮在 LLM runtime 层增加 JSON output semantic guard，拒绝把 pi/AgentSession lifecycle event 当作 JSON 模型输出，并用 live Spec Arena run 验证 guard 后的真实 attacker 结果会阻止 merge。",
+        "stage": "runtime-json-guard-validated-attacker-needs-rework",
+        "strict_repair_daemon_restarted": "true",
+        "strict_repair_guard": "true",
+        "successful_run_graph_version": "9",
+        "successful_run_id": "run-20260527-165448-7cbcd56c",
+        "task_graph": "project/spec-arena-4-plus-1",
+        "task_graph_version": "9"
       },
       "metadata_error": null,
       "metadata_warnings": []

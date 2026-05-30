@@ -1,184 +1,64 @@
 {
   "notes": [
     {
-      "name": "2026-05-26-codebuddy-飞书接入方式调研-sdk-vs-webhook-vs-cli-对比与推荐.json",
-      "size": 2351,
-      "modified_at": "2026-05-26T16:24:20Z",
-      "excerpt": "Web 调研飞书开放平台官方文档、feishu-cli GitHub、自定义机器人 Webhook 指南",
-      "title": "飞书消息推送接入方式调研",
-      "time": "2026-05-27T00:23:00+08:00",
-      "source": "codebuddy",
-      "topic": "飞书接入方式调研：SDK vs Webhook vs CLI 对比与推荐"
-    },
-    {
-      "name": "2026-05-26-codebuddy-飞书消息推送接入迭代草案-research-iteration-draft-模拟输出.json",
-      "size": 1776,
-      "modified_at": "2026-05-26T16:32:06Z",
-      "excerpt": "模拟 research-iteration-draft 管线：内部代码调研 + 外部资料调研 → 合成迭代草案",
-      "title": "飞书接入迭代草案 iteration-draft",
-      "time": "2026-05-27T00:28:00+08:00",
-      "source": "codebuddy",
-      "topic": "飞书消息推送接入迭代草案 — research-iteration-draft 模拟输出"
-    },
-    {
-      "name": "2026-05-27-codex-blackboard-symphony-ticket-graph-autonomous-orchestration.json",
-      "size": 2281,
-      "modified_at": "2026-05-27T12:43:21Z",
-      "excerpt": "接受用户纠正：前一轮把 Symphony 切成小 POC 的表述过窄，且错误暗示它不应使用 Blackboard ticket/graph。",
-      "title": "纠正 Symphony 边界并创建 000092",
-      "time": "2026-05-27T12:43:21Z",
+      "name": "2026-05-27-codex-spec-arena-native-schema-repair-inbox-cleanup-agents-graph-registry.json",
+      "size": 2359,
+      "modified_at": "2026-05-27T16:10:02Z",
+      "excerpt": "在 AGENTS.md 增加“常用 TaskGraph 主图注册”，登记 inbox cleanup、research、Spec Arena、代码审查、KB/Wiki、nightly 等常用 graph ref，后续用户说语义即可直接启动。",
+      "title": "Spec Arena v8 productization and graph registry update",
+      "time": "2026-05-27T16:10:02Z",
       "source": "codex",
-      "topic": "blackboard-symphony-ticket-graph-autonomous-orchestration"
+      "topic": "Spec Arena native schema repair, inbox cleanup, AGENTS graph registry"
     },
     {
-      "name": "2026-05-27-codex-settings-runtime-first-panel-cleanup.json",
-      "size": 1894,
-      "modified_at": "2026-05-27T11:21:57Z",
-      "excerpt": "确认最近 tmp 提交把较完整的 runtime/connector/tool 信息压扁成粗略列表，导致状态灯、批量同步和工具更新入口在当前 UI 上丢失。",
-      "title": "Settings 面板改为 runtime 配置数据可视化",
-      "time": "2026-05-27T11:21:57Z",
-      "source": "Codex",
-      "topic": "Settings runtime-first panel cleanup"
-    },
-    {
-      "name": "2026-05-27-codex-settings-runtime-hides-non-actionable-lock-button.json",
-      "size": 1497,
-      "modified_at": "2026-05-27T11:54:24Z",
-      "excerpt": "在 bb_web/src/components/SettingsWorkbench.vue 中将工具按钮限制为可执行动作；OpenCode 这种 Homebrew 安装且目标版本不匹配的情况不再显示不可点击的锁定按钮。",
-      "title": "Settings runtime 移除不可执行版本锁定按钮",
-      "time": "2026-05-27T11:54:24Z",
+      "name": "2026-05-27-codex-spec-arena-v8-native-repair-live-success.json",
+      "size": 2405,
+      "modified_at": "2026-05-27T16:44:18Z",
+      "excerpt": "重启 Blackboard dev stack，使 bb_daemon 重新加载本轮 bb_core schema_validate native repair 代码；3001/3002/8060 均恢复。",
+      "title": "Spec Arena v8 native schema repair verified",
+      "time": "2026-05-27T16:44:18Z",
       "source": "codex",
-      "topic": "settings runtime hides non-actionable lock button"
+      "topic": "Spec Arena v8 native repair live success"
     },
     {
-      "name": "2026-05-27-codex-settings-runtime-panel-hides-internal-metadata.json",
-      "size": 1222,
-      "modified_at": "2026-05-27T11:33:40Z",
-      "excerpt": "在 bb_web/src/components/SettingsWorkbench.vue 隐藏规则同步下方的 source/target sha256 与 mtime 元数据。",
-      "title": "Settings runtime 面板收起无意义内部详情",
-      "time": "2026-05-27T11:33:40Z",
+      "name": "2026-05-28-codex-spec-arena-human-gate-verdict-summary-ui.json",
+      "size": 1830,
+      "modified_at": "2026-05-28T07:06:04Z",
+      "excerpt": "在 `TaskGraphRunPanel.vue` 的 paused human gate banner 中显示 graph node 的 `title` 和 `instructions`，不再只显示 node id/reason。",
+      "title": "Spec Arena gate now surfaces upstream verdict and blockers",
+      "time": "2026-05-28T07:06:04Z",
       "source": "codex",
-      "topic": "settings runtime panel hides internal metadata"
+      "topic": "Spec Arena human gate verdict summary UI"
     },
     {
-      "name": "2026-05-27-codex-settings-runtime-panel-hides-runtime-descriptions.json",
-      "size": 1218,
-      "modified_at": "2026-05-27T11:37:02Z",
-      "excerpt": "在 bb_web/src/components/SettingsWorkbench.vue 移除 runtime 卡片标题下方的描述行，例如 CodeBuddy runtime for codebase work。",
-      "title": "Settings runtime 卡片隐藏低价值描述行",
-      "time": "2026-05-27T11:37:02Z",
+      "name": "2026-05-28-codex-spec-arena-runtime-json-guard-live-validation.json",
+      "size": 3399,
+      "modified_at": "2026-05-28T07:00:38Z",
+      "excerpt": "在 `bb_core` LLM runtime 层加入 JSON output semantic guard：当 output_contract/output 要求 `artifact_type=json` 时，若模型输出只是 `turn_start`、`auto_retry_s...",
+      "title": "Spec Arena strict runtime guard run held for revision",
+      "time": "2026-05-28T07:00:38Z",
       "source": "codex",
-      "topic": "settings runtime panel hides runtime descriptions"
+      "topic": "Spec Arena runtime JSON guard live validation"
     },
     {
-      "name": "2026-05-27-codex-settings-runtime-panel-pi-shell-details-become-platform-aware.json",
-      "size": 2138,
-      "modified_at": "2026-05-27T12:17:10Z",
-      "excerpt": "后端 runtime connector 新增 `shell_resolution_required`，非 Windows 下 Pi shell source 返回 `default`，不再解析或暴露 Git Bash / PATH bash.exe。",
-      "title": "Settings runtime Pi shell platform cleanup",
-      "time": "2026-05-27T12:17:10Z",
+      "name": "2026-05-28-codex-spec-arena-schema-registry-handle-and-strict-repair-guard.json",
+      "size": 3399,
+      "modified_at": "2026-05-28T06:33:34Z",
+      "excerpt": "`schema_validate` 新增 `schema_ref`：支持 `bb://schema/...` / `schemas/...` 相对 handle，从 workspace `.bb_template/schemas` 加载 JSON schema，同时继续兼容内联 ...",
+      "title": "Spec Arena v9 schema_ref + strict attacker repair guard",
+      "time": "2026-05-28T06:33:34Z",
       "source": "codex",
-      "topic": "Settings runtime panel: Pi shell details become platform-aware"
+      "topic": "Spec Arena schema registry handle and strict repair guard"
     },
     {
-      "name": "2026-05-27-codex-settings-runtime-panel-user-facing-information-compression.json",
-      "size": 1435,
-      "modified_at": "2026-05-27T11:35:29Z",
-      "excerpt": "在 bb_web/src/components/SettingsWorkbench.vue 继续隐藏命令配置下方的实际启动、已配置命令、默认命令、启动参数等内部实现详情；仅保留命令与最大并发输入、保存反馈和错误提示。",
-      "title": "Settings runtime 面板继续压缩用户无意义信息",
-      "time": "2026-05-27T11:35:29Z",
+      "name": "2026-05-30-codex-spec-arena-productized-graph-contracts-handoff.json",
+      "size": 5307,
+      "modified_at": "2026-05-30T16:23:53Z",
+      "excerpt": "把 Spec Arena graph 推到 v21：保留现有 4 reviewer + 4 peer rating + aggregate + attacker + human gate + merge 执行形态，不增加重跑，不把流程改成 hack。",
+      "title": "Spec Arena v21 schema contracts and handoff",
+      "time": "2026-05-30T16:23:53Z",
       "source": "codex",
-      "topic": "settings runtime panel user-facing information compression"
-    },
-    {
-      "name": "2026-05-27-codex-settings-runtime-tool-action-four-state-lock-behavior.json",
-      "size": 2080,
-      "modified_at": "2026-05-27T12:02:18Z",
-      "excerpt": "按用户定义重做 runtime 工具按钮四态：未安装显示安装；版本不匹配显示升级到锁定版本或降级到锁定版本；已安装且符合期望显示不可点击的更新；组件不完整/外部安装显示修复。",
-      "title": "Settings runtime 工具按钮改为安装/升级/降级/禁用更新四态",
-      "time": "2026-05-27T12:02:18Z",
-      "source": "codex",
-      "topic": "settings runtime tool action four-state lock behavior"
-    },
-    {
-      "name": "2026-05-27-codex-settings-runtime-tool-version-and-install-method-separation.json",
-      "size": 2053,
-      "modified_at": "2026-05-27T11:30:25Z",
-      "excerpt": "响应用户反馈，将 Settings runtime 卡片中的 CLI 工具语义拆成“版本锁定”和“安装方式”两个独立字段，避免把版本锁定状态和 brew/npm 更新能力混成一个按钮状态。",
-      "title": "Settings 拆分 runtime 工具版本锁定与安装方式",
-      "time": "2026-05-27T11:30:25Z",
-      "source": "Codex",
-      "topic": "Settings runtime tool version and install method separation"
-    },
-    {
-      "name": "2026-05-27-codex-settings-runtime-view-edit-state-and-lock-action-labels.json",
-      "size": 1725,
-      "modified_at": "2026-05-27T11:50:39Z",
-      "excerpt": "在 bb_web/src/components/SettingsWorkbench.vue 为命令配置增加显式查看态/编辑态：默认显示 查看 标签、当前命令/最大并发和 编辑 按钮；进入编辑态后显示 编辑中 标签、输入框、保存 runtime、取消。",
-      "title": "Settings runtime 明确查看/编辑态并改锁定按钮文案",
-      "time": "2026-05-27T11:50:39Z",
-      "source": "codex",
-      "topic": "settings runtime view edit state and lock action labels"
-    },
-    {
-      "name": "2026-05-27-codex-spec-arena-4-plus-1-definition.json",
-      "size": 1774,
-      "modified_at": "2026-05-27T12:30:43Z",
-      "excerpt": "根据用户进一步澄清，将 000091 从普通多 agent review 更新为 4+1 Spec Arena。",
-      "title": "Spec Arena 4+1 定义更新到 000091",
-      "time": "2026-05-27T12:30:43Z",
-      "source": "codex",
-      "topic": "spec-arena-4-plus-1-definition"
-    },
-    {
-      "name": "2026-05-27-codex-spec-arena-draft-admission-human-gate.json",
-      "size": 1359,
-      "modified_at": "2026-05-27T12:34:29Z",
-      "excerpt": "将用户补充的 draft -> spec human gate 写入 000091。",
-      "title": "Spec Arena 补充 Draft Admission Human Gate",
-      "time": "2026-05-27T12:34:29Z",
-      "source": "codex",
-      "topic": "spec-arena-draft-admission-human-gate"
-    },
-    {
-      "name": "2026-05-27-codex-spec-arena-single-draft-multi-agent-audit.json",
-      "size": 2229,
-      "modified_at": "2026-05-27T12:29:15Z",
-      "excerpt": "读取 000077，确认其范围是 Spec 管线前段：Prompt Intent、Existing Truth、External Research/Skip、Evidence Bundle 到 Draft。",
-      "title": "Spec Arena 定义已拆出 000091",
-      "time": "2026-05-27T12:29:15Z",
-      "source": "codex",
-      "topic": "spec-arena-single-draft-multi-agent-audit"
-    },
-    {
-      "name": "2026-05-27-codex-spec-arena-symphony-pilot-scope-boundary.json",
-      "size": 1843,
-      "modified_at": "2026-05-27T12:40:43Z",
-      "excerpt": "评估 `wiki/research/2026-05-26-openai-symphony-codex-orchestration.md`：394 行，结构完整，覆盖 Symphony 定位、架构、调度、工具集成、与 TaskGraph 对比和借鉴意义。",
-      "title": "Symphony 可作为 Spec Arena pilot 但需拆出独立范围",
-      "time": "2026-05-27T12:40:43Z",
-      "source": "codex",
-      "topic": "spec-arena-symphony-pilot-scope-boundary"
-    },
-    {
-      "name": "2026-05-27-codex-spec-arena-ticket-vs-spec-boundary.json",
-      "size": 1433,
-      "modified_at": "2026-05-27T12:32:52Z",
-      "excerpt": "将用户补充的职责边界写入 000091：ticket 决定行为，采用 BDD；Spec Arena 最终产物是 implementation spec，决定具体实现、风险、测试和验收映射。",
-      "title": "Spec Arena 补充 ticket/spec 职责边界",
-      "time": "2026-05-27T12:32:52Z",
-      "source": "codex",
-      "topic": "spec-arena-ticket-vs-spec-boundary"
-    },
-    {
-      "name": "2026-05-27-dev-agent-settings-agents-页面拆分实施完成.json",
-      "size": 1318,
-      "modified_at": "2026-05-27T11:07:23Z",
-      "excerpt": "后端 validation.rs: scope 验证增加 'system' 选项",
-      "title": "Inbox Note",
-      "time": "2026-05-27T07:34:16Z",
-      "source": "dev-agent",
-      "topic": "Settings/Agents 页面拆分实施完成"
+      "topic": "Spec Arena productized graph contracts handoff"
     }
   ]
 }

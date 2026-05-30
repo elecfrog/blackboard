@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "title": "Spec Arena strict runtime guard run held for revision",
+  "time": "2026-05-28T07:00:38Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "Spec Arena runtime JSON guard live validation",
+  "done": [
+    "在 `bb_core` LLM runtime 层加入 JSON output semantic guard：当 output_contract/output 要求 `artifact_type=json` 时，若模型输出只是 `turn_start`、`auto_retry_start` 等 runtime lifecycle event，会以 `invalid_llm_output` 失败；AgentSession 路径会按 transient retry 策略重试，最终仍不合格才失败。",
+    "重启 bb daemon 后执行 `project/spec-arena-4-plus-1` v9 live run `run-20260528-063947-a87d8a12`。该 run 通过 reviewer、peer rating、aggregate、attacker、schema validate，并在 `accept-attack-gate` 暂停。",
+    "确认 attacker 输出不是 lifecycle fake green：`validate-attacker-schema` 返回 `valid=true`、`schema_ref=bb://schema/spec-arena/attacker-output-v1`、`repair_notes=[]`，verdict 为 `needs_rework`，含 3 个 P0。",
+    "根据 attacker 的 P0 结论在 Human Gate 选择 `hold-for-revision`；run 最终为 `cancelled`，没有进入 merge，符合“有阻塞攻击时不能自动产出最终 spec”的产品语义。",
+    "更新 000093：status=`in_progress`，记录 latest run、gate action、attacker verdict/P0 count、runtime JSON guard 状态，并追加 latest run attachment。"
+  ],
+  "validation": [
+    "`cargo fmt`：通过。",
+    "`cargo test schema_validate`：通过，11 passed。",
+    "`cargo test runtime::llm_node`：通过，4 passed，覆盖 runtime lifecycle event、retry event、domain JSON type 字段。",
+    "`python3 -m json.tool .bb_template/projects/blackboard/task_graphs/spec-arena-4-plus-1.json .bb_template/schemas/spec-arena/attacker-output-v1.schema.json`：通过。",
+    "`curl http://127.0.0.1:3001/healthz`：ok。",
+    "TaskGraph run `run-20260528-063947-a87d8a12`：schema valid，attacker verdict=`needs_rework`，Human Gate `hold-for-revision` 后 status=`cancelled`。",
+    "`mcp__bb__.read_ticket_by_id 000093`：通过。",
+    "`mcp__bb__.update_ticket 000093`：通过，extra 和 attachment 已更新。"
+  ],
+  "next_step": [
+    "修订 088 implementation spec 的 P0：通知 spawn 位置必须从同步 `run_graph` 移到拥有 Tokio runtime 的 `daemon::run` outcome 分支。",
+    "修订不存在的 `InternalRunOutcome` 类型，改用真实 `RunOutcome`。",
+    "补齐 `RunOutcome::Cancelled` 的映射或错误处理策略，并同步 000088 BDD 是否覆盖 Cancelled。",
+    "Clarification gate 需要澄清 arena_report 与 ResourceBundle peer review 数据是否来自同一 run；澄清前不要把当前 spec 当作可实现版本。",
+    "产品化下一步可以让 Human Gate 自动显示 attacker verdict/P0 摘要，并在 `needs_rework` 或 P0 存在时默认高亮 `hold-for-revision`。"
+  ],
+  "related_locations": [
+    "/Users/ornizhou/development/blackboard/bb_backend/crates/bb_core/src/task_graph/nodes/runtime/llm_node.rs",
+    "/Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/task_graphs/spec-arena-4-plus-1.json",
+    "/Users/ornizhou/development/blackboard/.bb_template/schemas/spec-arena/attacker-output-v1.schema.json",
+    "run-20260528-063947-a87d8a12"
+  ],
+  "related_tickets": [
+    "000093"
+  ],
+  "attachments": [],
+  "extra": {}
+}

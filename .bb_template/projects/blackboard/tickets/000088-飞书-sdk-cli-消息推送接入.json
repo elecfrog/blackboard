@@ -3,85 +3,80 @@
   "id": "000088",
   "lane": "bbt",
   "title": "飞书 Webhook 消息推送（TaskGraph 终态通知）",
-  "summary": "TaskGraph run 到达终态（Succeeded/Paused/Failed）时，通过飞书自定义机器人 Webhook POST Interactive Card 到指定群组，实现用户离开电脑后的 IM 通知闭环。方案选型：自定义机器人 Webhook（无需 token 管理、无 Node.js 依赖）。",
+  "summary": "为 Blackboard TaskGraph daemon 增加飞书 Webhook 终态通知的 MVP：当 graph run 以 Succeeded、Paused、Failed 结束时，按配置发送一张脱敏的飞书互动卡片；RunOutcome::Cancelled 必须被显式匹配，但本阶段不发送通知。Ticket 定义行为边界，implementation spec 负责具体实现、风险、测试和验收映射。",
   "stories": [
     {
-      "id": "26016245-a46c-47d0-a55e-03481b375251",
-      "given": "用户已在 config/task_graph_runner.toml 的 [feishu] section 配置了 webhook_url，且 enabled = true",
-      "when": "系统调用 feishu::send_notification 发送一条消息",
-      "then": "消息成功投递到飞书群组（HTTP 200 + code=0）"
+      "id": "34d1f052-ff26-4c99-9150-c414e606f2fb",
+      "given": "项目配置启用了 feishu 通知，并提供有效 webhook_url",
+      "when": "TaskGraph run 结束为 Succeeded、Paused 或 Failed",
+      "then": "daemon 在不改变原始 RunOutcome 的前提下调度一次非阻塞飞书 Webhook 推送，卡片包含项目、graph、run_id、终态、耗时和可选详情链接。"
     },
     {
-      "id": "1f46e586-3c4d-42d5-9859-4eaa8b5b0d7b",
-      "given": "TaskGraph run 进入 Succeeded / Paused / Failed 终态",
-      "when": "daemon.rs::run_graph 中 execute_run 返回 RunOutcome 后检测到 [feishu] enabled",
-      "then": "自动 POST Interactive Card 到 webhook_url，卡片包含项目名、任务名、状态（颜色区分）、耗时、查看详情链接"
+      "id": "8f2aa40b-b85c-4a94-b559-4b8949790d9c",
+      "given": "飞书 webhook 无效、不可达、超时，或飞书返回非成功状态/code",
+      "when": "daemon 尝试发送终态通知",
+      "then": "Blackboard 只记录脱敏 warning，不 panic，不阻塞 graph 结束，不改变原始 run 状态。"
     },
     {
-      "id": "7138819e-b08f-40bb-84fc-d075f2652fcf",
-      "given": "webhook_url 无效或网络不可达",
-      "when": "推送模块尝试 HTTP POST",
-      "then": "reqwest 返回错误，tracing::warn 记录日志，不 panic，不阻塞 run，outcome 原样返回"
+      "id": "00a275ed-c012-4c57-acf6-f69e8953d481",
+      "given": "运行结果为 RunOutcome::Cancelled",
+      "when": "daemon 处理 graph 终态",
+      "then": "代码必须显式匹配 Cancelled 分支并跳过飞书通知，避免未来新增分支或默认匹配造成误通知。"
     },
     {
-      "id": "497d7498-c261-4c8e-a68b-857f97f01c48",
-      "given": "开发者需要本地验证飞书推送配置是否正确",
-      "when": "执行 bb_cli feishu test-push",
-      "then": "向配置的 webhook_url 发送测试卡片并在终端输出投递结果（code + msg）"
+      "id": "baeef068-dc6a-4413-a50a-3a50159a11c1",
+      "given": "操作者运行 bb_cli feishu test-push",
+      "when": "配置可用且飞书返回 HTTP 成功和业务 code=0",
+      "then": "CLI 输出成功摘要；失败时输出脱敏错误并返回非 0，不打印完整 webhook URL。"
+    },
+    {
+      "id": "0798d9aa-4144-4add-9a75-89f098d28c1e",
+      "given": "配置缺失或 enabled=false",
+      "when": "TaskGraph run 结束或操作者运行测试命令",
+      "then": "daemon 不发送通知；测试命令给出明确的配置缺失/未启用提示。"
     }
   ],
   "risks": [
     {
       "id": "webhook-url-leak",
-      "description": "Webhook URL 泄露后可被第三方滥用发送垃圾消息到群",
-      "mitigation": "URL 不提交到公开 git；未来可开启飞书签名校验"
+      "description": "webhook_url 包含敏感 token，日志、CLI、ticket/report 和错误链路可能泄露完整 URL。",
+      "mitigation": "所有输出只显示 <redacted> 或 host 级信息；禁止在命令参数中传 webhook_url，测试覆盖错误日志脱敏。",
+      "status": "open"
     },
     {
-      "id": "reqwest-compile-cost",
-      "description": "新增 reqwest 依赖增加 bb_daemon 编译时间",
-      "mitigation": "使用 rustls-tls feature 避免 OpenSSL；是一次性成本"
+      "id": "async-runtime-boundary",
+      "description": "daemon run 层和 TaskGraph runner 的同步/异步边界若不清晰，错误选择 tokio::spawn 会导致不可编译或取消语义不明确。",
+      "mitigation": "当前 draft 已明确把 run_graph(...) 改为返回 GraphRunResult，并只在 daemon::run outcome 分支使用 std::thread::spawn + reqwest::blocking::Client 调度通知，不依赖 Tokio runtime。",
+      "status": "mitigated"
+    },
+    {
+      "id": "feishu-response-contract",
+      "description": "飞书 rate limit、业务 code、空 body/非 JSON body 的真实协议行为需要官方文档或降级为防御性假设。",
+      "mitigation": "最终 spec 中把未查证外部事实标为 hypothesis/open；实现只做保守错误处理，不把无引用假设写成事实。",
+      "status": "open"
     },
     {
       "id": "card-json-malformed",
-      "description": "卡片 JSON 拼接错误导致飞书返回 9499",
-      "mitigation": "单元测试覆盖 build_card 输出结构"
+      "description": "互动卡片 JSON 构造错误会导致飞书拒绝请求。",
+      "mitigation": "使用 serde_json::json!/Serialize 构造，添加 snapshot 或结构单测，避免字符串拼接。",
+      "status": "open"
     }
   ],
-  "progress_record": [
-    {
-      "at": "2026-05-27",
-      "summary": "完成技术调研（4份研究文档），确定正式方案：自定义机器人 Webhook，排除自建应用 Bot 和 lark-cli",
-      "evidence": [
-        "wiki/research/088-feishu-push-implementation-draft.md"
-      ]
-    },
-    {
-      "at": "2026-05-27",
-      "summary": "Draft Admission 已完成：用户明确准入 088 draft 进入 Spec Arena。本轮 arena 独立记录在质量票 000093，000088 继续保持 BDD 行为边界，不承载 reviewer/attacker 的实现审计细节。",
-      "evidence": []
-    },
-    {
-      "at": "2026-05-27",
-      "summary": "Next step: 等待 000093 产出最终 implementation spec 后，再基于 spec 决定是否进入 088 实现阶段。",
-      "evidence": []
-    }
-  ],
+  "progress_record": [],
   "attachments": [
     {
       "kind": "wiki",
       "target": "wiki/research/088-feishu-push-implementation-draft.md",
-      "label": "实现 Draft",
-      "description": "正式实现方案（综合 4 份调研结论）"
+      "label": "Implementation Draft"
+    },
+    {
+      "kind": "ticket",
+      "target": "000093",
+      "label": "Spec Arena dogfood"
     }
   ],
   "status": "in_progress",
-  "created_at": "2026-05-26",
-  "updated_at": "2026-05-27",
-  "extra": {
-    "area": "TaskGraph",
-    "depends_on": "000065",
-    "kind": "execution-subtrack",
-    "parent": "000065",
-    "scope": "feishu-webhook-push"
-  }
+  "created_at": "2026-05-28",
+  "updated_at": "2026-05-28",
+  "extra": {}
 }

@@ -1758,6 +1758,45 @@ fn update_ticket_spec_migrates_legacy_markdown_to_json_ticket() {
 }
 
 #[test]
+fn update_ticket_recovers_invalid_json_ticket_with_full_bdd_patch() {
+    let (_temp, board) = fixture();
+    fs::write(
+        board.root().join("tickets/000042-corrupt.json"),
+        r#"{"schema_version":1,"id":"not-a-ticket","scope":"project","title":"Graph"}"#,
+    )
+    .unwrap();
+    write_ticket_index_counter(&board, "000042");
+
+    let updated = board
+        .update_ticket(UpdateTicketInput {
+            id: "000042".to_string(),
+            frontmatter: Some(TicketFrontmatterPatch {
+                title: Some("Recovered".to_string()),
+                lane: Some("bbt".to_string()),
+                status: Some("in_progress".to_string()),
+                spec: Some(ticket_spec("恢复后的 BDD 摘要。")),
+                ..TicketFrontmatterPatch::default()
+            }),
+        })
+        .unwrap();
+
+    assert_eq!(updated.ticket.title, "Recovered");
+    assert_eq!(updated.ticket.lane, "bbt");
+    assert_eq!(
+        updated
+            .ticket
+            .spec
+            .as_ref()
+            .map(|spec| spec.summary.as_str()),
+        Some("恢复后的 BDD 摘要。")
+    );
+
+    let entry = board.read_ticket_by_id("000042").unwrap();
+    assert!(entry.metadata_error.is_none(), "{:?}", entry.metadata_error);
+    assert_eq!(entry.title.as_deref(), Some("Recovered"));
+}
+
+#[test]
 fn patch_remove_drops_extra_key_without_migration() {
     let (_temp, board) = fixture();
     let mut input = create_ticket_input("Needs Cleanup");

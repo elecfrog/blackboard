@@ -160,6 +160,51 @@
       "at": "2026-05-27",
       "summary": "Next step: 为 Symphony 单独创建战略级 ticket/epic，定义 ticket-driven + graph-executed 的 Blackboard autonomous orchestration，而不是把它塞进 091。",
       "evidence": []
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-spec-arena-4-plus-1-definition.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-spec-arena-4-plus-1-definition.json",
+        "Title: Spec Arena 4+1 定义更新到 000091\nTime: 2026-05-27T12:30:43Z\nSource: codex\nProject: blackboard\nTopic: spec-arena-4-plus-1-definition\nDone:\n- 根据用户进一步澄清，将 000091 从普通多 agent review 更新为 4+1 Spec Arena。\n- 定义 4 个 reviewer 独立审同一 draft，并输出结构化 P0/P1/P2 findings、证据、事实/推断标注、验收缺口和建议修改。\n- 定义 4 个 reviewer 互相对全部 review 做 sorting 与 star rating，并说明排序理由、独特贡献、遗漏项和误报项。\n- 定义 1 个 perspective attacker 攻击多份文件：原始 draft、4 份 review、互评 sorting/starring、existing truth、external research、原始 intent 和约束。\n- 定义 clarification gate：attacker 未澄清项只能作为 open concern/hypothesis，只有 accepted viewpoints 才能 merge。\n- 定义最终产物：完整 spec，而不是 arena report 停留态；完整 spec 需要包含采纳观点、未采纳理由和剩余 open questions。\nValidation:\n- mcp__bb__.read_ticket_by_id 000091: 通过\n- mcp__bb__.update_ticket 000091: 通过，标题更新为“定义 Spec Arena：4+1 单 Draft 多 Agent 审计管线”\nNext step:\n- 下一步可以把 000091 继续拆成实现子票：review output schema、peer rating rubric、attacker output schema、clarification gate 状态机、arena aggregator merge contract、最小 Task Graph 模板。\nRelated locations:\n- /Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/tickets/000091-spec-arena-single-draft-multi-agent-audit.json",
+        "cleanup reason: Spec Arena 4+1 定义更新到 000091，related_locations 明确指向 000091 ticket 文件，title 含 000091 标识"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-spec-arena-draft-admission-human-gate.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-spec-arena-draft-admission-human-gate.json",
+        "Title: Spec Arena 补充 Draft Admission Human Gate\nTime: 2026-05-27T12:34:29Z\nSource: codex\nProject: blackboard\nTopic: spec-arena-draft-admission-human-gate\nDone:\n- 将用户补充的 draft -> spec human gate 写入 000091。\n- 更新 000091 summary：Draft 生成后必须先经过 Draft Admission Human Gate，由人判断 draft 质量是否准入下一阶段，通过后才进入 4+1 Spec Arena。\n- 新增 story：系统准备从 draft 进入 Spec Arena 或完整 spec 生成阶段时，必须有人基于质量 rubric 选择 approve、request rewrite、request more research 或 reject；系统不得自动晋级。\n- 新增风险 `draft-admission-rubric-ambiguity`：如果 human gate 没有清晰 rubric，准入标准会漂移。\nValidation:\n- mcp__bb__.update_ticket 000091: 通过\nNext step:\n- 后续需要把 Draft Admission Human Gate 的 rubric 做成可执行/可视化字段：BDD 覆盖、事实源充分性、证据标注、目标/非目标、风险/验收可审计性、open questions。\nRelated locations:\n- /Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/tickets/000091-spec-arena-single-draft-multi-agent-audit.json",
+        "cleanup reason: Draft Admission Human Gate 补充写入 000091，related_locations 明确指向 000091 ticket 文件"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-spec-arena-single-draft-multi-agent-audit.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-spec-arena-single-draft-multi-agent-audit.json",
+        "Title: Spec Arena 定义已拆出 000091\nTime: 2026-05-27T12:29:15Z\nSource: codex\nProject: blackboard\nTopic: spec-arena-single-draft-multi-agent-audit\nDone:\n- 读取 000077，确认其范围是 Spec 管线前段：Prompt Intent、Existing Truth、External Research/Skip、Evidence Bundle 到 Draft。\n- 检查既有实验目录 `wiki/specs/_experiments/pregel-topology-mutation/`，确认已有单 draft + 多 agent review + review-quality-analysis 的原型素材。\n- 根据用户澄清，将 Spec Arena 定义为“一个 draft 被多个 agent 审计”的 arena，而不是多个 draft 的竞争场。\n- 新建 ticket 000091：定义 Spec Arena：单 Draft 多 Agent 审计管线。首批 perspective 包含 reviewer 与 perspective attacker。\n- 在 000077 追加记录，标明后段扩展已拆到 000091。\nValidation:\n- mcp__bb__.read_ticket_by_id 000077: 通过\n- mcp__bb__.search_tickets Spec Arena / review attacker / draft 多 agent 审计: 通过，无重复命中\n- mcp__bb__.list_lanes: 通过，选择 bbp lane 记录产品定义\n- mcp__bb__.create_ticket 000091: 通过\n- mcp__bb__.append_ticket_sections 000077: 通过\nNext step:\n- 围绕 000091 继续定义结构化 review output schema、perspective 配置、aggregator 合并规则和最小 Task Graph 模板。\n- Perspective attacker 需要明确：它只能把无证据项标为 hypothesis，不能把猜测升级为 blocking fact。\nRelated locations:\n- /Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/tickets/000091-spec-arena-single-draft-multi-agent-audit.json\n- /Users/...",
+        "cleanup reason: Spec Arena 定义拆出 000091，validation 明确记录 create_ticket 000091 通过，related_locations 指向 000091 文件"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-spec-arena-symphony-pilot-scope-boundary.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-spec-arena-symphony-pilot-scope-boundary.json",
+        "Title: Symphony 可作为 Spec Arena pilot 但需拆出独立范围\nTime: 2026-05-27T12:40:43Z\nSource: codex\nProject: blackboard\nTopic: spec-arena-symphony-pilot-scope-boundary\nDone:\n- 评估 `wiki/research/2026-05-26-openai-symphony-codex-orchestration.md`：394 行，结构完整，覆盖 Symphony 定位、架构、调度、工具集成、与 TaskGraph 对比和借鉴意义。\n- 判断该文档适合作为 Spec Arena dogfood/pilot 的真实素材，但它是 research report，不是 draft；必须先派生窄范围 draft，再进入 Draft Admission Human Gate。\n- 在 000091 追加记录：000091 只定义 arena 机制和输出契约；Symphony pilot 必须拆成独立子票/实验，不得把 Symphony 上层 dispatcher、TaskGraph 整合、workspace isolation 等大活混入 091 机制实现。\nValidation:\n- wc -l wiki/research/2026-05-26-openai-symphony-codex-orchestration.md: 394 行\n- rg headings: 通过，确认文档结构从 TL;DR 到后续建议完整\n- mcp__bb__.read_ticket_by_id 000091: 通过\n- mcp__bb__.append_ticket_sections 000091: 通过\nNext step:\n- 如继续推进，创建独立 pilot ticket，限定一个问题，例如“是否引入 Symphony-style tracker dispatcher 到 Blackboard TaskGraph 之上”；明确非目标：不实现完整 Symphony、不改 TaskGraph 执行内核、不接 Linear。\nRelated locations:\n- /Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/wiki/research/2026-05-26-openai-symphony-codex-orchestration.md\n- /Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/tickets/000091-spec-arena-single...",
+        "cleanup reason: Symphony pilot scope boundary 追加到 000091，related_locations 明确指向 000091 ticket 文件"
+      ]
+    },
+    {
+      "at": "2026-05-27",
+      "summary": "Consolidated inbox note `2026-05-27-codex-spec-arena-ticket-vs-spec-boundary.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-spec-arena-ticket-vs-spec-boundary.json",
+        "Title: Spec Arena 补充 ticket/spec 职责边界\nTime: 2026-05-27T12:32:52Z\nSource: codex\nProject: blackboard\nTopic: spec-arena-ticket-vs-spec-boundary\nDone:\n- 将用户补充的职责边界写入 000091：ticket 决定行为，采用 BDD；Spec Arena 最终产物是 implementation spec，决定具体实现、风险、测试和验收映射。\n- 更新 000091 summary：Spec 不能取代 ticket，而是承接 ticket 的行为边界。\n- 新增 story：ticket 与最终 spec 同时存在时，ticket 只描述用户可观察行为、边界和验收语义；spec 描述如何改代码/数据/接口/图、主要风险、测试矩阵和上线/回滚计划。\n- 新增风险 `ticket-spec-boundary-blur`，避免 ticket 被实现细节污染或 spec 重复定义产品行为。\nValidation:\n- mcp__bb__.update_ticket 000091: 通过\nNext step:\n- 后续定义 final implementation spec 模板时，固定章节应包含：关联 ticket/BDD 行为边界、事实源、设计决策、实现计划、风险与回滚、测试矩阵、验收映射、采纳/拒绝观点和 open questions。\nRelated locations:\n- /Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/tickets/000091-spec-arena-single-draft-multi-agent-audit.json",
+        "cleanup reason: ticket/spec 职责边界补充写入 000091，related_locations 明确指向 000091 ticket 文件"
+      ]
     }
   ],
   "attachments": [

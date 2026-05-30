@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "title": "Spec Arena v8 productization and graph registry update",
+  "time": "2026-05-27T16:10:02Z",
+  "source": "codex",
+  "project": "blackboard",
+  "topic": "Spec Arena native schema repair, inbox cleanup, AGENTS graph registry",
+  "done": [
+    "在 AGENTS.md 增加“常用 TaskGraph 主图注册”，登记 inbox cleanup、research、Spec Arena、代码审查、KB/Wiki、nightly 等常用 graph ref，后续用户说语义即可直接启动。",
+    "将 project/spec-arena-4-plus-1 更新到 v8：移除临时 shell normalize-attacker-output 节点，attacker 直接进入 validate-attacker-schema，merge/report 读取 schema_validate.output.data。",
+    "在 bb_core schema_validate 增加 attacker_output_v1 deterministic repair，并删除临时 scripts/task_graph_normalize_attacker_output.js。",
+    "启动 system/inbox-batch-cleanup：默认批次 run-20260527-160450-8699cc86 成功但删除 0 条；随后 batch-count=20 run-20260527-160759-8844c78c 成功归并 19 条 inbox note 到 000090/000091/000093，当前 inbox 列表为空。"
+  ],
+  "validation": [
+    "cargo test schema_validate: 7 passed。",
+    "TaskGraph API PATCH project/spec-arena-4-plus-1: validation passed，保存为 graph version 8。",
+    "inbox cleanup run-20260527-160759-8844c78c: succeeded；inbox index rebuilt、ticket index rebuilt、check_ticket_ids passed、qmd embed passed。",
+    "Spec Arena live run run-20260527-155513-70928a1c 在 validate-attacker-schema 失败；原因是当前运行中的 daemon 尚未加载本轮 Rust native repair，cargo test 已验证修复逻辑，需重启 daemon 后重跑确认。"
+  ],
+  "next_step": [
+    "重启/热更新 bb daemon 后重跑 project/spec-arena-4-plus-1，确认 attacker_output_v1 repair 在 live TaskGraph 中生效。",
+    "如果 live v8 通过 schema gate，再走 Human Gate 并写出最终 spec/report。"
+  ],
+  "related_locations": [
+    "AGENTS.md",
+    "bb_backend/crates/bb_core/src/task_graph/nodes/schema_validate.rs",
+    ".bb_template/projects/blackboard/task_graphs/spec-arena-4-plus-1.json",
+    ".bb_template/projects/blackboard/wiki/specs/088-feishu-push/implementation_spec.md",
+    ".bb_template/projects/blackboard/wiki/specs/088-feishu-push/arena_report.md"
+  ],
+  "related_tickets": [
+    "000093"
+  ],
+  "attachments": [],
+  "extra": {}
+}

@@ -32,7 +32,7 @@ pub(crate) use spec::validate_ticket_attachments;
 use spec::{
     normalize_ticket_spec, parse_ticket_json_document, parse_ticket_spec_field,
     render_ticket_json_document, render_ticket_spec_body, serialize_ticket_json_document,
-    serialize_ticket_spec, TICKET_SPEC_FRONTMATTER_KEY,
+    serialize_ticket_spec, TicketJsonDocument, TICKET_SPEC_FRONTMATTER_KEY,
 };
 
 pub const TICKET_STATUSES: [&str; 6] = [
@@ -437,8 +437,18 @@ impl Blackboard {
         original: &str,
         frontmatter_patch: TicketFrontmatterPatch,
     ) -> Result<TicketWriteResult, InboxError> {
-        let mut document =
-            parse_ticket_json_document(original).map_err(InboxError::InvalidInput)?;
+        let mut document = match parse_ticket_json_document(original) {
+            Ok(document) => document,
+            Err(message) => {
+                return self.recover_invalid_json_ticket(
+                    id,
+                    entry,
+                    path,
+                    frontmatter_patch,
+                    message,
+                );
+            }
+        };
         if document.id != id {
             return Err(InboxError::InvalidInput(format!(
                 "ticket JSON id `{}` does not match requested id `{id}`",
@@ -505,6 +515,105 @@ impl Blackboard {
                 file_name: entry.name.clone(),
                 path: format!("tickets/{}", entry.name),
                 attachments: document.attachments.clone(),
+                spec: Some(spec),
+                extra: document.extra,
+            },
+            maintenance: self.ticket_maintenance(),
+        })
+    }
+
+    fn recover_invalid_json_ticket(
+        &self,
+        id: &str,
+        entry: &TicketEntry,
+        path: &Path,
+        frontmatter_patch: TicketFrontmatterPatch,
+        parse_error: String,
+    ) -> Result<TicketWriteResult, InboxError> {
+        let TicketFrontmatterPatch {
+            title,
+            status,
+            lane,
+            spec,
+            attachments,
+            extra,
+            remove,
+        } = frontmatter_patch;
+
+        if !remove.is_empty() {
+            return Err(InboxError::InvalidInput(
+                "remove is not supported when recovering an invalid JSON ticket".to_string(),
+            ));
+        }
+
+        let Some(spec) = spec else {
+            return Err(InboxError::InvalidInput(parse_error));
+        };
+        let Some(title) = title else {
+            return Err(InboxError::InvalidInput(format!(
+                "{parse_error}; recovering an invalid JSON ticket requires frontmatter.title"
+            )));
+        };
+        let Some(lane) = lane else {
+            return Err(InboxError::InvalidInput(format!(
+                "{parse_error}; recovering an invalid JSON ticket requires frontmatter.lane"
+            )));
+        };
+
+        let meta = self.read_project_meta()?;
+        let lane = validate_ticket_lane(&lane, &meta.lanes)?.id.clone();
+        let title = validate_required_string("title", &title)?.to_string();
+        let status = match status {
+            Some(status) => validate_ticket_status(&status)?.to_string(),
+            None => default_ticket_status().to_string(),
+        };
+        let spec = normalize_ticket_spec(spec)?;
+        let attachments = attachments.unwrap_or_default();
+        validate_ticket_attachments(&attachments)?;
+        for (key, value) in &extra {
+            reject_extra_frontmatter_key(key)?;
+            validate_required_string("extra key", key)?;
+            if key == "assignee" {
+                agents_registry::validate_assignee_for_project(
+                    &self.workspace_root()?,
+                    self.name(),
+                    value,
+                )?;
+            }
+        }
+
+        let date = Utc::now().format("%Y-%m-%d").to_string();
+        let created_at = entry.created_at.clone().unwrap_or_else(|| date.clone());
+        let document = TicketJsonDocument {
+            schema_version: 1,
+            id: id.to_string(),
+            lane,
+            title,
+            summary: spec.summary.clone(),
+            stories: spec.stories.clone(),
+            risks: spec.risks.clone(),
+            progress_record: spec.progress_record.clone(),
+            attachments,
+            status,
+            created_at,
+            updated_at: date.clone(),
+            extra,
+        };
+        let spec = document.spec();
+        let content = serialize_ticket_json_document(&document)?;
+        crate::write_file_atomic(path, &content)?;
+
+        Ok(TicketWriteResult {
+            ticket: TicketWriteTicket {
+                id: id.to_string(),
+                lane: document.lane,
+                title: document.title,
+                status: document.status,
+                created_at: document.created_at,
+                updated_at: date,
+                file_name: entry.name.clone(),
+                path: format!("tickets/{}", entry.name),
+                attachments: document.attachments,
                 spec: Some(spec),
                 extra: document.extra,
             },

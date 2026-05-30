@@ -1,13 +1,15 @@
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 use crate::fs_util::resolve_slash;
-use crate::task_graph::definition::types::{TaskGraphError, TaskGraphNode};
+use crate::task_graph::definition::types::{
+    TaskGraphError, TaskGraphNode, TaskGraphValidationError,
+};
 use crate::task_graph::nodes::eval;
 use crate::task_graph::pregel::outcome::NodeOutcome;
 use crate::task_graph::pregel::runner::RunnerOptions;
@@ -18,12 +20,16 @@ use crate::task_graph::run_state::{
 const RUNTIME_NAME: &str = "schema_validate";
 const DEFAULT_VALUE_KEY: &str = "value";
 const MAX_ERRORS: usize = 80;
+const MAX_SCHEMA_REF_DEPTH: usize = 16;
 
 #[derive(Debug, Clone, Deserialize)]
 struct SchemaValidateConfig {
     #[serde(default)]
     inputs: Option<Value>,
-    schema: Value,
+    #[serde(default)]
+    schema: Option<Value>,
+    #[serde(default)]
+    schema_ref: Option<String>,
     #[serde(default = "default_value_key")]
     value_key: String,
     #[serde(default)]
@@ -83,8 +89,9 @@ pub fn execute_schema_validate_node(
 
     let raw_value = resolve_source_value(&config, &inputs, run);
     let (value, repair_notes) = repair_source_value(&config, raw_value);
+    let schema = resolve_schema_value(&config, &opts.workspace_root)?;
     let mut errors = Vec::new();
-    validate_json_schema(&value, &config.schema, "$", &mut errors);
+    validate_json_schema(&value, &schema, "$", &mut errors);
     let valid = errors.is_empty();
 
     let artifact_path = if valid {
@@ -96,6 +103,7 @@ pub fn execute_schema_validate_node(
     let output = json!({
         "valid": valid,
         "schema_name": config.schema_name,
+        "schema_ref": config.schema_ref,
         "errors": errors,
         "repair_notes": repair_notes,
         "data": value,
@@ -142,16 +150,314 @@ fn default_value_key() -> String {
     DEFAULT_VALUE_KEY.to_string()
 }
 
+fn resolve_schema_value(
+    config: &SchemaValidateConfig,
+    workspace_root: &Path,
+) -> Result<Value, TaskGraphError> {
+    if let Some(schema_ref) = config
+        .schema_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|schema_ref| !schema_ref.is_empty())
+    {
+        let path = schema_ref_path(workspace_root, schema_ref)?;
+        let content = fs::read_to_string(&path).map_err(|source| TaskGraphError::Io {
+            path: path.clone(),
+            source,
+        })?;
+        return serde_json::from_str(&content)
+            .map_err(|source| TaskGraphError::Parse { path, source });
+    }
+
+    config.schema.clone().ok_or_else(|| {
+        schema_config_error("schema_validate requires config.schema or config.schema_ref")
+    })
+}
+
+fn schema_ref_path(workspace_root: &Path, schema_ref: &str) -> Result<PathBuf, TaskGraphError> {
+    let mut value = schema_ref.trim();
+    if let Some(stripped) = value.strip_prefix("bb://schema/") {
+        value = stripped;
+    }
+    if let Some(stripped) = value.strip_prefix("schemas/") {
+        value = stripped;
+    }
+    if value.is_empty() {
+        return Err(schema_config_error("schema_ref must not be empty"));
+    }
+    if value.contains('\\') {
+        return Err(schema_config_error(
+            "schema_ref must use slash-separated relative paths",
+        ));
+    }
+
+    let relative = PathBuf::from(value);
+    if relative.is_absolute()
+        || relative.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::Prefix(_) | Component::RootDir
+            )
+        })
+    {
+        return Err(schema_config_error(
+            "schema_ref must stay inside the workspace schema registry",
+        ));
+    }
+
+    let mut path = workspace_root.join("schemas").join(relative);
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_none_or(|extension| extension != "json")
+    {
+        path.set_extension("schema.json");
+    }
+    Ok(path)
+}
+
+fn schema_config_error(message: &str) -> TaskGraphError {
+    TaskGraphError::ValidationFailed {
+        count: 1,
+        errors: vec![TaskGraphValidationError {
+            path: "config.schema_ref".to_string(),
+            code: "invalid_schema_ref".to_string(),
+            message: message.to_string(),
+        }],
+    }
+}
+
 fn repair_source_value(config: &SchemaValidateConfig, value: Value) -> (Value, Vec<String>) {
     match config
         .repair
         .as_ref()
         .and_then(|repair| repair.kind.as_deref())
     {
+        Some("attacker_output_v1") => repair_attacker_output(value),
         Some("code_research_scout_outputs" | "external_research_scout_outputs") => {
             repair_research_scout_outputs(value)
         }
         _ => (value, vec![]),
+    }
+}
+
+fn repair_attacker_output(value: Value) -> (Value, Vec<String>) {
+    let Some(raw) = value.as_object().cloned() else {
+        return (
+            value,
+            vec!["attacker_output_v1: refused to repair non-object attacker output".to_string()],
+        );
+    };
+    let has_schema_shape = attacker_verdict(&raw).is_some()
+        && raw.get("attack_items").and_then(Value::as_array).is_some();
+    if !has_schema_shape && !has_attacker_semantic_signal(&raw) {
+        return (
+            Value::Object(raw),
+            vec![
+                "attacker_output_v1: refused to synthesize attack_items from empty or lifecycle-only output"
+                    .to_string(),
+            ],
+        );
+    }
+
+    let mut notes = Vec::new();
+    let attack_items = raw
+        .get("attack_items")
+        .and_then(Value::as_array)
+        .filter(|items| !items.is_empty())
+        .cloned()
+        .unwrap_or_else(|| {
+            notes.push(
+                "attacker_output_v1: wrapped flat attacker output into attack_items[]".to_string(),
+            );
+            vec![Value::Object(raw.clone())]
+        });
+
+    let normalized_items: Vec<Value> = attack_items
+        .into_iter()
+        .enumerate()
+        .map(|(index, item)| normalize_attacker_item(&raw, item, index))
+        .collect();
+
+    let severity = severity_of(raw.get("importance").or_else(|| raw.get("severity")));
+    let verdict = attacker_verdict(&raw).unwrap_or_else(|| {
+        if severity == "P0" {
+            "needs_rework".to_string()
+        } else {
+            "acceptable_with_clarifications".to_string()
+        }
+    });
+
+    let first_item_id = normalized_items
+        .first()
+        .and_then(|item| item.get("id"))
+        .and_then(Value::as_str)
+        .unwrap_or("atk-001")
+        .to_string();
+
+    let normalized = json!({
+        "verdict": verdict,
+        "attack_items": normalized_items,
+        "false_consensus_risks": array_or_empty(raw.get("false_consensus_risks")),
+        "peer_review_bias_risks": array_or_empty(raw.get("peer_review_bias_risks")),
+        "clarification_questions": if has_schema_shape {
+            array_or_empty(raw.get("clarification_questions"))
+        } else {
+            json!([{
+                "id": string_value_ref(raw.get("id")).unwrap_or_else(|| "cq-001".to_string()),
+                "question": first_non_empty_string(
+                    &[raw.get("question"), raw.get("claim"), raw.get("summary"), raw.get("description")],
+                    "Attacker raised an underspecified concern.",
+                ),
+                "importance": severity,
+                "affects": first_non_empty_string(&[raw.get("affects"), raw.get("target")], "draft / ticket / review / peer_rating / aggregate_rating"),
+                "normalized_from_flat_attacker_output": true,
+            }])
+        },
+        "must_accept_before_merge": if has_schema_shape {
+            array_or_empty(raw.get("must_accept_before_merge"))
+        } else if severity == "P0" {
+            json!([first_item_id])
+        } else {
+            json!([])
+        },
+        "safe_to_defer": if has_schema_shape {
+            array_or_empty(raw.get("safe_to_defer"))
+        } else if severity == "P2" {
+            json!([first_item_id])
+        } else {
+            json!([])
+        },
+    });
+
+    if !has_schema_shape {
+        notes.push("attacker_output_v1: normalized flat attacker output to schema".to_string());
+    }
+
+    (normalized, notes)
+}
+
+fn has_attacker_semantic_signal(object: &Map<String, Value>) -> bool {
+    if object
+        .get("attack_items")
+        .and_then(Value::as_array)
+        .is_some_and(|items| !items.is_empty())
+    {
+        return true;
+    }
+
+    [
+        "question",
+        "claim",
+        "summary",
+        "description",
+        "evidence",
+        "affects",
+        "target",
+        "why_it_matters",
+        "impact",
+        "recommended_resolution",
+        "resolution",
+        "recommendation",
+        "verdict",
+        "false_consensus_risks",
+        "peer_review_bias_risks",
+        "clarification_questions",
+        "must_accept_before_merge",
+        "safe_to_defer",
+    ]
+    .iter()
+    .any(|key| object.get(*key).is_some_and(value_has_content))
+}
+
+fn value_has_content(value: &Value) -> bool {
+    match value {
+        Value::String(text) => !text.trim().is_empty(),
+        Value::Array(items) => !items.is_empty(),
+        Value::Object(object) => !object.is_empty(),
+        Value::Number(_) | Value::Bool(_) => true,
+        Value::Null => false,
+    }
+}
+
+fn normalize_attacker_item(raw: &Map<String, Value>, item: Value, index: usize) -> Value {
+    let item = item.as_object().cloned().unwrap_or_default();
+    let severity = severity_of(
+        item.get("severity")
+            .or_else(|| item.get("importance"))
+            .or_else(|| raw.get("importance"))
+            .or_else(|| raw.get("severity")),
+    );
+    let evidence = first_non_empty_string(
+        &[item.get("evidence"), raw.get("evidence")],
+        "No direct evidence supplied by attacker; normalized as hypothesis from raw attacker output.",
+    );
+    let fact_or_inference = enum_string(
+        item.get("fact_or_inference"),
+        &["fact", "inference", "hypothesis"],
+    )
+    .unwrap_or_else(|| {
+        if evidence.starts_with("No direct evidence supplied") {
+            "hypothesis".to_string()
+        } else {
+            "inference".to_string()
+        }
+    });
+
+    json!({
+        "id": first_non_empty_string(&[item.get("id"), raw.get("id")], &format!("atk-{:03}", index + 1)),
+        "severity": severity,
+        "target": first_non_empty_string(&[item.get("target"), item.get("affects"), raw.get("affects"), raw.get("target")], "draft / ticket / review / peer_rating / aggregate_rating"),
+        "claim": first_non_empty_string(&[item.get("claim"), item.get("question"), item.get("summary"), item.get("description"), raw.get("question"), raw.get("claim")], "Attacker raised an underspecified concern."),
+        "evidence": evidence,
+        "fact_or_inference": fact_or_inference,
+        "why_it_matters": first_non_empty_string(&[item.get("why_it_matters"), item.get("impact"), raw.get("why_it_matters"), raw.get("impact")], "This may affect whether the final spec can safely merge the reviewed viewpoint."),
+        "recommended_resolution": first_non_empty_string(&[item.get("recommended_resolution"), item.get("resolution"), item.get("recommendation"), raw.get("recommended_resolution")], "Clarify this item at Human Gate before merging related spec content."),
+        "merge_recommendation": enum_string(item.get("merge_recommendation"), &["accept", "reject", "defer", "open"]).unwrap_or_else(|| if severity == "P0" { "open".to_string() } else { "defer".to_string() }),
+    })
+}
+
+fn attacker_verdict(object: &Map<String, Value>) -> Option<String> {
+    enum_string(
+        object.get("verdict"),
+        &["acceptable_with_clarifications", "needs_rework", "blocked"],
+    )
+}
+
+fn severity_of(value: Option<&Value>) -> String {
+    enum_string(value, &["P0", "P1", "P2"]).unwrap_or_else(|| "P1".to_string())
+}
+
+fn enum_string(value: Option<&Value>, allowed: &[&str]) -> Option<String> {
+    let text = value?.as_str()?.trim();
+    allowed
+        .iter()
+        .find(|candidate| candidate.eq_ignore_ascii_case(text))
+        .map(|candidate| (*candidate).to_string())
+}
+
+fn first_non_empty_string(values: &[Option<&Value>], fallback: &str) -> String {
+    values
+        .iter()
+        .filter_map(|value| string_value_ref(*value))
+        .find(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn string_value_ref(value: Option<&Value>) -> Option<String> {
+    match value? {
+        Value::String(text) => Some(text.trim().to_string()),
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    }
+}
+
+fn array_or_empty(value: Option<&Value>) -> Value {
+    match value {
+        Some(Value::Array(items)) => Value::Array(items.clone()),
+        Some(Value::Null) | None => json!([]),
+        Some(other) => json!([other.clone()]),
     }
 }
 
@@ -531,6 +837,17 @@ fn node_safe_name(value: Option<&str>) -> String {
 }
 
 fn validate_json_schema(value: &Value, schema: &Value, path: &str, errors: &mut Vec<String>) {
+    validate_json_schema_with_root(value, schema, schema, path, errors, 0);
+}
+
+fn validate_json_schema_with_root(
+    value: &Value,
+    schema: &Value,
+    root_schema: &Value,
+    path: &str,
+    errors: &mut Vec<String>,
+    ref_depth: usize,
+) {
     if errors.len() >= MAX_ERRORS {
         return;
     }
@@ -538,6 +855,32 @@ fn validate_json_schema(value: &Value, schema: &Value, path: &str, errors: &mut 
         errors.push(format!("{path}: schema must be an object"));
         return;
     };
+
+    if let Some(schema_ref) = schema_obj.get("$ref").and_then(Value::as_str) {
+        if ref_depth >= MAX_SCHEMA_REF_DEPTH {
+            errors.push(format!("{path}: exceeded max local $ref depth"));
+            return;
+        }
+        match resolve_local_schema_ref(root_schema, schema_ref) {
+            Ok(resolved_schema) => {
+                validate_json_schema_with_root(
+                    value,
+                    resolved_schema,
+                    root_schema,
+                    path,
+                    errors,
+                    ref_depth + 1,
+                );
+                if schema_obj.len() == 1 {
+                    return;
+                }
+            }
+            Err(message) => {
+                errors.push(format!("{path}: {message}"));
+                return;
+            }
+        }
+    }
 
     if let Some(any_of) = schema_obj.get("anyOf").and_then(Value::as_array) {
         if any_of.is_empty() {
@@ -548,7 +891,14 @@ fn validate_json_schema(value: &Value, schema: &Value, path: &str, errors: &mut 
         let mut first_errors = Vec::new();
         for candidate in any_of {
             let mut candidate_errors = Vec::new();
-            validate_json_schema(value, candidate, path, &mut candidate_errors);
+            validate_json_schema_with_root(
+                value,
+                candidate,
+                root_schema,
+                path,
+                &mut candidate_errors,
+                ref_depth,
+            );
             if candidate_errors.is_empty() {
                 return;
             }
@@ -596,17 +946,38 @@ fn validate_json_schema(value: &Value, schema: &Value, path: &str, errors: &mut 
     }
 
     match value {
-        Value::Object(object) => validate_object(object, schema_obj, path, errors),
-        Value::Array(items) => validate_array(items, schema_obj, path, errors),
+        Value::Object(object) => validate_object(object, schema_obj, root_schema, path, errors),
+        Value::Array(items) => validate_array(items, schema_obj, root_schema, path, errors),
         Value::String(text) => validate_string(text, schema_obj, path, errors),
         Value::Number(number) => validate_number(number, schema_obj, path, errors),
         _ => {}
     }
 }
 
+fn resolve_local_schema_ref<'a>(
+    root_schema: &'a Value,
+    schema_ref: &str,
+) -> Result<&'a Value, String> {
+    let Some(pointer) = schema_ref.strip_prefix('#') else {
+        return Err(format!(
+            "only local $ref values are supported, got {schema_ref}"
+        ));
+    };
+    if pointer.is_empty() {
+        return Ok(root_schema);
+    }
+    if !pointer.starts_with('/') {
+        return Err(format!("invalid local $ref pointer {schema_ref}"));
+    }
+    root_schema
+        .pointer(pointer)
+        .ok_or_else(|| format!("unresolved local $ref {schema_ref}"))
+}
+
 fn validate_object(
     object: &Map<String, Value>,
     schema: &Map<String, Value>,
+    root_schema: &Value,
     path: &str,
     errors: &mut Vec<String>,
 ) {
@@ -635,7 +1006,14 @@ fn validate_object(
 
     for (field, field_schema) in &properties {
         if let Some(field_value) = object.get(field) {
-            validate_json_schema(field_value, field_schema, &join_path(path, field), errors);
+            validate_json_schema_with_root(
+                field_value,
+                field_schema,
+                root_schema,
+                &join_path(path, field),
+                errors,
+                0,
+            );
         }
     }
 
@@ -652,11 +1030,14 @@ fn validate_object(
         Some(Value::Object(additional_schema)) => {
             for (field, field_value) in object {
                 if !properties.contains_key(field) {
-                    validate_json_schema(
+                    let additional_schema = Value::Object(additional_schema.clone());
+                    validate_json_schema_with_root(
                         field_value,
-                        &Value::Object(additional_schema.clone()),
+                        &additional_schema,
+                        root_schema,
                         &join_path(path, field),
                         errors,
+                        0,
                     );
                 }
             }
@@ -668,6 +1049,7 @@ fn validate_object(
 fn validate_array(
     items: &[Value],
     schema: &Map<String, Value>,
+    root_schema: &Value,
     path: &str,
     errors: &mut Vec<String>,
 ) {
@@ -682,7 +1064,14 @@ fn validate_array(
 
     if let Some(item_schema) = schema.get("items") {
         for (index, item) in items.iter().enumerate() {
-            validate_json_schema(item, item_schema, &format!("{path}[{index}]"), errors);
+            validate_json_schema_with_root(
+                item,
+                item_schema,
+                root_schema,
+                &format!("{path}[{index}]"),
+                errors,
+                0,
+            );
         }
     }
 }
@@ -828,6 +1217,56 @@ fn outcome(
 mod tests {
     use super::*;
 
+    fn test_config(schema: Option<Value>, schema_ref: Option<&str>) -> SchemaValidateConfig {
+        SchemaValidateConfig {
+            inputs: None,
+            schema,
+            schema_ref: schema_ref.map(ToString::to_string),
+            value_key: default_value_key(),
+            value_keys: vec![],
+            source: None,
+            fail_on_invalid: false,
+            artifact_path: None,
+            artifact_scope: None,
+            artifact_name: None,
+            schema_name: None,
+            repair: None,
+        }
+    }
+
+    #[test]
+    fn resolves_inline_schema_when_no_ref_is_configured() {
+        let config = test_config(Some(json!({"type": "object"})), None);
+
+        let schema = resolve_schema_value(&config, Path::new("/tmp")).unwrap();
+
+        assert_eq!(schema["type"], json!("object"));
+    }
+
+    #[test]
+    fn resolves_schema_ref_from_workspace_registry() {
+        let temp = tempfile::tempdir().unwrap();
+        let schema_dir = temp.path().join("schemas/spec-arena");
+        fs::create_dir_all(&schema_dir).unwrap();
+        fs::write(
+            schema_dir.join("attacker-output-v1.schema.json"),
+            r#"{"type":"object","required":["ok"],"properties":{"ok":{"type":"boolean"}}}"#,
+        )
+        .unwrap();
+        let config = test_config(None, Some("bb://schema/spec-arena/attacker-output-v1"));
+
+        let schema = resolve_schema_value(&config, temp.path()).unwrap();
+
+        assert_eq!(schema["properties"]["ok"]["type"], json!("boolean"));
+    }
+
+    #[test]
+    fn rejects_schema_ref_outside_registry() {
+        let err = schema_ref_path(Path::new("/tmp/workspace"), "../ticket.schema").unwrap_err();
+
+        assert!(matches!(err, TaskGraphError::ValidationFailed { .. }));
+    }
+
     #[test]
     fn validates_nested_required_array_items() {
         let mut errors = Vec::new();
@@ -873,6 +1312,78 @@ mod tests {
         );
 
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn validates_local_schema_refs() {
+        let schema = json!({
+            "type": "object",
+            "required": ["name", "findings"],
+            "properties": {
+                "name": { "$ref": "#/$defs/non_empty_string" },
+                "findings": {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/finding" }
+                }
+            },
+            "$defs": {
+                "non_empty_string": { "type": "string", "minLength": 1 },
+                "finding": {
+                    "type": "object",
+                    "required": ["id"],
+                    "properties": {
+                        "id": { "$ref": "#/$defs/non_empty_string" }
+                    }
+                }
+            }
+        });
+
+        let mut valid_errors = Vec::new();
+        validate_json_schema(
+            &json!({"name": "arena", "findings": [{"id": "f-1"}]}),
+            &schema,
+            "$",
+            &mut valid_errors,
+        );
+        assert!(valid_errors.is_empty(), "{valid_errors:?}");
+
+        let mut invalid_errors = Vec::new();
+        validate_json_schema(
+            &json!({"name": "", "findings": [{"id": ""}]}),
+            &schema,
+            "$",
+            &mut invalid_errors,
+        );
+        assert!(
+            invalid_errors
+                .iter()
+                .any(|error| error.contains("$.name") && error.contains("minLength")),
+            "{invalid_errors:?}"
+        );
+        assert!(
+            invalid_errors
+                .iter()
+                .any(|error| error.contains("$.findings[0].id") && error.contains("minLength")),
+            "{invalid_errors:?}"
+        );
+    }
+
+    #[test]
+    fn reports_unresolved_local_schema_refs() {
+        let mut errors = Vec::new();
+        validate_json_schema(
+            &json!("value"),
+            &json!({ "$ref": "#/$defs/missing" }),
+            "$",
+            &mut errors,
+        );
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("unresolved local $ref")),
+            "{errors:?}"
+        );
     }
 
     #[test]
@@ -940,7 +1451,8 @@ mod tests {
     fn source_by_ids_collects_exact_node_outputs_and_marks_missing() {
         let config = SchemaValidateConfig {
             inputs: None,
-            schema: json!({}),
+            schema: Some(json!({})),
+            schema_ref: None,
             value_key: default_value_key(),
             value_keys: vec![],
             source: Some(SchemaSourceConfig {
@@ -1003,7 +1515,8 @@ mod tests {
     fn repairs_research_scout_outputs_for_metadata_only_and_string_values() {
         let config = SchemaValidateConfig {
             inputs: None,
-            schema: json!({}),
+            schema: Some(json!({})),
+            schema_ref: None,
             value_key: default_value_key(),
             value_keys: vec![],
             source: None,
@@ -1063,5 +1576,123 @@ mod tests {
 
         assert!(!external_notes.is_empty());
         assert_eq!(external_value["metadata-only"]["findings"], json!([]));
+    }
+
+    #[test]
+    fn repairs_flat_attacker_question_output() {
+        let config = SchemaValidateConfig {
+            inputs: None,
+            schema: Some(json!({})),
+            schema_ref: None,
+            value_key: default_value_key(),
+            value_keys: vec![],
+            source: None,
+            fail_on_invalid: false,
+            artifact_path: None,
+            artifact_scope: None,
+            artifact_name: None,
+            schema_name: Some("attacker_output_v1".to_string()),
+            repair: Some(SchemaRepairConfig {
+                kind: Some("attacker_output_v1".to_string()),
+            }),
+        };
+
+        let (value, notes) = repair_source_value(
+            &config,
+            json!({
+                "id": "cq-004",
+                "importance": "P1",
+                "question": "20KB 限制是否有官方文档链接？",
+                "affects": "draft evidence",
+                "evidence": "Draft 标注已确认但无 evidence 字段"
+            }),
+        );
+
+        assert!(notes.iter().any(|note| note.contains("normalized flat")));
+        assert_eq!(value["verdict"], json!("acceptable_with_clarifications"));
+        assert_eq!(value["attack_items"][0]["id"], json!("cq-004"));
+        assert_eq!(value["attack_items"][0]["severity"], json!("P1"));
+        assert_eq!(
+            value["attack_items"][0]["fact_or_inference"],
+            json!("inference")
+        );
+        assert_eq!(
+            value["attack_items"][0]["merge_recommendation"],
+            json!("defer")
+        );
+        assert_eq!(
+            value["clarification_questions"][0]["normalized_from_flat_attacker_output"],
+            json!(true)
+        );
+    }
+
+    #[test]
+    fn refuses_to_repair_lifecycle_only_attacker_output() {
+        let config = SchemaValidateConfig {
+            inputs: None,
+            schema: Some(json!({})),
+            schema_ref: None,
+            value_key: default_value_key(),
+            value_keys: vec![],
+            source: None,
+            fail_on_invalid: false,
+            artifact_path: None,
+            artifact_scope: None,
+            artifact_name: None,
+            schema_name: Some("attacker_output_v1".to_string()),
+            repair: Some(SchemaRepairConfig {
+                kind: Some("attacker_output_v1".to_string()),
+            }),
+        };
+
+        let (value, notes) = repair_source_value(&config, json!({"type": "turn_start"}));
+
+        assert!(notes.iter().any(|note| note.contains("refused")));
+        assert_eq!(value, json!({"type": "turn_start"}));
+        assert!(value.get("attack_items").is_none());
+    }
+
+    #[test]
+    fn repairs_attacker_output_items_without_required_fields() {
+        let config = SchemaValidateConfig {
+            inputs: None,
+            schema: Some(json!({})),
+            schema_ref: None,
+            value_key: default_value_key(),
+            value_keys: vec![],
+            source: None,
+            fail_on_invalid: false,
+            artifact_path: None,
+            artifact_scope: None,
+            artifact_name: None,
+            schema_name: Some("attacker_output_v1".to_string()),
+            repair: Some(SchemaRepairConfig {
+                kind: Some("attacker_output_v1".to_string()),
+            }),
+        };
+
+        let (value, notes) = repair_source_value(
+            &config,
+            json!({
+                "verdict": "blocked",
+                "attack_items": [{
+                    "id": "atk-9",
+                    "question": "缺少证据源",
+                    "importance": "P0"
+                }],
+                "false_consensus_risks": "single risk"
+            }),
+        );
+
+        assert!(notes.is_empty());
+        assert_eq!(value["verdict"], json!("blocked"));
+        assert_eq!(value["attack_items"][0]["id"], json!("atk-9"));
+        assert_eq!(value["attack_items"][0]["severity"], json!("P0"));
+        assert_eq!(
+            value["attack_items"][0]["merge_recommendation"],
+            json!("open")
+        );
+        assert_eq!(value["false_consensus_risks"], json!(["single risk"]));
+        assert_eq!(value["clarification_questions"], json!([]));
     }
 }

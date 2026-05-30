@@ -205,6 +205,43 @@ const selectedOutput = computed(() =>
 
 const selectedAgentSessionId = computed(() => selectedRunNode.value?.agent_session_id ?? '')
 
+type GateInsight = {
+  nodeId: string
+  label: string
+  chips: string[]
+  findings: string[]
+  hasBlockers: boolean
+}
+
+const pausedGateNode = computed(() => {
+  const nodeId = run.value?.paused?.node_id
+  return nodeId ? nodeById.value.get(nodeId) ?? null : null
+})
+
+const pausedGateTitle = computed(() =>
+  configString(pausedGateNode.value, 'title') || pausedGateNode.value?.label || run.value?.paused?.node_id || '',
+)
+
+const pausedGateInstructions = computed(() =>
+  configString(pausedGateNode.value, 'instructions') || run.value?.paused?.reason || '',
+)
+
+const pausedGateInsights = computed<GateInsight[]>(() => {
+  const item = run.value
+  const gateNodeId = item?.paused?.node_id
+  if (!item || !gateNodeId) return []
+  const upstreamNodeIds = item.graph_snapshot.edges
+    .filter((edge) => edge.to === gateNodeId)
+    .map((edge) => edge.from)
+  return upstreamNodeIds
+    .map((nodeId) => summarizeGateInput(nodeId, item.context.node_outputs[nodeId]))
+    .filter((insight): insight is GateInsight => Boolean(insight))
+})
+
+const pausedGateHasBlockers = computed(() =>
+  pausedGateInsights.value.some((insight) => insight.hasBlockers),
+)
+
 const elapsedLabel = computed(() => {
   const item = run.value
   if (!item) return '-'
@@ -443,6 +480,89 @@ async function resumeGate(actionId: string) {
   }
 }
 
+function configString(node: TaskGraphNode | null, key: string) {
+  const value = node?.config?.[key]
+  return typeof value === 'string' ? value : ''
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function arrayValue(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+function booleanValue(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null
+}
+
+function summarizeGateInput(nodeId: string, output: unknown): GateInsight | null {
+  const node = nodeById.value.get(nodeId)
+  const root = objectValue(output)
+  if (!root) return null
+  const data = objectValue(root.data) ?? root
+  const chips: string[] = []
+  const findings: string[] = []
+
+  const valid = booleanValue(root.valid)
+  if (valid !== null) chips.push(`schema ${valid ? 'valid' : 'invalid'}`)
+
+  const schemaRef = stringValue(root.schema_ref || data.schema_ref)
+  if (schemaRef) chips.push(schemaRef)
+
+  const verdict = stringValue(data.verdict || root.verdict)
+  if (verdict) chips.push(`verdict ${verdict}`)
+
+  const repairNotes = arrayValue(root.repair_notes)
+    .map((item) => stringValue(item))
+    .filter(Boolean)
+  if (repairNotes.length) findings.push(...repairNotes.slice(0, 2).map((item) => `repair: ${item}`))
+
+  const errors = arrayValue(root.errors)
+  if (errors.length) chips.push(`${errors.length} errors`)
+
+  const attackItems = arrayValue(data.attack_items)
+  const p0Count = attackItems.filter((item) => objectValue(item)?.severity === 'P0').length
+  if (p0Count > 0) chips.push(`${p0Count} P0`)
+  else if (attackItems.length > 0) chips.push(`${attackItems.length} findings`)
+
+  const mustAccept = arrayValue(data.must_accept_before_merge)
+    .map((item) => stringValue(item))
+    .filter(Boolean)
+  findings.push(...mustAccept.slice(0, 3))
+
+  if (!findings.length) {
+    for (const item of attackItems.slice(0, 2)) {
+      const attack = objectValue(item)
+      const title = stringValue(attack?.title || attack?.claim || attack?.id)
+      if (title) findings.push(title)
+    }
+  }
+
+  if (!chips.length && !findings.length) return null
+  return {
+    nodeId,
+    label: node?.label || nodeId,
+    chips,
+    findings,
+    hasBlockers: p0Count > 0 || verdict === 'needs_rework' || valid === false || errors.length > 0,
+  }
+}
+
+function pausedActionClasses(action: { result: string }) {
+  return {
+    'is-recommended': pausedGateHasBlockers.value && action.result === 'cancel',
+    'is-risky': pausedGateHasBlockers.value && action.result === 'accepted',
+  }
+}
+
 function formatDate(value?: string) {
   if (!value) return '-'
   const date = new Date(value)
@@ -583,14 +703,30 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
       <section v-if="run.paused" class="task-graph-run-paused">
         <PauseCircle aria-hidden="true" />
         <div>
-          <strong>{{ run.paused.node_id }}</strong>
-          <p>{{ run.paused.reason }}</p>
+          <strong>{{ pausedGateTitle }}</strong>
+          <p>{{ pausedGateInstructions }}</p>
+          <div v-if="pausedGateInsights.length" class="task-graph-run-gate-insights">
+            <article
+              v-for="insight in pausedGateInsights"
+              :key="insight.nodeId"
+              :class="{ 'has-blockers': insight.hasBlockers }"
+            >
+              <div>
+                <strong>{{ insight.label }}</strong>
+                <span v-for="chip in insight.chips" :key="chip">{{ chip }}</span>
+              </div>
+              <ul v-if="insight.findings.length">
+                <li v-for="finding in insight.findings" :key="finding">{{ finding }}</li>
+              </ul>
+            </article>
+          </div>
         </div>
         <div>
           <button
             v-for="action in run.paused.actions"
             :key="action.id"
             type="button"
+            :class="pausedActionClasses(action)"
             :disabled="Boolean(resumingActionId)"
             @click="resumeGate(action.id)"
           >
@@ -872,6 +1008,60 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
   font-size: 12px;
 }
 
+.task-graph-run-gate-insights {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--bb-text-1);
+}
+
+.task-graph-run-gate-insights article {
+  display: grid;
+  gap: 5px;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--bb-warning) 20%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bb-surface) 84%, var(--bb-warning));
+}
+
+.task-graph-run-gate-insights article.has-blockers {
+  border-color: color-mix(in srgb, var(--bb-error) 28%, transparent);
+  background: color-mix(in srgb, var(--bb-surface) 88%, var(--bb-error));
+}
+
+.task-graph-run-gate-insights article > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.task-graph-run-gate-insights article strong {
+  margin-right: 3px;
+}
+
+.task-graph-run-gate-insights span {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bb-warning) 13%, var(--bb-surface));
+  color: var(--bb-text-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.task-graph-run-gate-insights article.has-blockers span {
+  background: color-mix(in srgb, var(--bb-error) 13%, var(--bb-surface));
+}
+
+.task-graph-run-gate-insights ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 15px;
+  color: var(--bb-text-2);
+  font-size: 12px;
+}
+
 .task-graph-run-resume-error {
   grid-column: 1 / -1;
   color: var(--bb-error) !important;
@@ -891,6 +1081,16 @@ function nodeTypeLabel(node?: TaskGraphNode | null) {
   color: var(--bb-warning);
   font-size: 12px;
   font-weight: 760;
+}
+
+.task-graph-run-paused button.is-recommended {
+  border-color: var(--bb-error);
+  background: var(--bb-error);
+  color: var(--bb-surface);
+}
+
+.task-graph-run-paused button.is-risky {
+  opacity: 0.68;
 }
 
 .task-graph-run-paused button:disabled {

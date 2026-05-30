@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bb://schema/spec-arena/review-output-v1",
+  "title": "Spec Arena Reviewer Output",
+  "description": "Contract for one independent reviewer in the 4-reviewer Spec Arena phase.",
+  "type": "object",
+  "required": [
+    "reviewer_id",
+    "perspective",
+    "verdict",
+    "summary",
+    "findings",
+    "acceptance_gaps",
+    "test_gaps",
+    "risk_updates",
+    "spec_changes_to_accept",
+    "open_questions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "reviewer_id": { "type": "string", "minLength": 1 },
+    "perspective": { "type": "string", "minLength": 1 },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "pass_with_changes",
+        "needs_rework",
+        "needs_rewrite",
+        "needs_more_research",
+        "blocked"
+      ]
+    },
+    "summary": { "type": "string", "minLength": 1 },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "acceptance_gaps": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "test_gaps": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "risk_updates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/risk_update" }
+    },
+    "spec_changes_to_accept": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/spec_change" }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "severity": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3", "info"]
+    },
+    "fact_or_inference": {
+      "type": "string",
+      "enum": ["fact", "inference", "hypothesis"]
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "id",
+        "severity",
+        "target",
+        "evidence",
+        "fact_or_inference",
+        "impact",
+        "suggested_change"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "severity": { "$ref": "#/$defs/severity" },
+        "target": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "string", "minLength": 1 },
+        "fact_or_inference": { "$ref": "#/$defs/fact_or_inference" },
+        "impact": { "type": "string", "minLength": 1 },
+        "suggested_change": { "type": "string", "minLength": 1 }
+      }
+    },
+    "risk_update": {
+      "type": "object",
+      "required": ["id", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "note": { "type": "string", "minLength": 1 },
+        "original_status": { "type": "string" },
+        "updated_status": { "type": "string" }
+      }
+    },
+    "spec_change": {
+      "type": "object",
+      "required": ["finding_id", "change"],
+      "additionalProperties": false,
+      "properties": {
+        "finding_id": { "type": "string", "minLength": 1 },
+        "change": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

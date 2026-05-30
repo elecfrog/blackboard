@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bb://schema/spec-arena/attacker-output-v1",
+  "title": "Spec Arena Attacker Output",
+  "description": "Contract for the 4+1 Spec Arena attacker node after deterministic repair.",
+  "type": "object",
+  "required": [
+    "verdict",
+    "attack_items",
+    "false_consensus_risks",
+    "peer_review_bias_risks",
+    "clarification_questions",
+    "must_accept_before_merge",
+    "safe_to_defer"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "acceptable_with_clarifications",
+        "needs_rework",
+        "blocked"
+      ]
+    },
+    "attack_items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "severity",
+          "target",
+          "claim",
+          "evidence",
+          "fact_or_inference",
+          "why_it_matters",
+          "recommended_resolution",
+          "merge_recommendation"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "P0",
+              "P1",
+              "P2"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "claim": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fact_or_inference": {
+            "type": "string",
+            "enum": [
+              "fact",
+              "inference",
+              "hypothesis"
+            ]
+          },
+          "why_it_matters": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recommended_resolution": {
+            "type": "string",
+            "minLength": 1
+          },
+          "merge_recommendation": {
+            "type": "string",
+            "enum": [
+              "accept",
+              "reject",
+              "defer",
+              "open"
+            ]
+          }
+        }
+      }
+    },
+    "false_consensus_risks": {
+      "type": "array"
+    },
+    "peer_review_bias_risks": {
+      "type": "array"
+    },
+    "clarification_questions": {
+      "type": "array"
+    },
+    "must_accept_before_merge": {
+      "type": "array"
+    },
+    "safe_to_defer": {
+      "type": "array"
+    }
+  }
+}
