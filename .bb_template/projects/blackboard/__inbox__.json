@@ -51,6 +51,16 @@
       "topic": "Spec Arena schema registry handle and strict repair guard"
     },
     {
+      "name": "2026-05-30-codebuddy-fix-bb-mcp-streamable-http-protocol-version-so-codebuddy-can-connect.json",
+      "size": 2223,
+      "modified_at": "2026-05-30T17:08:26Z",
+      "excerpt": "定位根因：bb-daemon /mcp 用 rmcp 1.6 StreamableHttpService，其默认 initialize(handler/server.rs:182-190) 直接回显 get_info() 的 protocol_version，不做协商；BbMcp...",
+      "title": "修复 bb MCP 协议版本（CodeBuddy 连接失败）",
+      "time": "2026-05-30T17:08:26Z",
+      "source": "codebuddy",
+      "topic": "Fix bb MCP streamable-http protocol version so CodeBuddy can connect"
+    },
+    {
       "name": "2026-05-30-codex-spec-arena-productized-graph-contracts-handoff.json",
       "size": 5307,
       "modified_at": "2026-05-30T16:23:53Z",

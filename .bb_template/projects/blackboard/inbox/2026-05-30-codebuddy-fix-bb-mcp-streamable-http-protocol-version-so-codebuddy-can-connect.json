@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "title": "修复 bb MCP 协议版本（CodeBuddy 连接失败）",
+  "time": "2026-05-30T17:08:26Z",
+  "source": "codebuddy",
+  "project": "blackboard",
+  "topic": "Fix bb MCP streamable-http protocol version so CodeBuddy can connect",
+  "done": [
+    "定位根因：bb-daemon /mcp 用 rmcp 1.6 StreamableHttpService，其默认 initialize(handler/server.rs:182-190) 直接回显 get_info() 的 protocol_version，不做协商；BbMcpHandler::get_info() 未设该字段，取默认 LATEST=2025-11-25，CodeBuddy MCP 客户端不支持该版本，报 'protocol version is not supported'，退化 SSE 又因无 GET 端点返回 405。Codex 客户端宽松所以一直能连。",
+    "在 bb_backend/crates/bb_daemon/src/mcp_handler.rs 的 get_info() 显式固定 protocol_version=ProtocolVersion::V_2025_03_26（引入 streamable-http 的版本，Codex/CodeBuddy 都支持），并 import ProtocolVersion。",
+    "优雅停止用户前台 dev.py(PID 86840) 并后台重启完整 dev 栈，使 bb-daemon 加载新二进制；3001/3002/8060 全部恢复。"
+  ],
+  "validation": [
+    "read_lints mcp_handler.rs：0 错误。",
+    "cargo build -p bb_daemon：编译通过。",
+    "curl POST /mcp initialize：protocolVersion 返回 2025-03-26（修复前为 2025-11-25）。",
+    "curl POST /mcp tools/list：返回 14 个 bb 工具。",
+    "CodeBuddy 重连后实际调用 list_projects / find_work_context / list_inbox_notes / read_inbox_note 均成功。"
+  ],
+  "next_step": [
+    "若未来某 MCP 客户端要求更高协议版本，考虑在 mcp_handler 实现真正的版本协商（覆盖 initialize：回显 client 请求且服务端支持的版本，否则 fallback LATEST），替代当前硬编码 2025-03-26。",
+    "CodeBuddy 侧 MCP 工具不会注入正在进行的旧会话，daemon 重启后需在 MCP 面板对 bb 点重新连接或 Reload Window。"
+  ],
+  "related_locations": [
+    "/Users/ornizhou/development/blackboard/bb_backend/crates/bb_daemon/src/mcp_handler.rs",
+    "/Users/ornizhou/development/blackboard/bb_backend/crates/bb_daemon/src/http/mod.rs",
+    "/Users/ornizhou/.codebuddy/mcp.json"
+  ],
+  "related_tickets": [],
+  "attachments": [],
+  "extra": {}
+}

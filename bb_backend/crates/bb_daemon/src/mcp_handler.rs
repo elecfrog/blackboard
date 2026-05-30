@@ -10,7 +10,8 @@ use bb_core::Workspace;
 use rmcp::{
     model::{
         CallToolRequestParams, CallToolResult, Content, ErrorCode, Implementation, ListToolsResult,
-        PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool, ToolsCapability,
+        PaginatedRequestParams, ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
+        ToolsCapability,
     },
     service::RequestContext,
     RoleServer, ServerHandler,
@@ -38,7 +39,13 @@ impl ServerHandler for BbMcpHandler {
     fn get_info(&self) -> ServerInfo {
         let mut caps = ServerCapabilities::default();
         caps.tools = Some(ToolsCapability::default());
-        ServerInfo::new(caps).with_server_info(Implementation::new("bb", env!("CARGO_PKG_VERSION")))
+        // rmcp 1.6 默认的 `initialize` 不做版本协商，会直接回显 `get_info()` 里的
+        // `protocol_version`。默认值是 rmcp 的 LATEST(=2025-11-25)，但部分 MCP 客户端
+        // （如 CodeBuddy）尚不支持该版本，会报 "protocol version is not supported"。
+        // 这里固定为引入 Streamable HTTP 的 2025-03-26，兼容 Codex / CodeBuddy 等客户端。
+        ServerInfo::new(caps)
+            .with_server_info(Implementation::new("bb", env!("CARGO_PKG_VERSION")))
+            .with_protocol_version(ProtocolVersion::V_2025_03_26)
     }
 
     fn list_tools(
