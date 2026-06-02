@@ -246,6 +246,7 @@ fn simple_llm_graph(config: serde_json::Value) -> TaskGraphDefinition {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -315,6 +316,7 @@ fn simple_shell_graph(config: serde_json::Value) -> TaskGraphDefinition {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -384,6 +386,7 @@ fn simple_data_value_graph(config: serde_json::Value) -> TaskGraphDefinition {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -511,6 +514,7 @@ fn simple_coordinator_graph(config: serde_json::Value) -> TaskGraphDefinition {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -580,6 +584,7 @@ fn data_value_to_coordinator_graph(config: serde_json::Value) -> TaskGraphDefini
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),

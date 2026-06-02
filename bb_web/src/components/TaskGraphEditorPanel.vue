@@ -47,7 +47,7 @@ import { loadProjectAgents, type ProjectAgentProfile, type McpServerConfig } fro
 import { t, tLines } from '@/i18n'
 
 type NodeType = TaskGraphNode['type']
-type EditorConfigPanel = 'inputs' | 'settings' | ''
+type EditorConfigPanel = 'inputs' | 'resources' | 'settings' | ''
 type PaletteNodeType = TaskGraphNodeVisual
 
 const props = defineProps<{
@@ -209,6 +209,12 @@ const graphInputSummary = computed(() =>
     ? t('taskGraphEditorNoInputs')
     : t('taskGraphEditorInputsCount', { count: graphInputs.value.length }),
 )
+const graphResources = computed(() => localGraph.value.resources ?? {})
+const graphResourceIds = computed(() => Object.keys(graphResources.value))
+const graphResourcesSummary = computed(() => {
+  const count = graphResourceIds.value.length
+  return count === 0 ? 'No resources' : `${count} resource(s)`
+})
 const graphRunPolicy = computed<TaskGraphRunPolicy>(() => ({
   ...DEFAULT_GRAPH_RUN_POLICY,
   ...(localGraph.value.metadata?.run_policy ?? {}),
@@ -1139,6 +1145,46 @@ function removeGraphInput(index: number) {
   }
 }
 
+// ─── Graph Resources CRUD ────────────────────────────────────────────────────
+
+function addGraphResource() {
+  if (isReadonly.value) return
+  const existing = new Set(graphResourceIds.value)
+  let index = graphResourceIds.value.length + 1
+  let id = `resource-${index}`
+  while (existing.has(id)) {
+    index += 1
+    id = `resource-${index}`
+  }
+  const resources = { ...graphResources.value, [id]: { value_type: 'json', value: {} } }
+  localGraph.value = { ...localGraph.value, resources }
+}
+
+function removeGraphResource(id: string) {
+  if (isReadonly.value) return
+  const resources = { ...graphResources.value }
+  delete resources[id]
+  localGraph.value = { ...localGraph.value, resources: Object.keys(resources).length > 0 ? resources : undefined }
+}
+
+function updateGraphResource(id: string, resource: Record<string, unknown>) {
+  if (isReadonly.value) return
+  const resources = { ...graphResources.value, [id]: resource }
+  localGraph.value = { ...localGraph.value, resources }
+}
+
+function updateGraphResourceValue(id: string, rawValue: string) {
+  if (isReadonly.value) return
+  let value: unknown
+  try {
+    value = JSON.parse(rawValue)
+  } catch {
+    value = rawValue
+  }
+  const resource = graphResources.value[id] ?? { value_type: 'json' }
+  updateGraphResource(id, { ...resource, value })
+}
+
 function llmInputs(node: TaskGraphNode) {
   const raw = node.config.inputs
   return raw && typeof raw === 'object' && !Array.isArray(raw)
@@ -1684,6 +1730,16 @@ function cancelClose() {
             </template>
           </BbSummaryChip>
           <BbSummaryChip
+            title="Resources"
+            :subtitle="graphResourcesSummary"
+            :active="activeConfigPanel === 'resources'"
+            @click="toggleConfigPanel('resources')"
+          >
+            <template #icon>
+              <ListChecks />
+            </template>
+          </BbSummaryChip>
+          <BbSummaryChip
             :title="t('taskGraphSettings')"
             :subtitle="graphSettingsSummary"
             :active="activeConfigPanel === 'settings'"
@@ -1723,6 +1779,36 @@ function cancelClose() {
               @update="updateGraphInput"
               @type-change="updateGraphInputType"
             />
+
+            <section v-else-if="activeConfigPanel === 'resources'" class="task-graph-resources-panel">
+              <h4>Graph Resources</h4>
+              <p class="task-graph-resources-hint">
+                Declare graph-level resources here. Nodes can reference them via
+                <code v-pre>{{resources.id}}</code> in templates.
+              </p>
+              <div v-for="(resource, resId) in graphResources" :key="resId" class="task-graph-resource-item">
+                <div class="task-graph-resource-header">
+                  <strong>{{ resId }}</strong>
+                  <button v-if="!isReadonly" class="bb-btn-icon" @click="removeGraphResource(resId)">✕</button>
+                </div>
+                <BbField label="Description">
+                  <input
+                    :value="resource.description ?? ''"
+                    :disabled="isReadonly"
+                    @input="updateGraphResource(resId, { ...resource, description: inputValue($event) })"
+                  />
+                </BbField>
+                <BbField label="Value (JSON)">
+                  <textarea
+                    :value="typeof resource.value === 'string' ? resource.value : JSON.stringify(resource.value, null, 2)"
+                    :disabled="isReadonly"
+                    rows="4"
+                    @change="updateGraphResourceValue(resId, inputValue($event))"
+                  />
+                </BbField>
+              </div>
+              <button v-if="!isReadonly" class="bb-btn bb-btn-sm" @click="addGraphResource">+ Add Resource</button>
+            </section>
 
             <section v-else class="task-graph-settings">
               <h4>{{ t('taskGraphSettings') }}</h4>
@@ -1865,6 +1951,7 @@ function cancelClose() {
             :project-agents-error="projectAgentsError"
             :graph-inputs="graphInputs"
             :graph-input-ids="graphInputIds"
+            :graph-resource-ids="graphResourceIds"
             :available-graphs="availableGraphs"
             :project="project"
             :graph-scope="localGraph.scope"

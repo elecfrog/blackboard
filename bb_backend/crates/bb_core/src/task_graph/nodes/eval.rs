@@ -89,6 +89,26 @@ pub(super) fn resolve_json_path(path: &str, context: &RunContext) -> serde_json:
     }
 }
 
+/// Resolve a `resources.xxx` or `resources.xxx.yyy.zzz` path against the frozen
+/// resource snapshot stored in `RunContext.resources`.
+fn resolve_resource_path(path: &str, context: &RunContext) -> serde_json::Value {
+    // path is everything after "resources." — e.g. "arena-bundle" or "arena-bundle.task.goal"
+    let segments: Vec<&str> = path.splitn(2, '.').collect();
+    let resource_id = segments[0];
+
+    let Some(resource_value) = context.resources.get(resource_id) else {
+        return serde_json::Value::Null;
+    };
+
+    if segments.len() == 1 {
+        return resource_value.clone();
+    }
+
+    // Deep path access: split remaining path and navigate
+    let sub_segments: Vec<&str> = segments[1].split('.').collect();
+    navigate_value(resource_value, &sub_segments)
+}
+
 pub(super) fn resolve_template_value(
     value: &serde_json::Value,
     context: &RunContext,
@@ -227,6 +247,10 @@ fn resolve_template_expr_value(
 
     if let Some(node_path) = expr.strip_prefix("nodes.") {
         return Some(resolve_json_path(&format!("$.nodes.{node_path}"), context));
+    }
+
+    if let Some(resource_path) = expr.strip_prefix("resources.") {
+        return Some(resolve_resource_path(resource_path, context));
     }
 
     None

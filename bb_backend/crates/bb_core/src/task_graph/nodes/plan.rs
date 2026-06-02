@@ -378,6 +378,7 @@ mod tests {
                 loop_iterations: vec![],
                 loop_stack: vec![],
                 completed_branches: HashMap::new(),
+                resources: std::collections::BTreeMap::new(),
             },
             parent_run_id: None,
             checkpoint_ns: None,

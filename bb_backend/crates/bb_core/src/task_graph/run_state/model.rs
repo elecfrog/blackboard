@@ -81,6 +81,9 @@ pub struct RunContext {
     /// 并行 fork/join 追踪：key 为 join 点节点 ID，value 为已完成到达该 join 点的上游节点 ID 列表。
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub completed_branches: std::collections::HashMap<String, Vec<String>>,
+    /// Graph-level resources resolved at run start and frozen for the entire run lifetime.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub resources: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 /// A pending write produced by a node during a superstep.

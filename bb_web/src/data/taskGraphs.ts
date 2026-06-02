@@ -282,6 +282,13 @@ export interface TaskGraphRunPolicy {
   max_queue_timeout_retries: number
 }
 
+/** Graph-level resource definition. Resolved once at run start and frozen. */
+export interface TaskGraphResource {
+  value_type?: string
+  description?: string
+  value: unknown
+}
+
 export interface TaskGraphDefinition extends TaskGraphRef {
   schema_version: 1
   title: string
@@ -298,6 +305,8 @@ export interface TaskGraphDefinition extends TaskGraphRef {
     run_policy?: TaskGraphRunPolicy
   }
   inputs?: TaskGraphInputParam[]
+  /** Graph-level resources: key is resource ID, value is resource definition. */
+  resources?: Record<string, TaskGraphResource>
   nodes: TaskGraphNode[]
   edges: TaskGraphEdge[]
   layout?: {

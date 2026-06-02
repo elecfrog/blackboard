@@ -35,6 +35,7 @@ fn execute_simple_linear_graph_dry_run() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -205,6 +206,7 @@ fn superstep_barrier_records_parallel_pending_writes() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -320,6 +322,7 @@ fn recovery_replays_pending_start_writes_without_rerunning_start() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -636,6 +639,7 @@ fn interrupt_before_pauses_and_resume_runs_original_task() {
             run_policy: None,
         }),
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -739,6 +743,7 @@ fn execute_branch_selects_correct_path() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -926,6 +931,7 @@ fn execute_branch_reads_data_pin_input() {
             min: None,
             max: None,
         }]),
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -1075,6 +1081,7 @@ fn execute_human_gate_pauses_run() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -1199,6 +1206,7 @@ fn execute_human_gate_reject_cancels_run() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -1313,6 +1321,7 @@ fn execute_loop_max_iterations_reached() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -1465,6 +1474,7 @@ fn execute_loop_condition_exit() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -1629,6 +1639,7 @@ fn execute_loop_condition_exit_on_final_allowed_iteration() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),

@@ -15,6 +15,7 @@ pub(super) fn empty_context() -> RunContext {
         loop_iterations: Vec::new(),
         loop_stack: Vec::new(),
         completed_branches: std::collections::HashMap::new(),
+        resources: std::collections::BTreeMap::new(),
     }
 }
 
@@ -135,6 +136,7 @@ pub(super) fn swe_e2e_smoke_graph() -> TaskGraphDefinition {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes,
         edges,
         layout: None,

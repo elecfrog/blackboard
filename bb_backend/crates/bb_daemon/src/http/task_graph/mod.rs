@@ -233,6 +233,7 @@ pub(super) async fn tg_fork_graph(
         }),
         metadata: source.metadata,
         inputs: source.inputs,
+        resources: source.resources,
         nodes: source.nodes,
         edges: source.edges,
         layout: source.layout,

@@ -510,16 +510,20 @@ pub(super) fn validate_llm_config(
     }
 
     if let Some(resource_bundle) = &config.resource_bundle {
-        if resource_bundle.input.trim().is_empty() {
+        let input = resource_bundle.input.trim();
+        if input.is_empty() {
             errors.push(TaskGraphValidationError {
                 path: format!("nodes[{idx}].config.resource_bundle.input"),
                 code: "empty_resource_bundle_input".to_string(),
                 message: format!(
-                    "LLM node '{}' resource_bundle.input must name the data input pin",
+                    "LLM node '{}' resource_bundle.input must name the data input pin or reference a graph resource via {{{{resources.xxx}}}}",
                     node.id
                 ),
             });
         }
+        // resource_bundle.input can be either:
+        // 1. A data input pin name (legacy, resolved via data edge)
+        // 2. A template expression like "{{resources.xxx}}" (new, resolved via graph resources)
     }
 
     for (toolkit_idx, toolkit) in config.toolkits.iter().enumerate() {

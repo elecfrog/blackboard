@@ -249,3 +249,62 @@ fn loop_no_condition_always_true() {
     };
     assert!(evaluate_loop_condition(&config, &empty_context()));
 }
+
+// ─── Resource template resolution tests ──────────────────────────────────────
+
+#[test]
+fn render_template_resolves_resources_reference() {
+    let mut ctx = empty_context();
+    ctx.resources.insert(
+        "my-bundle".to_string(),
+        json!({ "task": { "goal": "review code" }, "version": 2 }),
+    );
+
+    let tmp = std::env::temp_dir();
+    let rendered = render_prompt_template(
+        "Goal: {{resources.my-bundle.task.goal}}, Version: {{resources.my-bundle.version}}",
+        "test-project",
+        &tmp,
+        &tmp,
+        &ctx,
+        None,
+    );
+    assert_eq!(rendered, "Goal: review code, Version: 2");
+}
+
+#[test]
+fn render_template_resources_missing_returns_empty() {
+    let ctx = empty_context();
+    let tmp = std::env::temp_dir();
+    let rendered = render_prompt_template(
+        "Value: {{resources.nonexistent}}",
+        "test-project",
+        &tmp,
+        &tmp,
+        &ctx,
+        None,
+    );
+    assert_eq!(rendered, "Value: ");
+}
+
+#[test]
+fn render_template_resources_whole_object_serialized() {
+    let mut ctx = empty_context();
+    ctx.resources.insert(
+        "config".to_string(),
+        json!({ "key": "value" }),
+    );
+
+    let tmp = std::env::temp_dir();
+    let rendered = render_prompt_template(
+        "{{resources.config}}",
+        "test-project",
+        &tmp,
+        &tmp,
+        &ctx,
+        None,
+    );
+    // Should be JSON serialized
+    assert!(rendered.contains("key"));
+    assert!(rendered.contains("value"));
+}

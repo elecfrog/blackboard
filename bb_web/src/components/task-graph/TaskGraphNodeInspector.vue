@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { PanelRightClose, Trash2 } from 'lucide-vue-next'
 import { BbButton, BbCheckboxField, BbField, BbRefChip } from '@/components/common'
 import { t } from '@/i18n'
@@ -20,6 +20,7 @@ const props = defineProps<{
   projectAgentsError: string
   graphInputs: TaskGraphInputParam[]
   graphInputIds: string[]
+  graphResourceIds: string[]
   availableGraphs: Array<{ id: string; scope: string; title: string }>
   project: string
   graphScope: string
@@ -93,6 +94,24 @@ function configRecordString(node: TaskGraphNode, key: string, field: string) {
 
 function updateConfigRecord(key: string, patch: Record<string, unknown>) {
   emit('update-config', { [key]: { ...configRecord(props.node, key), ...patch } })
+}
+
+// ─── uses_resources helpers ──────────────────────────────────────────────────
+
+const nodeUsesResources = computed<string[]>(() => {
+  const raw = props.node.config.uses_resources
+  return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : []
+})
+
+function toggleNodeResource(resId: string, checked: boolean) {
+  const current = [...nodeUsesResources.value]
+  if (checked && !current.includes(resId)) {
+    current.push(resId)
+  } else if (!checked) {
+    const idx = current.indexOf(resId)
+    if (idx >= 0) current.splice(idx, 1)
+  }
+  emit('update-config', { uses_resources: current })
 }
 
 function configJsonText(node: TaskGraphNode, key: string) {
@@ -528,17 +547,19 @@ function updateMutationGenerated(patch: Record<string, unknown>) {
         @add="addLlmInput"
         @use-input="(key, inputId) => updateLlmInput(key, inputReference(inputId))"
       />
-      <TaskGraphBindingList
-        :title="t('taskGraphSubgraphInputBindings')"
-        :bindings="subGraphBindings(node)"
-        :readonly="readonly"
-        :input-ids="graphInputIds"
-        :value-placeholder="t('taskGraphInputBindingPlaceholder')"
-        :add-label="t('taskGraphAddInput')"
-        @update="updateSubGraphBinding"
-        @add="() => updateSubGraphBinding(`input_${Object.keys(subGraphBindings(node)).length + 1}`, '')"
-        @use-input="(key, inputId) => updateSubGraphBinding(key, inputReference(inputId))"
-      />
+      <!-- uses_resources multi-select -->
+      <div v-if="graphResourceIds.length > 0" class="task-graph-uses-resources">
+        <label class="bb-field-label">Uses Resources</label>
+        <div v-for="resId in graphResourceIds" :key="resId" class="task-graph-resource-checkbox">
+          <input
+            type="checkbox"
+            :checked="nodeUsesResources.includes(resId)"
+            :disabled="readonly"
+            @change="toggleNodeResource(resId, ($event.target as HTMLInputElement).checked)"
+          />
+          <span>{{ resId }}</span>
+        </div>
+      </div>
     </template>
 
     <template v-else-if="node.type === 'llm_mutation'">

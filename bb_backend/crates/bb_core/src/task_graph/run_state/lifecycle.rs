@@ -116,6 +116,7 @@ pub fn create_run(
             loop_iterations: Vec::new(),
             loop_stack: Vec::new(),
             completed_branches: std::collections::HashMap::new(),
+            resources: std::collections::BTreeMap::new(),
         },
         parent_run_id: None,
         checkpoint_ns: None,

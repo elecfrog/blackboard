@@ -1499,6 +1499,7 @@ mod tests {
                 loop_iterations: vec![],
                 loop_stack: vec![],
                 completed_branches: Default::default(),
+                resources: Default::default(),
             },
             parent_run_id: None,
             checkpoint_ns: None,

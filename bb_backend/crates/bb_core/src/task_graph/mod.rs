@@ -7,6 +7,7 @@ pub mod compile;
 pub mod definition;
 pub mod nodes;
 pub mod pregel;
+pub mod resources;
 pub mod run_state;
 pub mod runtime;
 pub(crate) mod runtime_concurrency;

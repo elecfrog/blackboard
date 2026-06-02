@@ -25,10 +25,28 @@ pub struct TaskGraphDefinition {
     pub metadata: Option<GraphMetadata>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inputs: Option<Vec<TaskGraphInputParam>>,
+    /// Graph-level resource declarations. Nodes opt-in via `uses_resources`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resources: Option<BTreeMap<String, GraphResource>>,
     pub nodes: Vec<TaskGraphNode>,
     pub edges: Vec<TaskGraphEdge>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<TaskGraphLayout>,
+}
+
+/// A graph-level resource definition. Resolved once at run start and frozen.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphResource {
+    #[serde(default = "default_graph_resource_type")]
+    pub value_type: PinValueType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub value: serde_json::Value,
+}
+
+fn default_graph_resource_type() -> PinValueType {
+    PinValueType::Json
 }
 
 /// Scope discriminator: system (readonly, builtin) or project (user-editable).
@@ -375,6 +393,9 @@ pub struct LlmConfig {
     pub tool_policy: Option<AgentToolPolicy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource_bundle: Option<LlmResourceBundleConfig>,
+    /// Explicit opt-in to graph-level resources by ID.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub uses_resources: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_contract: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

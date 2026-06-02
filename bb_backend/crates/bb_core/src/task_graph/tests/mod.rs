@@ -26,6 +26,7 @@ mod tests {
             origin: None,
             metadata: None,
             inputs: None,
+            resources: None,
             nodes: vec![
                 TaskGraphNode {
                     id: "start".to_string(),
@@ -1079,6 +1080,7 @@ mod run_state_tests {
             origin: None,
             metadata: None,
             inputs: None,
+            resources: None,
             nodes: vec![
                 super::super::types::TaskGraphNode {
                     id: "start".to_string(),

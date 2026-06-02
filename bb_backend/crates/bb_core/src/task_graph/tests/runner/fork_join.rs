@@ -26,6 +26,7 @@ fn parallel_fork_join_basic() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -195,6 +196,7 @@ fn parallel_fork_join_intermediate_node() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),
@@ -381,6 +383,7 @@ fn parallel_single_branch_backward_compatible() {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             TaskGraphNode {
                 id: "start".to_string(),

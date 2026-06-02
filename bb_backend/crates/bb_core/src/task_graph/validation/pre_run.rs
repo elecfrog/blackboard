@@ -305,6 +305,7 @@ mod tests {
             origin: None,
             metadata: None,
             inputs: None,
+            resources: None,
             nodes: vec![
                 TaskGraphNode {
                     id: "start".to_string(),

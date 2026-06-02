@@ -443,6 +443,7 @@ fn parallel_graph() -> TaskGraphDefinition {
         origin: None,
         metadata: None,
         inputs: None,
+        resources: None,
         nodes: vec![
             node("start", NodeType::Start),
             node("left", NodeType::InputVar),

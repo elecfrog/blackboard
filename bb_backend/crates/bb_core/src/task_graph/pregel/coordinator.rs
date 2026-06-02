@@ -128,6 +128,21 @@ impl<'a> GraphCoordinator<'a> {
         // 构建导航结构（owned 版本，避免生命周期问题）
         let edge_map = build_owned_edge_map(&graph.edges);
         let node_map = build_owned_node_map(&graph.nodes);
+
+        // Resolve graph-level resources and freeze them into the run context.
+        if run.context.resources.is_empty() {
+            let resolved = crate::task_graph::resources::resolve_graph_resources(
+                &graph,
+                &run.project,
+                &opts.workspace_root,
+                &opts.scripts_dir,
+                &run.context,
+            );
+            if !resolved.is_empty() {
+                run.context.resources = resolved;
+            }
+        }
+
         Ok(Self {
             opts,
             graph,
@@ -1973,6 +1988,7 @@ mod tests {
             origin: None,
             metadata: None,
             inputs: None,
+            resources: None,
             nodes: vec![
                 TaskGraphNode {
                     id: "start".to_string(),
