@@ -1627,7 +1627,7 @@
       "title": "飞书 Webhook 消息推送（TaskGraph 终态通知）",
       "status": "in_progress",
       "created_at": "2026-05-28",
-      "updated_at": "2026-05-28",
+      "updated_at": "2026-05-31",
       "attachments": [
         {
           "kind": "wiki",
@@ -1666,7 +1666,7 @@
       "title": "定义 Spec Arena：4+1 单 Draft 多 Agent 审计管线",
       "status": "todo",
       "created_at": "2026-05-27",
-      "updated_at": "2026-05-27",
+      "updated_at": "2026-06-02",
       "attachments": [
         {
           "kind": "ticket",
@@ -1745,7 +1745,7 @@
       "title": "用 088 Dogfood Spec Arena 4+1 Graph",
       "status": "review",
       "created_at": "2026-05-27",
-      "updated_at": "2026-05-28",
+      "updated_at": "2026-06-01",
       "attachments": [
         {
           "kind": "ticket",

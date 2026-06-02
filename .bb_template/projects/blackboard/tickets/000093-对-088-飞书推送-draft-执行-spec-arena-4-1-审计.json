@@ -483,6 +483,99 @@
       "at": "2026-05-28",
       "summary": "Next step: 也可以在 Graph Editor 里给 Human Gate Inspector 增加这些字段，真正把 gate contract 产品化。",
       "evidence": []
+    },
+    {
+      "at": "2026-05-30",
+      "summary": "Record: CodeBuddy 接手：重跑 Spec Arena v21，run-20260530-171557-e6e1cac4，4 reviewer+4 peer+aggregate+attacker+validate-attacker-schema 全通过，暂停在 accept-attack-gate。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-30",
+      "summary": "Record: attacker verdict=needs_rework，3×P0/4×P1/1×P2。P0-1：088 risk webhook-url-leak mitigation 措辞不严谨（export 内联命令本身进 shell history）；P0-2：reviewer R3 的 metrics counter/Error variant 依赖 bb_core::metrics，code_facts 无实证；P0-3：R3 的 TLS/metrics 是 inference 非 fact，违反 000091 实证要求。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-30",
+      "summary": "Record: Human Gate 由用户决定 hold-for-revision，run 正确 cancelled，未合并 final spec。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-30",
+      "summary": "Next step: 已修订 088 draft：收紧 webhook URL shell history 措辞、显式标注 metrics/TLS 未采纳(deferred)、明确 GraphRunResult 字段类型；已同步收紧 000088 ticket 的 webhook-url-leak mitigation。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-30",
+      "summary": "Next step: 重跑 Spec Arena v21，验证 attacker 是否在修订后不再就这 3 个 P0 阻塞。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Consolidated inbox note `2026-05-27-codex-spec-arena-native-schema-repair-inbox-cleanup-agents-graph-registry.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-spec-arena-native-schema-repair-inbox-cleanup-agents-graph-registry.json",
+        "Title: Spec Arena v8 productization and graph registry update\nTime: 2026-05-27T16:10:02Z\nSource: codex\nProject: blackboard\nTopic: Spec Arena native schema repair, inbox cleanup, AGENTS graph registry\nDone:\n- 在 AGENTS.md 增加“常用 TaskGraph 主图注册”，登记 inbox cleanup、research、Spec Arena、代码审查、KB/Wiki、nightly 等常用 graph ref，后续用户说语义即可直接启动。\n- 将 project/spec-arena-4-plus-1 更新到 v8：移除临时 shell normalize-attacker-output 节点，attacker 直接进入 validate-attacker-schema，merge/report 读取 schema_validate.output.data。\n- 在 bb_core schema_validate 增加 attacker_output_v1 deterministic repair，并删除临时 scripts/task_graph_normalize_attacker_output.js。\n- 启动 system/inbox-batch-cleanup：默认批次 run-20260527-160450-8699cc86 成功但删除 0 条；随后 batch-count=20 run-20260527-160759-8844c78c 成功归并 19 条 inbox note 到 000090/000091/000093，当前 inbox 列表为空。\nValidation:\n- cargo test schema_validate: 7 passed。\n- TaskGraph API PATCH project/spec-arena-4-plus-1: validation passed，保存为 graph version 8。\n- inbox cleanup run-20260527-160759-8844c78c: succeeded；inbox index rebuilt、ticket index rebuilt、check_ticket_ids passed、qmd embed passed。\n- Spec Arena live run run-20260527-155513-70928a1c 在 validate-attacker-schema 失败；原因是当前运行中的 daemon 尚未加载本轮 Rust native...",
+        "cleanup reason: note_1 的 document.related_tickets 明确写 000093，内容是 spec-arena-4-plus-1 v8 迭代、AGENTS graph registry 登记、inbox cleanup 归并，与 000093 '用 088 Dogfood Spec Arena 4+1 Graph' 完全吻合。"
+      ]
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Consolidated inbox note `2026-05-27-codex-spec-arena-v8-native-repair-live-success.json`.",
+      "evidence": [
+        "inbox/2026-05-27-codex-spec-arena-v8-native-repair-live-success.json",
+        "Title: Spec Arena v8 native schema repair verified\nTime: 2026-05-27T16:44:18Z\nSource: codex\nProject: blackboard\nTopic: Spec Arena v8 native repair live success\nDone:\n- 重启 Blackboard dev stack，使 bb_daemon 重新加载本轮 bb_core schema_validate native repair 代码；3001/3002/8060 均恢复。\n- 启动 `project/spec-arena-4-plus-1` v8 run `run-20260527-162617-47f6b3ed`，完整通过 4 reviewer、4 peer rating、aggregate、attacker、native schema validate、human gate、merge、report、write。\n- `validate-attacker-schema` 对扁平 attacker 输出执行 `attacker_output_v1` deterministic repair，生成完整 `attack_items`，`valid=true`，repair_notes 记录 wrapped/normalized flat attacker output。\n- Human Gate 使用 `accept-and-merge` 恢复，最终写出 v8 implementation spec 和 arena report。\n- 更新 000093 extra/attachments：task_graph_version=8，successful_run_id=run-20260527-162617-47f6b3ed，native_repair_validated=true。\nValidation:\n- TaskGraph run `run-20260527-162617-47f6b3ed`: status=succeeded，19/19 nodes succeeded。\n- `write-final-spec`: ok，33337 bytes；`implementation_spec.md` 781 lines。\n- `write-arena-report`: ok，9622 bytes；`arena_report.md` 205 lines。\n- `cargo test schema_validate`: 7 passed。\n- `python3 scripts/check_ticket_ids.py --project blackboard`: passed。\n- `qmd e...",
+        "cleanup reason: note_2 的 document.related_tickets 明确写 000093，内容是 v8 native repair 重启 daemon 后 live run 成功，与 000093 直接关联。"
+      ]
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Consolidated inbox note `2026-05-28-codex-spec-arena-human-gate-verdict-summary-ui.json`.",
+      "evidence": [
+        "inbox/2026-05-28-codex-spec-arena-human-gate-verdict-summary-ui.json",
+        "Title: Spec Arena gate now surfaces upstream verdict and blockers\nTime: 2026-05-28T07:06:04Z\nSource: codex\nProject: blackboard\nTopic: Spec Arena human gate verdict summary UI\nDone:\n- 在 `TaskGraphRunPanel.vue` 的 paused human gate banner 中显示 graph node 的 `title` 和 `instructions`，不再只显示 node id/reason。\n- 新增 paused gate upstream insight：从进入 gate 的上游节点输出中提取 `schema valid/invalid`、`schema_ref`、`verdict`、P0 数量、repair notes、must_accept_before_merge 和 attack item 摘要。\n- 当上游输出包含 `needs_rework`、P0、schema invalid 或 errors 时，gate banner 会标记 blockers，并将 result=`cancel` 的动作视觉上作为推荐动作、弱化 result=`accepted` 的动作。\n- 这正好覆盖 `accept-attack-gate`：用户在 gate 上能直接看到 schema-valid attacker verdict 和 P0/must-fix 摘要，不需要只靠节点详情面板判断。\nValidation:\n- `npm run build --prefix bb_web`：通过。\n- `mcp__node_repl__.js import('playwright')`：Playwright 不可用，未做自动浏览器截图。\n- `mcp__computer_use__.get_app_state app=Codex`：被安全策略阻止，未能检查 in-app browser 截图。\nNext step:\n- 下一步可以把 human_gate config 扩展出正式的 `summary_input_refs` / `recommended_action_rule`，让图作者不用依赖 UI 对上游 JSON 的启发式提取。\n- 也可以在 Graph Editor 里给 Human Gate Inspector 增加这些字段，真正把 gate contract 产品化。\nRelated locations:\n- /Users/ornizhou/development/blackboard/bb_web/src/components/TaskGraphRu...",
+        "cleanup reason: note_3 的 document.related_tickets 明确写 000093，内容是 TaskGraphRunPanel.vue 的 Human Gate verdict summary UI 改进，是 Spec Arena gate experience 的一部分，属于 000093 范畴。"
+      ]
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Consolidated inbox note `2026-05-28-codex-spec-arena-runtime-json-guard-live-validation.json`.",
+      "evidence": [
+        "inbox/2026-05-28-codex-spec-arena-runtime-json-guard-live-validation.json",
+        "Title: Spec Arena strict runtime guard run held for revision\nTime: 2026-05-28T07:00:38Z\nSource: codex\nProject: blackboard\nTopic: Spec Arena runtime JSON guard live validation\nDone:\n- 在 `bb_core` LLM runtime 层加入 JSON output semantic guard：当 output_contract/output 要求 `artifact_type=json` 时，若模型输出只是 `turn_start`、`auto_retry_start` 等 runtime lifecycle event，会以 `invalid_llm_output` 失败；AgentSession 路径会按 transient retry 策略重试，最终仍不合格才失败。\n- 重启 bb daemon 后执行 `project/spec-arena-4-plus-1` v9 live run `run-20260528-063947-a87d8a12`。该 run 通过 reviewer、peer rating、aggregate、attacker、schema validate，并在 `accept-attack-gate` 暂停。\n- 确认 attacker 输出不是 lifecycle fake green：`validate-attacker-schema` 返回 `valid=true`、`schema_ref=bb://schema/spec-arena/attacker-output-v1`、`repair_notes=[]`，verdict 为 `needs_rework`，含 3 个 P0。\n- 根据 attacker 的 P0 结论在 Human Gate 选择 `hold-for-revision`；run 最终为 `cancelled`，没有进入 merge，符合“有阻塞攻击时不能自动产出最终 spec”的产品语义。\n- 更新 000093：status=`in_progress`，记录 latest run、gate action、attacker verdict/P0 count、runtime JSON guard 状态，并追加 latest run attachment。\nValidation:\n- `cargo fmt`：通过。\n- `cargo test schema_validate`：通过，11 passed。\n- `cargo test runtime::llm_node`：通过，4 passed，覆盖 runtime lifecy...",
+        "cleanup reason: note_4 的 document.related_tickets 明确写 000093，内容是 bb_core runtime JSON guard 和 v9 hold-for-revision run，是 Spec Arena runtime 质量保障迭代，属于 000093。"
+      ]
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Consolidated inbox note `2026-05-28-codex-spec-arena-schema-registry-handle-and-strict-repair-guard.json`.",
+      "evidence": [
+        "inbox/2026-05-28-codex-spec-arena-schema-registry-handle-and-strict-repair-guard.json",
+        "Title: Spec Arena v9 schema_ref + strict attacker repair guard\nTime: 2026-05-28T06:33:34Z\nSource: codex\nProject: blackboard\nTopic: Spec Arena schema registry handle and strict repair guard\nDone:\n- `schema_validate` 新增 `schema_ref`：支持 `bb://schema/...` / `schemas/...` 相对 handle，从 workspace `.bb_template/schemas` 加载 JSON schema，同时继续兼容内联 `schema`。\n- 新增 registry schema `schemas/spec-arena/attacker-output-v1.schema.json`，并把 `project/spec-arena-4-plus-1` 从 v8 patch 到 v9：`validate-attacker-schema` 不再内联大 schema，只引用 `bb://schema/spec-arena/attacker-output-v1`。\n- 重启 daemon 后跑通 v9 run `run-20260527-165448-7cbcd56c`：19/19 nodes succeeded，Human Gate 使用 `accept-and-merge`，写出 `implementation_spec.md` 与 `arena_report.md`。\n- 发现并收紧一个假绿风险：v9 run 暴露 attacker 原始输出为 lifecycle-only `turn_start`；已修改 `attacker_output_v1` native repair，只修有语义的扁平 attacker 输出，拒绝从空/生命周期事件凭空合成 attack_items。\n- 更新 000093 附件和 extra：记录 graph v9、schema handle、v9 run、strict repair caveat、final spec/report。\nValidation:\n- `cargo fmt`：通过。\n- `cargo test schema_validate`：通过，11 passed；新增 schema_ref 解析测试和 lifecycle-only attacker 输出拒绝测试。\n- TaskGraph API PATCH `project/spec-arena-4-plus-1`：validation passed，version=9。\n- TaskGraph run `run-2...",
+        "cleanup reason: note_5 的 document.related_tickets 明确写 000093，内容是 schema_ref handle 和 attacker-output-v1 strict repair guard，属于 spec-arena-4-plus-1 graph v9 演进，与 000093 直接关联。"
+      ]
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Consolidated inbox note `2026-05-30-codex-spec-arena-productized-graph-contracts-handoff.json`.",
+      "evidence": [
+        "inbox/2026-05-30-codex-spec-arena-productized-graph-contracts-handoff.json",
+        "Title: Spec Arena v21 schema contracts and handoff\nTime: 2026-05-30T16:23:53Z\nSource: codex\nProject: blackboard\nTopic: Spec Arena productized graph contracts handoff\nDone:\n- 把 Spec Arena graph 推到 v21：保留现有 4 reviewer + 4 peer rating + aggregate + attacker + human gate + merge 执行形态，不增加重跑，不把流程改成 hack。\n- 新增 schema registry 形态：resource-bundle-v1、review-output-v1、peer-rating-output-v1、peer-rating-aggregate-v1；graph metadata.schema_registry 现在列出 6 个 schema handle，metadata.product_shape 按 Inputs/Facts、4 Reviews、4 Peer Ratings、Aggregate、Attack/Gate、Merge/Write 六个 lane 描述产品形态。\n- 把 10 个 JSON LLM 节点的 output_contract 挂上 schema_ref/schema_name，并保留 delivery=file，让 MiniMax 直接写 run-scoped JSON artifact，而不是输出 JSON prompt/chat 文本。\n- 修了一个真实 contract bug：schema_validate 的轻量 JSON Schema validator 之前不解析本地 $ref，导致 code-facts-v1 这类带 $defs/$ref 的 schema 约束不完整；现在支持本地 JSON Pointer $ref，并有单测覆盖 unresolved ref。\n- 上一轮实际 run 已证明 MiniMax 会调用 write 写入 review/peer/aggregate/attacker JSON artifact，runtime 读取文件；attacker schema validate 通过，但 human gate 因 attacker 判定 needs_rework 已 hold/cancel，未产出最终 spec。\nValidation:\n- python3 -m json.tool .bb_template/projects/blackboard/task_graphs/spec-arena-4-plus-1.json：通过。\n- pyt...",
+        "cleanup reason: note_2 document.related_tickets 明确列出 000093（用 088 Dogfood Spec Arena），Topic 是 Spec Arena v21 schema contracts handoff，Done items 包含把 Spec Arena graph 推到 v21 并升级 schema registry，这些都是 000093 用 088 dogfood Spec Arena 4+1 graph 的核心工作。"
+      ]
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Consolidated inbox note `2026-05-31-codebuddy-088-飞书终态通知实现-spec-arena-多模型改造-mcp-协议修复.json`.",
+      "evidence": [
+        "inbox/2026-05-31-codebuddy-088-飞书终态通知实现-spec-arena-多模型改造-mcp-协议修复.json",
+        "Title: 088 feishu 通知落地（多模型 arena 驱动）\nTime: 2026-05-31T07:01:00Z\nSource: codebuddy\nProject: blackboard\nTopic: 088 飞书终态通知实现 + Spec Arena 多模型改造 + MCP 协议修复\nDone:\n- 修复 bb MCP streamable-http 协议版本（mcp_handler.rs get_info 固定 ProtocolVersion::V_2025_03_26），解决 CodeBuddy 连不上 bb（rmcp 1.6 默认回显 LATEST=2025-11-25 客户端不支持）。\n- Spec Arena 多模型改造：通过 TaskGraph API 将 project/spec-arena-4-plus-1 PATCH 到 v22，4 reviewer 异构（review-daemon=claude-sonnet-4.6/high、review-config-cli=glm-5.1-ioa、review-reliability=kimi-k2.6-ioa、review-tests=hy3-preview-ioa）、attacker=gpt-5.5/high，全部 runtime=codebuddy；peer-rate/aggregate 仍 MiniMax。模型/变体接法：config.runtime/model 直传，variant→codebuddy --settings reasoningEffort。\n- 多轮 arena dogfood 验证：MiniMax attacker 噪声大（3 P0 含幻觉），gpt-5.5 attacker 信噪比显著更高；发现 merge-final-spec 有 Merge Safety Contract v10，attacker verdict=needs_rework + P0 时 fail-closed 不产出可执行 spec（只出 blocked review）。瓶颈已从 draft 转移到 MiniMax peer/aggregate 层的错误共识。\n- 按用户决策：spec 为最终执行标准；CodeBuddy 拍定 2 个 P0 决策（payload 外发白名单、feishu crate 边界）并将 implementation_spec.md 重写为完整可执行 plan。\n- 实现 088 MVP：bb_core::feishu 新模块（reqwest blocking+rustls-tls）+ bb_daemon run_graph→GraphRunResult + spawn_feishu_notification(direct-run join_on_ex...",
+        "cleanup reason: note_3 document.related_tickets 明确列出 000093，Done items 中 Spec Arena 多模型改造（4异构reviewer+gpt-5.5 attacker）、多轮 arena dogfood 验证、拍定 P0 决策等 4 条 done items 直接属于 000093 的 dogfood scope；088 feishu 实现 Done item 和 implementation_spec.md 也因 000093 summary 明确以 000088 BDD 为行为边界而落入 scope。"
+      ]
+    },
+    {
+      "at": "2026-06-01",
+      "summary": "Record: v23 system graph 上线后 dogfood 收尾。088 dogfood 目标已达成：implementation_spec.md 已落地，088 ticket 推到 in_progress→review。新 system/spec-arena-4-plus-1 v1 通过 088 inputs 的 mock 等价渲染验证，证明 v22→v1 改造保持 088 视角等价。本 ticket 作为 088 dogfood 收尾，不再绑定具体 graph version；后续任何 ticket 走 arena 都用 system v1 启动，无需新建 dogfood ticket (091 协议未要求)。",
+      "evidence": []
     }
   ],
   "attachments": [
@@ -543,7 +636,7 @@
   ],
   "status": "review",
   "created_at": "2026-05-27",
-  "updated_at": "2026-05-28",
+  "updated_at": "2026-06-01",
   "extra": {
     "area": "Spec Arena",
     "arena_report_path": "wiki/specs/088-feishu-push/arena_report.md",

@@ -2,112 +2,61 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "bb://schema/spec-arena/code-facts-v1",
   "title": "Spec Arena Code Facts",
-  "description": "Deterministic read-only repository facts consumed by Spec Arena reviewers.",
+  "description": "Deterministic read-only repository facts consumed by Spec Arena reviewers. Issue-agnostic: the script reports presence/size for caller-supplied target files plus a short head-of-file slice of the draft.",
   "type": "object",
   "required": [
     "schema_version",
     "kind",
+    "repo_root",
     "files",
-    "runner_config",
-    "daemon",
-    "bb_cli",
     "draft_checks"
   ],
   "additionalProperties": false,
   "properties": {
     "schema_version": { "type": "integer", "const": 1 },
     "kind": { "type": "string", "const": "spec_arena_code_facts" },
-    "files": { "type": "object" },
-    "runner_config": {
-      "type": "object",
-      "required": [
-        "path",
-        "exists",
-        "runner_config_struct_lines",
-        "deny_unknown_fields_lines",
-        "has_feishu_field",
-        "has_read_env_or_toml",
-        "has_read_env_bool_or_toml"
-      ],
-      "properties": {
-        "path": { "type": "string", "minLength": 1 },
-        "exists": { "type": "boolean" },
-        "runner_config_struct_lines": { "$ref": "#/$defs/line_matches" },
-        "deny_unknown_fields_lines": { "$ref": "#/$defs/line_matches" },
-        "has_feishu_field": { "type": "boolean" },
-        "has_read_env_or_toml": { "type": "boolean" },
-        "has_read_env_bool_or_toml": { "type": "boolean" }
-      }
+    "repo_root": { "type": "string", "minLength": 1 },
+    "files": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/file_descriptor" }
     },
-    "daemon": {
-      "type": "object",
-      "required": [
-        "path",
-        "exists",
-        "run_graph_signature_lines",
-        "run_graph_return_lines",
-        "create_run_lines",
-        "execute_run_lines",
-        "run_graph_call_lines",
-        "run_outcome_match_lines"
-      ],
-      "properties": {
-        "path": { "type": "string", "minLength": 1 },
-        "exists": { "type": "boolean" },
-        "run_graph_signature_lines": { "$ref": "#/$defs/line_matches" },
-        "run_graph_return_lines": { "$ref": "#/$defs/line_matches" },
-        "create_run_lines": { "$ref": "#/$defs/line_matches" },
-        "execute_run_lines": { "$ref": "#/$defs/line_matches" },
-        "run_graph_call_lines": { "$ref": "#/$defs/line_matches" },
-        "run_outcome_match_lines": { "$ref": "#/$defs/line_matches" }
-      }
-    },
-    "bb_cli": {
-      "type": "object",
-      "required": [
-        "path",
-        "exists",
-        "commands_enum_lines",
-        "has_feishu_subcommand",
-        "has_test_push",
-        "commands_dir_exists"
-      ],
-      "properties": {
-        "path": { "type": "string", "minLength": 1 },
-        "exists": { "type": "boolean" },
-        "commands_enum_lines": { "$ref": "#/$defs/line_matches" },
-        "has_feishu_subcommand": { "type": "boolean" },
-        "has_test_push": { "type": "boolean" },
-        "commands_dir_exists": { "type": "boolean" }
-      }
-    },
-    "draft_checks": {
-      "type": "object",
-      "required": [
-        "path",
-        "internal_run_outcome_occurrences",
-        "spawn_feishu_notification_occurrences"
-      ],
-      "properties": {
-        "path": { "type": "string", "minLength": 1 },
-        "internal_run_outcome_occurrences": { "$ref": "#/$defs/line_matches" },
-        "spawn_feishu_notification_occurrences": { "$ref": "#/$defs/line_matches" }
-      }
-    }
+    "draft_checks": { "$ref": "#/$defs/draft_descriptor" }
   },
   "$defs": {
-    "line_match": {
+    "file_descriptor": {
       "type": "object",
-      "required": ["line", "text"],
+      "required": ["path", "exists", "size_bytes", "is_dir"],
       "additionalProperties": false,
       "properties": {
-        "line": { "type": "integer", "minimum": 1 },
-        "text": { "type": "string" }
+        "path": { "type": "string", "minLength": 1 },
+        "exists": { "type": "boolean" },
+        "size_bytes": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "is_dir": { "type": "boolean" }
       }
     },
-    "line_matches": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/line_match" }
+    "draft_descriptor": {
+      "type": "object",
+      "required": ["path", "exists", "size_bytes", "head_lines"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "exists": { "type": "boolean" },
+        "size_bytes": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "head_lines": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
     }
   }
 }

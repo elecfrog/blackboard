@@ -205,6 +205,16 @@
         "Title: Spec Arena 补充 ticket/spec 职责边界\nTime: 2026-05-27T12:32:52Z\nSource: codex\nProject: blackboard\nTopic: spec-arena-ticket-vs-spec-boundary\nDone:\n- 将用户补充的职责边界写入 000091：ticket 决定行为，采用 BDD；Spec Arena 最终产物是 implementation spec，决定具体实现、风险、测试和验收映射。\n- 更新 000091 summary：Spec 不能取代 ticket，而是承接 ticket 的行为边界。\n- 新增 story：ticket 与最终 spec 同时存在时，ticket 只描述用户可观察行为、边界和验收语义；spec 描述如何改代码/数据/接口/图、主要风险、测试矩阵和上线/回滚计划。\n- 新增风险 `ticket-spec-boundary-blur`，避免 ticket 被实现细节污染或 spec 重复定义产品行为。\nValidation:\n- mcp__bb__.update_ticket 000091: 通过\nNext step:\n- 后续定义 final implementation spec 模板时，固定章节应包含：关联 ticket/BDD 行为边界、事实源、设计决策、实现计划、风险与回滚、测试矩阵、验收映射、采纳/拒绝观点和 open questions。\nRelated locations:\n- /Users/ornizhou/development/blackboard/.bb_template/projects/blackboard/tickets/000091-spec-arena-single-draft-multi-agent-audit.json",
         "cleanup reason: ticket/spec 职责边界补充写入 000091，related_locations 明确指向 000091 ticket 文件"
       ]
+    },
+    {
+      "at": "2026-06-01",
+      "summary": "Record: Spec Arena graph 产品化：升 system scope, 加 admission gate, 去 088 硬编码。新建 system/spec-arena-4-plus-1 v1，scope=system, readonly=true。拓扑差异：start 之后新增 draft-admission-gate (human_gate, actions: approve/resume + request-rewrite/cancel + reject/cancel)，实现 091 stories[2] (Draft Admission Human Gate) 缺口；rewrite/reject 走 result=cancel 直接终止 run，无新增 end 节点。12 个 LLM/data 节点 prompt 全部去硬编码：000088→{{inputs.ticket-id}}, 000093→{{inputs.arena-ticket-id}}, 飞书表述删除改通用语；000091 协议字面量保留。4 个 reviewer 节点 (review-r1..r4) perspective/focus 由 graph inputs 注入，不再绑定 088 视角。code-facts 脚本接 --target-files-json (JSON 数组)，调用方可针对任意 issue 指定要 stat 的 repo 路径，零写死。schema spec-arena/code-facts-v1 同步泛化为 files[] + draft_checks。assemble-arena-report 输出第一行注入 <!-- verdict_signal=blocked|clean -->，下游消费方可 grep 区分 spec 是否可执行。旧 .bb_template/projects/blackboard/task_graphs/spec-arena-4-plus-1.json (project v22) 已删除；catalog 自动收敛只剩 system 一条。验证：daemon /api/projects/blackboard/task-graphs 返回 system spec-arena-4-plus-1 v1 compile_error=None；088 inputs 通过 mock renderer 验证：reviewer 视角/focus 正确渲染为 v22 等价 anchor、code-facts 命令行展开、verdict_signal addendum 在位。未做端到端跑 088 graph (会覆盖已落地 implementation_spec.md，无价值)。",
+      "evidence": []
+    },
+    {
+      "at": "2026-06-02",
+      "summary": "Record: Spec Arena graph 拓扑收敛：引入 MakeArray 节点（UE Blueprint 风格 fan-in）。新增 2 个 data_value 节点 make-reviews-array 和 make-peer-ratings-array，config.value 是 4 元数组 [{{data.review-rN.output}},...]，data_value 引擎递归渲染保持 array 形态。reviewer-rN 和 peer-rate-rN 通过 4 条 exec edge 入 MakeArray，自动汇成 join barrier（compiler.rs:438 多入 exec 自动 barrier 语义）；所有下游 consumer (peer-rate-rN / aggregate / attacker / merge / assemble) 改为读单一 {{data.make-X-array.value}}。同时把 consumer 节点上的 4 个 review_rN / peer_rating_rN 独立 pin 替换为单一 reviews / peer_ratings array pin。边数从 119 降到 76 (-36%)，消除原本 32 条 reviewer→consumer + 16 条 peer-rate→consumer 的 fan-in 数据线。验证：daemon /api/projects/blackboard/task-graphs 显示 system/spec-arena-4-plus-1 v1 compile_error=None nodes=24 edges=76；mock 088 inputs 渲染验证通过，所有 reviewer 视角 anchor 与 v22 等价，verdict_signal addendum 在位。",
+      "evidence": []
     }
   ],
   "attachments": [
@@ -229,7 +239,7 @@
   ],
   "status": "todo",
   "created_at": "2026-05-27",
-  "updated_at": "2026-05-27",
+  "updated_at": "2026-06-02",
   "extra": {
     "arena_subject": "single-draft",
     "parent_ticket": "000077",

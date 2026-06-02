@@ -91,6 +91,24 @@ enum Commands {
         #[arg(long)]
         retry_failed: bool,
     },
+    /// 飞书 Webhook 通知工具（088）。
+    Feishu {
+        #[command(subcommand)]
+        action: FeishuCommands,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum FeishuCommands {
+    /// 发送一张测试卡片，验证 [feishu] 配置是否可用。不打印完整 webhook URL。
+    TestPush {
+        /// 目标 project 名（用于卡片展示与详情链接）。
+        #[arg(long)]
+        project: Option<String>,
+        /// 以 JSON 输出结果。
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -109,6 +127,11 @@ fn main() -> anyhow::Result<()> {
             bb_core::path_to_string(seed)
         );
         return Ok(());
+    }
+
+    if let Commands::Feishu { action } = &cli.command {
+        let code = run_feishu(cli.root.as_ref(), action);
+        std::process::exit(code);
     }
 
     let args = daemon_args(&cli);
@@ -145,6 +168,7 @@ fn daemon_args(cli: &Cli) -> Vec<OsString> {
 
     match &cli.command {
         Commands::Init { .. } => unreachable!("init does not delegate to bb-daemon"),
+        Commands::Feishu { .. } => unreachable!("feishu is handled locally in bb_cli"),
         Commands::Stdio => args.push("stdio".into()),
         Commands::Http { addr, static_dir } => {
             args.push("serve".into());
@@ -224,6 +248,110 @@ fn push_optional(args: &mut Vec<OsString>, key: &str, value: Option<&String>) {
 fn push_flag(args: &mut Vec<OsString>, flag: &str, enabled: bool) {
     if enabled {
         args.push(flag.into());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// feishu test-push（088 S4/S5）。本地处理，不转发 bb-daemon。
+// 复用 bb_core::feishu 的配置解析与发送；输出绝不含完整 webhook URL。
+// ---------------------------------------------------------------------------
+
+/// 仅用于解析 `config/task_graph_runner.toml` 的 `[feishu]` section。
+/// 不使用 deny_unknown_fields，以忽略其余 runner 字段。
+#[derive(Debug, Default, serde::Deserialize)]
+struct RunnerFeishuOnly {
+    feishu: Option<bb_core::feishu::FeishuTomlConfig>,
+}
+
+fn read_feishu_toml(root: &std::path::Path) -> Option<bb_core::feishu::FeishuTomlConfig> {
+    let path = root.join("config/task_graph_runner.toml");
+    let content = std::fs::read_to_string(path).ok()?;
+    let parsed: RunnerFeishuOnly = toml::from_str(&content).ok()?;
+    parsed.feishu
+}
+
+fn print_feishu_result(json: bool, ok: bool, code: i64, msg: &str) {
+    if json {
+        println!(
+            "{{\"status\":\"{}\",\"code\":{},\"msg\":{}}}",
+            if ok { "ok" } else { "error" },
+            code,
+            serde_json::to_string(msg).unwrap_or_else(|_| "\"\"".to_string())
+        );
+    } else if ok {
+        println!("feishu test-push ok");
+    } else {
+        eprintln!("feishu test-push failed: {msg}");
+    }
+}
+
+/// 返回进程 exit code。
+fn run_feishu(root: Option<&PathBuf>, action: &FeishuCommands) -> i32 {
+    let FeishuCommands::TestPush { project, json } = action;
+
+    let root = match root {
+        Some(root) => root.clone(),
+        None => match std::env::current_dir() {
+            Ok(dir) => dir,
+            Err(_) => {
+                print_feishu_result(
+                    *json,
+                    false,
+                    1,
+                    "cannot resolve workspace root; pass --root",
+                );
+                return 1;
+            }
+        },
+    };
+
+    let Some(project) = project.clone() else {
+        print_feishu_result(*json, false, 1, "project required: pass --project <name>");
+        return 1;
+    };
+
+    let toml_cfg = read_feishu_toml(&root);
+    let cfg = match bb_core::feishu::FeishuConfig::from_toml_and_env(toml_cfg.as_ref()) {
+        Ok(Some(cfg)) => cfg,
+        Ok(None) => {
+            print_feishu_result(
+                *json,
+                false,
+                1,
+                "feishu not enabled (set [feishu] enabled=true or BB_FEISHU_ENABLED=1)",
+            );
+            return 1;
+        }
+        Err(err) => {
+            print_feishu_result(*json, false, 1, &err.to_string());
+            return 1;
+        }
+    };
+
+    let detail_url = cfg.detail_url(&project, "test-push");
+    let notification = bb_core::feishu::FeishuNotification {
+        project,
+        graph_id: "feishu-test-push".to_string(),
+        run_id: "test-push".to_string(),
+        terminal: bb_core::feishu::FeishuTerminal::Succeeded,
+        elapsed: std::time::Duration::from_secs(0),
+        detail_url,
+    };
+
+    match bb_core::feishu::send_notification(&cfg, &notification) {
+        Ok(()) => {
+            print_feishu_result(*json, true, 0, "ok");
+            0
+        }
+        Err(err) => {
+            let code = match &err {
+                bb_core::feishu::FeishuSendError::HttpStatus(status) => i64::from(*status),
+                bb_core::feishu::FeishuSendError::Business { code, .. } => *code,
+                _ => 1,
+            };
+            print_feishu_result(*json, false, code, &err.to_string());
+            1
+        }
     }
 }
 

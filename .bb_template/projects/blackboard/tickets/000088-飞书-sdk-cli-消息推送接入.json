@@ -40,7 +40,7 @@
     {
       "id": "webhook-url-leak",
       "description": "webhook_url 包含敏感 token，日志、CLI、ticket/report 和错误链路可能泄露完整 URL。",
-      "mitigation": "所有输出只显示 <redacted> 或 host 级信息；禁止在命令参数中传 webhook_url，测试覆盖错误日志脱敏。",
+      "mitigation": "所有输出只显示 <redacted> 或 host 级信息；禁止用 --webhook-url 命令行参数传入（避免进入 argv 与 shell history）。注意：仅改用环境变量并不足够——export BB_FEISHU_WEBHOOK_URL=... 或 BB_FEISHU_WEBHOOK_URL=... bb_cli 这类内联命令本身会被记录到 shell history；应从不提交的配置文件（task_graph_runner.toml 本地副本或 .env）读取并由进程加载，必要时用 set -a; source .env; set +a 注入，而非交互式 shell 内联 export。测试覆盖错误日志脱敏。",
       "status": "open"
     },
     {
@@ -62,7 +62,63 @@
       "status": "open"
     }
   ],
-  "progress_record": [],
+  "progress_record": [
+    {
+      "at": "2026-05-31",
+      "summary": "Record: CodeBuddy 实现 088 飞书终态通知 MVP（按 wiki/specs/088-feishu-push/implementation_spec.md 的 plan，已落实 arena P0 决策）。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Record: 新增 bb_core::feishu 模块：FeishuTomlConfig/FeishuConfig/FeishuConfigError/FeishuSendError/FeishuTerminal/FeishuNotification + from_toml_and_env + build_card + send_notification（blocking reqwest，rustls-tls）。crate 边界决策：feishu 纯逻辑放 bb_core（bb_daemon/bb_cli 共用），bb_core 新增 reqwest 依赖。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Record: payload 白名单（atk-004 决策）：卡片仅外发 project/graph_id/run_id/终态标签/elapsed + 可选详情链接；不外发 Failed.message 原文或 node_id。web_base_url 与 webhook_url 校验完全独立（atk-001）。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Record: bb_daemon：run_graph 改返回 GraphRunResult{run_id,outcome,elapsed}；新增 spawn_feishu_notification，direct-run/single-run join_on_exit=true（channel recv_timeout 有界等待，解决 atk-003），watch/daemon loop detach；Cancelled 显式 match 跳过（S3）。runner_config 增 feishu 字段 + read_runner_feishu。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Record: bb_cli：新增 feishu test-push --project [--json] 子命令，本地复用 bb_core::feishu。.bb_template/config/task_graph_runner.toml 增 [feishu] 默认 enabled=false。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Next step: 人最终 review：implementation_spec.md（plan）+ bb_core::feishu / daemon / cli 代码；通过后可将 088 推进到 review/done。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Next step: 手工 e2e：用脱敏 test webhook 设 BB_FEISHU_WEBHOOK_URL 后 bb feishu test-push --project blackboard，确认飞书群收到卡片。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Next step: 可选后续：peer-rate/aggregate 也升级强模型以提升 arena 收敛；patch_runner_config 写回 [feishu]（本轮非目标）。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Record: 真实端到端验证通过：用户提供真实飞书自定义机器人 webhook（群机器人），CodeBuddy 跑 bb feishu test-push --project blackboard，飞书群实际收到「✅ TaskGraph Run 完成」互动卡片，返回 business code=0，CLI exit=0。确认 088 飞书通知链路在真实飞书端可用（不止单测/编译）。webhook URL 通过 BB_FEISHU_WEBHOOK_URL 环境变量临时注入，未落盘任何文件、未提交。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Next step: 让真实 TaskGraph run 终态也推送：在启动 dev.py 的 shell 内先注入 BB_FEISHU_ENABLED/BB_FEISHU_WEBHOOK_URL（建议从不提交的 .env：set -a; source .env; set +a）再重启 dev 栈，daemon 进程才能读到。",
+      "evidence": []
+    },
+    {
+      "at": "2026-05-31",
+      "summary": "Next step: 人最终 review 通过后将 000088 推进 review/done。",
+      "evidence": []
+    }
+  ],
   "attachments": [
     {
       "kind": "wiki",
@@ -77,6 +133,6 @@
   ],
   "status": "in_progress",
   "created_at": "2026-05-28",
-  "updated_at": "2026-05-28",
+  "updated_at": "2026-05-31",
   "extra": {}
 }

@@ -35,6 +35,9 @@ pub struct RunnerConfig {
     opencode_max_concurrent: Option<u32>,
     codex_max_concurrent: Option<u32>,
     codebuddy_max_concurrent: Option<u32>,
+    /// 飞书终态通知配置（088）。`deny_unknown_fields` 下必须显式声明，
+    /// 否则 `[feishu]` section 会导致整个 runner config 解析失败。
+    feishu: Option<bb_core::feishu::FeishuTomlConfig>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -185,6 +188,12 @@ fn read_runner_config(root: &StdPath) -> RunnerConfig {
             RunnerConfig::default()
         }
     }
+}
+
+/// 读取 workspace 的 `[feishu]` section（088 飞书通知）。
+/// 读取/解析失败时返回 `None`，由调用方按"未启用"处理。
+pub fn read_runner_feishu(root: &StdPath) -> Option<bb_core::feishu::FeishuTomlConfig> {
+    read_runner_config(root).feishu
 }
 
 pub fn read_runner_config_snapshot(root: &StdPath) -> RunnerConfigSnapshot {

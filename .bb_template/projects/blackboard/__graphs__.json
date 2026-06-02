@@ -146,15 +146,15 @@
       "sort_order": 11
     },
     {
-      "scope": "project",
-      "id": "nightly-auto-code-optimization-custom-mpmtlzwa",
-      "group_id": "project-ungrouped",
+      "scope": "system",
+      "id": "spec-arena-4-plus-1",
+      "group_id": "system",
       "favorite": false,
-      "sort_order": 17
+      "sort_order": 15
     },
     {
       "scope": "project",
-      "id": "spec-arena-4-plus-1",
+      "id": "nightly-auto-code-optimization-custom-mpmtlzwa",
       "group_id": "project-ungrouped",
       "favorite": false,
       "sort_order": 17

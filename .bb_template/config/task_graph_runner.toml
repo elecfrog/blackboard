@@ -16,3 +16,14 @@ codebuddy = 3
 codex = 3
 opencode = 3
 pi = 3
+
+# 飞书 Webhook 终态通知（088）。
+# webhook_url 通过 BB_FEISHU_WEBHOOK_URL 环境变量注入（不要把真实 URL 提交进版本库）。
+# 注意：内联 export 也会进 shell history，应从不提交的 .env 加载。
+[feishu]
+enabled = true
+webhook_url = ""
+# 详情按钮的 Blackboard 入口 origin（仅 http/https origin，不带 path/query）。
+web_base_url = "http://127.0.0.1:8060"
+connect_timeout_secs = 3
+read_timeout_secs = 10

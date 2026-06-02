@@ -1,7 +1,7 @@
 # 088 飞书推送 — 实现 Draft（正式方案）
 
 **日期**: 2026-05-27  
-**状态**: Draft — 待实现，2026-05-28 已按 Spec Arena v20 attacker/gate 的 P0/P1 blocker 修订，待重跑验证  
+**状态**: Draft — 待实现，2026-05-31 已按 Spec Arena v22 多模型（gpt-5.5 attacker）的 P0「direct-run 通知线程生命周期」修订：direct-run/CLI 模式 join 带超时、daemon 常驻模式 fire-and-forget，两种语义分开定义，待重跑验证  
 **目标**: TaskGraph run 终态时通过飞书自定义机器人 Webhook 推送通知
 
 **MVP 非目标**:
@@ -19,7 +19,8 @@
 | 排除方案 | ~~自建应用 Bot~~、~~lark-cli~~ | Bot 需创建应用+审核+token 续签；CLI 依赖 Node.js runtime |
 | HTTP 客户端 | `reqwest`（`blocking` + `rustls-tls`） | 当前 `daemon::run` / `run_graph` 都是同步函数；MVP 不重构 daemon 为 async |
 | 插入位置 | `bb_daemon/src/daemon.rs::run` 的 `match run_graph(...)` outcome 分支 | `run_graph` 只创建并执行 run，并返回 run_id/outcome/elapsed；通知调度放在 daemon run loop，避免在同步函数中 `.await` |
-| 调度方式 | `std::thread::Builder::spawn` 后台线程 + `reqwest::blocking::Client` | 不依赖当前线程存在 Tokio runtime；不改变原始 `RunOutcome`；线程 spawn 失败只记录脱敏 warn |
+| 调度方式 | daemon 常驻模式：`std::thread::Builder::spawn` 后台线程 + `reqwest::blocking::Client`，fire-and-forget；direct-run/CLI 单次模式：spawn 后 **`join` 一个有界超时**（`connect_timeout + read_timeout + 小余量`） | 不依赖当前线程存在 Tokio runtime；不改变原始 `RunOutcome`；线程 spawn 失败只记录脱敏 warn。**关键（v22 gpt-5.5 P0）**：direct-run 模式 run 结束后进程立即退出，分离线程会被杀导致通知静默丢失，因此必须 join 带超时；daemon 常驻进程不会立即退出，保持 fire-and-forget |
+| 通知线程生命周期 | daemon 模式 detach（不 join）；direct-run 模式 join(超时) | run_mode 由 `daemon::run` 调用点区分（single-run vs watch/daemon loop），传入 `FeishuNotificationContext.join_on_exit: bool` |
 | 配置位置 | `config/task_graph_runner.toml` → `[feishu]` section | 现有 runner config 需要新增 `feishu` 字段和 env 覆盖 helper |
 | 错误策略 | fire-and-forget，日志记录，不阻塞 run | S3 要求 |
 
@@ -107,7 +108,8 @@ web_base_url = "http://localhost:5173"
 
 CLI 验证：
 - 命令：`bb_cli feishu test-push --project <project>`；默认 project 可从当前 workspace 推断时允许省略，否则必须明确报错。
-- 默认读取 `config/task_graph_runner.toml` 与 `BB_FEISHU_*` 环境变量；不提供 `--webhook-url` 参数，避免 URL 进入 shell history。一次性覆盖使用 `BB_FEISHU_WEBHOOK_URL=... bb_cli feishu test-push`。
+- 默认读取 `config/task_graph_runner.toml` 与 `BB_FEISHU_*` 环境变量；不提供 `--webhook-url` 参数，避免 URL 作为命令行参数进入 shell history 与进程 `argv`。
+- **Shell history 风险澄清（v21 attacker P0-1）**：仅"用 env var 替代 `--webhook-url`"并不能保证 URL 不进 history——`export BB_FEISHU_WEBHOOK_URL=...` 或 `BB_FEISHU_WEBHOOK_URL=... bb_cli ...` 这类内联命令本身会被记录到 `~/.bash_history` / `~/.zsh_history`。正确做法是：把 webhook_url 放入**不提交的配置文件**（`config/task_graph_runner.toml` 本地副本或 `.env`），由进程读取，而不是在交互式 shell 内联 export；如确需临时覆盖，应使用 `HISTCONTROL=ignorespace` + 前置空格、或从受控 secret 文件 `set -a; source .env; set +a` 注入，避免明文进入 history。该 mitigation 措辞需同步收紧到 000088 ticket 的 `webhook-url-leak` 风险。
 - 成功：exit code 0，默认输出人类可读摘要；`--json` 输出 `{"status":"ok","code":0,"msg":"ok"}`。
 - 失败：exit code 1，输出脱敏错误摘要；`--json` 输出 `{"status":"error","code":<feishu_code_or_http_status>,"msg":"<sanitized_message>"}`。
 
@@ -379,6 +381,11 @@ struct FeishuNotificationContext {
     graph_name: String,
     outcome: RunOutcome,
     elapsed: Duration,
+    // v22 gpt-5.5 P0：区分进程是否会在 run 结束后立即退出。
+    // daemon 常驻 loop = false（detach）；direct-run/CLI 单次 = true（join 带超时）。
+    join_on_exit: bool,
+    // join 超时上界，建议 = connect_timeout + read_timeout + 1s 余量。
+    join_timeout: Duration,
 }
 
 // 代码级事实（2026-05-28）：
@@ -405,7 +412,9 @@ fn spawn_feishu_notification(ctx: FeishuNotificationContext) {
         return; // Cancelled 不通知，但已显式处理
     };
 
-    if let Err(err) = std::thread::Builder::new()
+    let join_on_exit = ctx.join_on_exit;
+    let join_timeout = ctx.join_timeout;
+    match std::thread::Builder::new()
         .name("bb-feishu-notify".to_string())
         .spawn(move || {
             if let Err(err) = feishu::send_notification(..., feishu_outcome, ...) {
@@ -413,20 +422,44 @@ fn spawn_feishu_notification(ctx: FeishuNotificationContext) {
             }
         })
     {
-        tracing::warn!("skip feishu push: spawn failed: {err}");
+        Ok(handle) => {
+            // v22 gpt-5.5 P0：direct-run/CLI 模式进程会在 run 结束后立即退出，
+            // 分离线程会被杀导致通知静默丢失。因此 direct-run 必须 join 带超时；
+            // 用一个看门狗线程实现 join 上界，避免主线程被慢/挂的 HTTP 永久阻塞。
+            if join_on_exit {
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let _ = handle.join();
+                    let _ = tx.send(());
+                });
+                if rx.recv_timeout(join_timeout).is_err() {
+                    tracing::warn!("feishu push not confirmed within join timeout on direct-run exit");
+                }
+            }
+            // daemon 常驻模式：detach（不 join），fire-and-forget。
+        }
+        Err(err) => {
+            tracing::warn!("skip feishu push: spawn failed: {err}");
+        }
     }
 }
 
 // daemon.rs::run 的 match run_graph(...) 分支：两个调用点都按同一模式处理。
 // 这是唯一允许调度飞书通知的位置；通知调度不属于 run_graph 职责。
+// v22 gpt-5.5 P0：两个调用点必须按 run_mode 传不同的 join_on_exit：
+//   - direct-run / single-run（进程将立即退出） -> join_on_exit = true
+//   - watch / daemon 常驻 loop（进程继续存活）   -> join_on_exit = false
 match run_graph(...) {
     Ok(result) => {
         spawn_feishu_notification(FeishuNotificationContext {
             project: project.name.clone(),
             run_id: result.run_id.clone(),
-            graph_name: graph.id.clone(),
+            graph_name: graph_ref.id.clone(), // code_facts 仅确认 graph_ref.id；不用未验证的 graph.id
             outcome: result.outcome.clone(),
             elapsed: result.elapsed,
+            join_on_exit: run_mode.is_single_run(), // direct-run=true，daemon loop=false
+            join_timeout: feishu_cfg.connect_timeout + feishu_cfg.read_timeout
+                + Duration::from_secs(1),
         });
         match result.outcome {
             RunOutcome::Succeeded => { ... }
@@ -449,6 +482,7 @@ match run_graph(...) {
 | S4 CLI test-push | CLI integration | `bb_cli feishu test-push --project blackboard` 成功 exit 0，失败 exit 1，输出不含完整 webhook URL；无 `--project` 且 workspace 不可推断时 exit 1 并提示 project required |
 | S5 配置禁用/缺失 | unit / config | `enabled=false` 不校验 webhook；`enabled=true` + 空 webhook 记录脱敏 warn 并跳过发送；空 env var 回退 TOML |
 | S6 web_base_url | unit / config | `http://host` / `http://host/` 规范化为 origin；`http://host/path`、query、fragment、相对路径和非 http(s) scheme 都降级为不展示按钮并记录脱敏 warn |
+| S7 通知线程生命周期（v22 P0） | unit / integration | direct-run/single-run 模式 `join_on_exit=true`：spawn 后 join 带超时，超时记录脱敏 warn 且不阻塞超过 `join_timeout`；daemon 常驻模式 `join_on_exit=false`：detach 不 join。断言两种模式都不改变原始 `RunOutcome`，且 direct-run 进程在 join 窗口内退出 |
 
 实现顺序：
 1. 在 `bb_daemon/src/http/task_graph/runner_config.rs` 增加 `[feishu]` 可解析字段，避免现有 `deny_unknown_fields` 拒绝新 section。
@@ -490,6 +524,16 @@ MVP 实现只做保守处理：
 | reqwest 增加编译时间 | rustls-tls 比 openssl 轻；是一次性成本 |
 | 卡片 JSON 拼接错误 | 单元测试覆盖 build_card 输出 |
 | 飞书协议细节被误写成事实 | 未引用官方文档前只作为防御性假设或待查证风险 |
+
+---
+
+## Spec Arena v21 attacker 复审：未采纳 / 澄清项
+
+本轮 arena（run-20260530-171557-e6e1cac4）attacker verdict=`needs_rework`，3×P0。除上文已收紧的 shell history 措辞（P0-1）外，另两项处理如下，本 draft 据此 hold-for-revision 后修订：
+
+- **不采纳 metrics counter / Error variant 建议（P0-2）**：reviewer R3 建议新增 metrics counter、增强 Error variant，依赖 `bb_core::metrics` 基础设施。但 code_facts 中 `bb_core` 仅出现在 `task_graph::create_run`（daemon.rs:104）与 `task_graph::execute_run`（daemon.rs:157），**没有 `bb_core::metrics` 的任何实证**。按 000091 协议（claim 类型/函数存在前必须有 grep/read 实证），该建议为 inference/hypothesis，**本轮 MVP 不采纳，标记为 deferred**：飞书通知失败只走 `tracing::warn!` 脱敏日志（已是 draft 既定行为），不引入 metrics 依赖；若未来确需 metrics，另立 ticket 并先验证 `bb_core::metrics` 是否存在。
+- **TLS 兼容性按假设处理，不写成事实（P0-3）**：R3-001 的 TLS P0 是外部依赖假设。draft 已固定 `reqwest` 使用 `rustls-tls`（见"技术决策"表），不额外引入未经验证的 TLS 兼容性 claim；任何 TLS 行为细节在引用官方/实证前只作为风险，不作为实现事实。
+- **`GraphRunResult` 字段类型明确（非阻塞 P0 澄清）**：`run_id: String`、`outcome: bb_core::task_graph::RunOutcome`、`elapsed: std::time::Duration`（见"核心实现伪代码"中 `struct GraphRunResult`）。卡片渲染耗时时由 `build_card` 内部格式化 `Duration`，不在结构体层面改成 ms 整数。
 
 ---
 

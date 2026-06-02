@@ -19,12 +19,54 @@ def configure_stdio() -> None:
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
+def _split_decisions_by_confidence(
+    decisions: list[Any],
+    retained: list[Any],
+) -> tuple[list[Any], list[Any]]:
+    """Move non-high-confidence decisions to retained, keeping graph schema strict.
+
+    The graph's decision schema only accepts confidence="high"; the prompt also
+    instructs the LLM to put uncertain items in retained. When the LLM drifts and
+    emits medium/low decisions, downgrade them here instead of letting the
+    schema_validate node fail the whole run.
+    """
+    kept: list[Any] = []
+    extra_retained: list[Any] = []
+    for item in decisions:
+        if not isinstance(item, dict):
+            continue
+        confidence = str(item.get("confidence", "")).strip().lower()
+        if confidence == "high":
+            kept.append(item)
+            continue
+        note_id = str(item.get("note_id", "")).strip() or "note_0"
+        original_reason = str(item.get("reason", "")).strip()
+        ticket_id = str(item.get("ticket_id", "")).strip()
+        downgrade_reason_parts = [
+            f"downgraded from confidence={confidence or 'unknown'}"
+        ]
+        if ticket_id:
+            downgrade_reason_parts.append(f"proposed ticket_id={ticket_id}")
+        if original_reason:
+            downgrade_reason_parts.append(original_reason)
+        extra_retained.append(
+            {
+                "note_id": note_id,
+                "reason": "; ".join(downgrade_reason_parts),
+            }
+        )
+    return kept, retained + extra_retained
+
+
 def normalize(value: Any) -> dict[str, Any]:
     if isinstance(value, dict) and REQUIRED_KEYS.issubset(value.keys()):
+        decisions = value.get("decisions") if isinstance(value.get("decisions"), list) else []
+        retained = value.get("retained") if isinstance(value.get("retained"), list) else []
+        decisions, retained = _split_decisions_by_confidence(decisions, retained)
         return {
-            "processed": bool(value.get("processed")),
-            "decisions": value.get("decisions") if isinstance(value.get("decisions"), list) else [],
-            "retained": value.get("retained") if isinstance(value.get("retained"), list) else [],
+            "processed": bool(value.get("processed")) and bool(decisions),
+            "decisions": decisions,
+            "retained": retained,
             "continue": bool(value.get("continue")),
         }
 

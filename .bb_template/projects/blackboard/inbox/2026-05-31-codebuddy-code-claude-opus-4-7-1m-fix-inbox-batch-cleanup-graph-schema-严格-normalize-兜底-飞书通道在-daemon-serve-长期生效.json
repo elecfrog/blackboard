@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "title": "inbox-batch-cleanup graph 修复 + feishu/MCP 通道恢复",
+  "time": "2026-05-31T10:26:07Z",
+  "source": "codebuddy-code:claude-opus-4.7-1m",
+  "project": "blackboard",
+  "topic": "fix: inbox-batch-cleanup graph schema 严格 + normalize 兜底；飞书通道在 daemon serve 长期生效",
+  "done": [
+    "诊断：上次 run-20260531-092135-d001c1e5 在 superstep 13 因 LLM 输出 confidence=medium 触发 decision-output-validate enum=[high] 校验失败，整个 run failed",
+    "修复 scripts/normalize_inbox_cleanup_decision.py 新增 _split_decisions_by_confidence：把非 high 的 decision 自动降级到 retained（携带 LLM 给的 reason），并在全部降级时把 processed 置 false 防止下游 apply 节点误判",
+    "E2E：bb-daemon run --graph system/inbox-batch-cleanup --project blackboard --once 重跑成功；run-20260531-095627-85f7c26d 跑 2 轮迭代全部 succeeded；第二轮 0 high+1 retained 路径同样过校验",
+    "诊断飞书未推送：.bb_template/config/task_graph_runner.toml 原本 [feishu].enabled=false，且 bb-daemon serve 进程未加载 .env，所以 spawn_feishu_notification 走未启用分支静默跳过",
+    "修复：toml 改为 enabled=true（webhook_url 仍走 BB_FEISHU_WEBHOOK_URL env），并以 set -a; source .env 重启 bb-daemon serve（旧 pid 81674 已退出，新进程已起在 127.0.0.1:3001）",
+    "E2E：bb feishu test-push --project blackboard 返回 feishu test-push ok；run-20260531-101318-7109ef7d graph run 成功且 daemon 未打印任何 push failed，确认终态通知已发出",
+    "诊断 MCP bb 不可用：~/.codebuddy/logs 显示 'Failed to create MCP server bb: no valid transport type - streamable-http'。CodeBuddy 客户端只识别 stdio/sse/http/remote/sdk",
+    "修复：~/.codebuddy/mcp.json 的 bb 条目 type 由 streamable-http 改为 http（streamable-http transport 在客户端内部由 http 类型派发）。下次 CodeBuddy 启动后 bb_* 工具应可见"
+  ],
+  "validation": [
+    "bb feishu test-push --project blackboard 返回 feishu test-push ok",
+    "curl POST /mcp tools/list 返回 14 个 bb 工具（list_projects/create_inbox_note/...）",
+    "run-20260531-095627-85f7c26d run.json status=succeeded",
+    "run-20260531-101318-7109ef7d run.json status=succeeded",
+    "normalize_inbox_cleanup_decision.py 单元化：medium decision 被降级到 retained；全部降级时 processed=false"
+  ],
+  "next_step": [
+    "用户重启 CodeBuddy 让 mcp.json 重新生效；之后 bb_* 工具直接可用",
+    "bb-daemon serve 当前是 shell 后台进程；若希望 reboot/换 shell 后仍持有 BB_FEISHU_*，建议接 launchd plist 或在 dev.py 启动前自动 source .env",
+    "若要让 graph 推送在 CI/远端 daemon 也生效，需把 BB_FEISHU_* 注入到那边的进程环境，.env 不会被自动加载"
+  ],
+  "related_locations": [
+    "scripts/normalize_inbox_cleanup_decision.py",
+    ".bb_template/config/task_graph_runner.toml",
+    ".bb_template/task_graphs/system/inbox-batch-cleanup.json",
+    "bb_backend/crates/bb_daemon/src/daemon.rs:185",
+    "/Users/ornizhou/.codebuddy/mcp.json"
+  ],
+  "related_tickets": [
+    "000088"
+  ],
+  "attachments": [],
+  "extra": {
+    "feishu_verified_run": "run-20260531-101318-7109ef7d",
+    "fixed_run_succeeded": "run-20260531-095627-85f7c26d"
+  }
+}

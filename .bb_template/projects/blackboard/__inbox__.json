@@ -1,56 +1,6 @@
 {
   "notes": [
     {
-      "name": "2026-05-27-codex-spec-arena-native-schema-repair-inbox-cleanup-agents-graph-registry.json",
-      "size": 2359,
-      "modified_at": "2026-05-27T16:10:02Z",
-      "excerpt": "在 AGENTS.md 增加“常用 TaskGraph 主图注册”，登记 inbox cleanup、research、Spec Arena、代码审查、KB/Wiki、nightly 等常用 graph ref，后续用户说语义即可直接启动。",
-      "title": "Spec Arena v8 productization and graph registry update",
-      "time": "2026-05-27T16:10:02Z",
-      "source": "codex",
-      "topic": "Spec Arena native schema repair, inbox cleanup, AGENTS graph registry"
-    },
-    {
-      "name": "2026-05-27-codex-spec-arena-v8-native-repair-live-success.json",
-      "size": 2405,
-      "modified_at": "2026-05-27T16:44:18Z",
-      "excerpt": "重启 Blackboard dev stack，使 bb_daemon 重新加载本轮 bb_core schema_validate native repair 代码；3001/3002/8060 均恢复。",
-      "title": "Spec Arena v8 native schema repair verified",
-      "time": "2026-05-27T16:44:18Z",
-      "source": "codex",
-      "topic": "Spec Arena v8 native repair live success"
-    },
-    {
-      "name": "2026-05-28-codex-spec-arena-human-gate-verdict-summary-ui.json",
-      "size": 1830,
-      "modified_at": "2026-05-28T07:06:04Z",
-      "excerpt": "在 `TaskGraphRunPanel.vue` 的 paused human gate banner 中显示 graph node 的 `title` 和 `instructions`，不再只显示 node id/reason。",
-      "title": "Spec Arena gate now surfaces upstream verdict and blockers",
-      "time": "2026-05-28T07:06:04Z",
-      "source": "codex",
-      "topic": "Spec Arena human gate verdict summary UI"
-    },
-    {
-      "name": "2026-05-28-codex-spec-arena-runtime-json-guard-live-validation.json",
-      "size": 3399,
-      "modified_at": "2026-05-28T07:00:38Z",
-      "excerpt": "在 `bb_core` LLM runtime 层加入 JSON output semantic guard：当 output_contract/output 要求 `artifact_type=json` 时，若模型输出只是 `turn_start`、`auto_retry_s...",
-      "title": "Spec Arena strict runtime guard run held for revision",
-      "time": "2026-05-28T07:00:38Z",
-      "source": "codex",
-      "topic": "Spec Arena runtime JSON guard live validation"
-    },
-    {
-      "name": "2026-05-28-codex-spec-arena-schema-registry-handle-and-strict-repair-guard.json",
-      "size": 3399,
-      "modified_at": "2026-05-28T06:33:34Z",
-      "excerpt": "`schema_validate` 新增 `schema_ref`：支持 `bb://schema/...` / `schemas/...` 相对 handle，从 workspace `.bb_template/schemas` 加载 JSON schema，同时继续兼容内联 ...",
-      "title": "Spec Arena v9 schema_ref + strict attacker repair guard",
-      "time": "2026-05-28T06:33:34Z",
-      "source": "codex",
-      "topic": "Spec Arena schema registry handle and strict repair guard"
-    },
-    {
       "name": "2026-05-30-codebuddy-fix-bb-mcp-streamable-http-protocol-version-so-codebuddy-can-connect.json",
       "size": 2223,
       "modified_at": "2026-05-30T17:08:26Z",
@@ -61,14 +11,14 @@
       "topic": "Fix bb MCP streamable-http protocol version so CodeBuddy can connect"
     },
     {
-      "name": "2026-05-30-codex-spec-arena-productized-graph-contracts-handoff.json",
-      "size": 5307,
-      "modified_at": "2026-05-30T16:23:53Z",
-      "excerpt": "把 Spec Arena graph 推到 v21：保留现有 4 reviewer + 4 peer rating + aggregate + attacker + human gate + merge 执行形态，不增加重跑，不把流程改成 hack。",
-      "title": "Spec Arena v21 schema contracts and handoff",
-      "time": "2026-05-30T16:23:53Z",
-      "source": "codex",
-      "topic": "Spec Arena productized graph contracts handoff"
+      "name": "2026-05-31-codebuddy-code-claude-opus-4-7-1m-fix-inbox-batch-cleanup-graph-schema-严格-normalize-兜底-飞书通道在-daemon-serve-长期生效.json",
+      "size": 3378,
+      "modified_at": "2026-05-31T10:26:07Z",
+      "excerpt": "诊断：上次 run-20260531-092135-d001c1e5 在 superstep 13 因 LLM 输出 confidence=medium 触发 decision-output-validate enum=[high] 校验失败，整个 run failed",
+      "title": "inbox-batch-cleanup graph 修复 + feishu/MCP 通道恢复",
+      "time": "2026-05-31T10:26:07Z",
+      "source": "codebuddy-code:claude-opus-4.7-1m",
+      "topic": "fix: inbox-batch-cleanup graph schema 严格 + normalize 兜底；飞书通道在 daemon serve 长期生效"
     }
   ]
 }

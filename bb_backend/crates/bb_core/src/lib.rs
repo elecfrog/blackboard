@@ -24,6 +24,7 @@ pub mod agents_registry;
 pub mod board;
 pub(crate) mod common;
 pub mod error;
+pub mod feishu;
 pub mod fs_util;
 pub mod idea_canvas;
 pub mod inbox;

@@ -883,14 +883,23 @@ fn read_current_graph_for_run(
 pub fn spawn_task_graph_run(root: PathBuf, project: String, run_id: String) {
     let opts = build_runner_opts(&root, project, run_id, None);
     tokio::task::spawn_blocking(move || {
+        let started = std::time::Instant::now();
         // Fast-fail: 使用 catch_unwind 捕获 panic，确保 run 不会变成僵尸
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             task_graph::execute_run(&opts)
         }));
+        let elapsed = started.elapsed();
 
-        match result {
+        // 088 飞书终态通知：HTTP API/UI 启动的 run 也要在跑完后推送。
+        // graph_id 从 run 元数据读取；读取失败则用空串兜底（仍发终态标签）。
+        let graph_id = task_graph::read_run(&opts.workspace_root, &opts.project, &opts.run_id)
+            .map(|run| run.graph_ref.id)
+            .unwrap_or_default();
+
+        let notify_outcome = match result {
             Ok(Ok(outcome)) => {
                 eprintln!("bb task-graph run completed: {outcome:?}");
+                Some(outcome)
             }
             Ok(Err(e)) => {
                 // execute_run 内部已经会尝试标记 failed，这里做兜底
@@ -901,6 +910,10 @@ pub fn spawn_task_graph_run(root: PathBuf, project: String, run_id: String) {
                     &opts.run_id,
                     task_graph::RunStatus::Failed,
                 );
+                Some(task_graph::RunOutcome::Failed {
+                    node_id: String::new(),
+                    message: String::new(),
+                })
             }
             Err(panic_info) => {
                 // panic 兜底：确保 run 被标记为 failed
@@ -919,8 +932,26 @@ pub fn spawn_task_graph_run(root: PathBuf, project: String, run_id: String) {
                     &opts.run_id,
                     task_graph::RunStatus::Failed,
                 );
+                Some(task_graph::RunOutcome::Failed {
+                    node_id: String::new(),
+                    message: String::new(),
+                })
             }
+        };
+
+        if let Some(outcome) = notify_outcome {
+            // daemon 常驻进程不会因 run 结束而退出，detach（join_on_exit=false）。
+            crate::daemon::spawn_feishu_notification(
+                &opts.workspace_root,
+                &opts.project,
+                &graph_id,
+                &opts.run_id,
+                &outcome,
+                elapsed,
+                false,
+            );
         }
+
         let _ = dispatch_queued_task_graph_runs(&opts.workspace_root, &opts.project);
     });
 }
@@ -993,16 +1024,21 @@ pub(super) async fn tg_resume_gate(
 
     let opts = build_runner_opts(&root, project, run_id.clone(), None);
     let action = body.action;
+    // 088：resume 后跑到终态（或再次 paused）也要推飞书。graph_id 取自 paused run 元数据。
+    let graph_id = run.graph_ref.id.clone();
 
     tokio::task::spawn_blocking(move || {
+        let started = std::time::Instant::now();
         // Fast-fail: 使用 catch_unwind 捕获 panic，确保 run 不会变成僵尸
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             task_graph::resume_run(&opts, &action)
         }));
+        let elapsed = started.elapsed();
 
-        match result {
+        let notify_outcome = match result {
             Ok(Ok(outcome)) => {
                 eprintln!("bb task-graph run resumed: {outcome:?}");
+                Some(outcome)
             }
             Ok(Err(e)) => {
                 // resume_run 内部已经会尝试标记 failed，这里做兜底
@@ -1013,6 +1049,10 @@ pub(super) async fn tg_resume_gate(
                     &opts.run_id,
                     task_graph::RunStatus::Failed,
                 );
+                Some(task_graph::RunOutcome::Failed {
+                    node_id: String::new(),
+                    message: String::new(),
+                })
             }
             Err(panic_info) => {
                 let msg = panic_info.downcast_ref::<&str>().map_or_else(
@@ -1030,7 +1070,24 @@ pub(super) async fn tg_resume_gate(
                     &opts.run_id,
                     task_graph::RunStatus::Failed,
                 );
+                Some(task_graph::RunOutcome::Failed {
+                    node_id: String::new(),
+                    message: String::new(),
+                })
             }
+        };
+
+        if let Some(outcome) = notify_outcome {
+            // daemon 常驻进程：detach（join_on_exit=false）。
+            crate::daemon::spawn_feishu_notification(
+                &opts.workspace_root,
+                &opts.project,
+                &graph_id,
+                &opts.run_id,
+                &outcome,
+                elapsed,
+                false,
+            );
         }
     });
 

@@ -7,3 +7,4 @@ __pycache__/
 .bb/
 .bb_template/.staging/
 .bb_template/runtime/
+.env

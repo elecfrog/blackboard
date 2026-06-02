@@ -7,11 +7,12 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::http::task_graph::runner_config::{
-    build_runner_opts, resolve_overrides_from_profile, RunnerOverrides,
+    build_runner_opts, read_runner_feishu, resolve_overrides_from_profile, RunnerOverrides,
 };
 
 // ---------------------------------------------------------------------------
@@ -78,6 +79,14 @@ fn load_graph(
 // Core graph execution
 // ---------------------------------------------------------------------------
 
+/// Result of a single graph run: run id, terminal outcome, and wall-clock elapsed.
+#[derive(Debug, Clone)]
+struct GraphRunResult {
+    run_id: String,
+    outcome: RunOutcome,
+    elapsed: Duration,
+}
+
 /// Create a Task Graph run and execute it to completion.
 fn run_graph(
     workspace: &Workspace,
@@ -86,7 +95,7 @@ fn run_graph(
     graph_ref: GraphRef,
     project: &str,
     input: Value,
-) -> Result<RunOutcome> {
+) -> Result<GraphRunResult> {
     // Validate graph before running
     let pre_run_errors = task_graph::validate_pre_run(graph, workspace.root(), project);
     if !pre_run_errors.is_empty() {
@@ -154,10 +163,91 @@ fn run_graph(
         Some(&overrides),
     );
 
+    let started = Instant::now();
     let outcome = task_graph::execute_run(&opts)
         .with_context(|| format!("execute run {} for project '{}'", run.id, project))?;
 
-    Ok(outcome)
+    Ok(GraphRunResult {
+        run_id: run.id.clone(),
+        outcome,
+        elapsed: started.elapsed(),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Feishu 终态通知（088）。唯一允许调度飞书通知的位置。
+// ---------------------------------------------------------------------------
+
+/// 按 run 终态调度一次非阻塞飞书通知。
+/// `join_on_exit=true`（direct-run/single-run，进程将立即退出）时用 channel
+/// `recv_timeout` 有界等待后台发送完成，避免分离线程被进程退出杀掉而丢通知；
+/// `false`（daemon 常驻 loop）时 detach。任何错误只脱敏 warn，不改变 run 结果。
+pub(crate) fn spawn_feishu_notification(
+    root: &Path,
+    project: &str,
+    graph_id: &str,
+    run_id: &str,
+    outcome: &RunOutcome,
+    elapsed: Duration,
+    join_on_exit: bool,
+) {
+    use bb_core::feishu::{FeishuConfig, FeishuNotification, FeishuTerminal};
+
+    // S3：Cancelled 显式跳过；其余映射为白名单终态标签（不取 message/node_id）。
+    let terminal = match outcome {
+        RunOutcome::Succeeded => FeishuTerminal::Succeeded,
+        RunOutcome::Paused { .. } => FeishuTerminal::Paused,
+        RunOutcome::Failed { .. } => FeishuTerminal::Failed,
+        RunOutcome::Cancelled => return,
+    };
+
+    let toml_cfg = read_runner_feishu(root);
+    let cfg = match FeishuConfig::from_toml_and_env(toml_cfg.as_ref()) {
+        Ok(Some(cfg)) => cfg,
+        Ok(None) => return, // 未启用
+        Err(err) => {
+            eprintln!("bb-daemon feishu config invalid, skip notification: {err}");
+            return;
+        }
+    };
+
+    let detail_url = cfg.detail_url(project, run_id);
+    let notification = FeishuNotification {
+        project: project.to_string(),
+        graph_id: graph_id.to_string(),
+        run_id: run_id.to_string(),
+        terminal,
+        elapsed,
+        detail_url,
+    };
+    let join_timeout = cfg.connect_timeout + cfg.read_timeout + Duration::from_secs(1);
+
+    let spawned = thread::Builder::new()
+        .name("bb-feishu-notify".to_string())
+        .spawn(move || {
+            if let Err(err) = bb_core::feishu::send_notification(&cfg, &notification) {
+                eprintln!("bb-daemon feishu push failed: {err}");
+            }
+        });
+
+    match spawned {
+        Ok(handle) => {
+            if join_on_exit {
+                let (tx, rx) = mpsc::channel();
+                thread::spawn(move || {
+                    let _ = handle.join();
+                    let _ = tx.send(());
+                });
+                if rx.recv_timeout(join_timeout).is_err() {
+                    eprintln!("bb-daemon feishu push not confirmed within join timeout on exit");
+                }
+            }
+            // daemon 常驻模式：detach（不 join）。
+        }
+        Err(err) => {
+            eprintln!("bb-daemon skip feishu push: spawn failed: {err}");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -284,24 +374,38 @@ pub fn run(workspace: Workspace, options: DaemonOptions) -> Result<()> {
                 &project.name,
                 input,
             ) {
-                Ok(RunOutcome::Succeeded) => {
-                    eprintln!("bb-daemon run succeeded: project={}", project.name);
-                }
-                Ok(RunOutcome::Paused { node_id }) => {
-                    eprintln!(
-                        "bb-daemon run paused at human gate: project={} node={}",
-                        project.name, node_id
+                Ok(result) => {
+                    // direct-run/single-run：进程将退出，join 等待通知发送完成。
+                    spawn_feishu_notification(
+                        workspace.root(),
+                        &project.name,
+                        &graph.id,
+                        &result.run_id,
+                        &result.outcome,
+                        result.elapsed,
+                        true,
                     );
-                }
-                Ok(RunOutcome::Failed { node_id, message }) => {
-                    eprintln!(
-                        "bb-daemon run failed: project={} node={} error={}",
-                        project.name, node_id, message
-                    );
-                    any_failed = true;
-                }
-                Ok(RunOutcome::Cancelled) => {
-                    eprintln!("bb-daemon run cancelled: project={}", project.name);
+                    match result.outcome {
+                        RunOutcome::Succeeded => {
+                            eprintln!("bb-daemon run succeeded: project={}", project.name);
+                        }
+                        RunOutcome::Paused { node_id } => {
+                            eprintln!(
+                                "bb-daemon run paused at human gate: project={} node={}",
+                                project.name, node_id
+                            );
+                        }
+                        RunOutcome::Failed { node_id, message } => {
+                            eprintln!(
+                                "bb-daemon run failed: project={} node={} error={}",
+                                project.name, node_id, message
+                            );
+                            any_failed = true;
+                        }
+                        RunOutcome::Cancelled => {
+                            eprintln!("bb-daemon run cancelled: project={}", project.name);
+                        }
+                    }
                 }
                 Err(e) => {
                     eprintln!("bb-daemon run error: project={} error={}", project.name, e);
@@ -404,29 +508,43 @@ fn scan_inbox(
             );
 
             match &result {
-                Ok(RunOutcome::Succeeded) => {
-                    record_result(state, &dispatch, "completed", None, None);
-                }
-                Ok(RunOutcome::Paused { node_id }) => {
-                    record_result(
-                        state,
-                        &dispatch,
-                        "paused",
-                        None,
-                        Some(format!("paused at gate: {node_id}")),
+                Ok(run_result) => {
+                    // watch/daemon loop：进程继续存活，detach（不 join）。
+                    spawn_feishu_notification(
+                        workspace.root(),
+                        &dispatch.project,
+                        &graph.id,
+                        &run_result.run_id,
+                        &run_result.outcome,
+                        run_result.elapsed,
+                        false,
                     );
-                }
-                Ok(RunOutcome::Failed { node_id, message }) => {
-                    record_result(
-                        state,
-                        &dispatch,
-                        "failed",
-                        None,
-                        Some(format!("node={node_id}: {message}")),
-                    );
-                }
-                Ok(RunOutcome::Cancelled) => {
-                    record_result(state, &dispatch, "cancelled", None, None);
+                    match &run_result.outcome {
+                        RunOutcome::Succeeded => {
+                            record_result(state, &dispatch, "completed", None, None);
+                        }
+                        RunOutcome::Paused { node_id } => {
+                            record_result(
+                                state,
+                                &dispatch,
+                                "paused",
+                                None,
+                                Some(format!("paused at gate: {node_id}")),
+                            );
+                        }
+                        RunOutcome::Failed { node_id, message } => {
+                            record_result(
+                                state,
+                                &dispatch,
+                                "failed",
+                                None,
+                                Some(format!("node={node_id}: {message}")),
+                            );
+                        }
+                        RunOutcome::Cancelled => {
+                            record_result(state, &dispatch, "cancelled", None, None);
+                        }
+                    }
                 }
                 Err(e) => {
                     record_result(state, &dispatch, "failed", None, Some(e.to_string()));

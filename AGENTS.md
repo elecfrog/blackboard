@@ -41,7 +41,7 @@ python3 scripts/dev.py
 - 向内调研：`system/research-internal`。用于基于当前工作区源码、文档、历史 artifacts 的内部调研。
 - 向外调研：`system/research-external`。用于官方文档、论文、仓库、URL、市场或新闻等外部资料调研。
 - 内外调研到迭代草案：`system/research-iteration-draft`。用于从 internal/external research 合成 draft 草案。
-- Spec Arena 4+1：`project/spec-arena-4-plus-1`。用于已准入 draft 到完整 implementation spec 的 4 reviewer + 互评 + attacker + human gate + merge 流程。
+- Spec Arena 4+1：`system/spec-arena-4-plus-1`。用于已准入 draft 到完整 implementation spec 的 4 reviewer + 互评 + attacker + human gate + merge 流程。
 - Rust/Vue 代码审查：`system/rust-vue-code-review`。用于只读收集 diff、Rust/Vue 静态检查并产出审查报告。
 - Review Scout Fix：`system/code-review-scout-fix`。用于基于 code review finding 的保守修复闭环。
 - 代码监控检查修复：`system/code-monitor-check-fix`。用于前端 i18n、主题、Rust fmt/clippy 等常规质量检查修复。
