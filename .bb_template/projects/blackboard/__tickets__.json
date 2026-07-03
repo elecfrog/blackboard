@@ -1,5 +1,5 @@
 {
-  "current_counter": "000093",
+  "current_counter": "000094",
   "tickets": [
     {
       "name": "000001-产品基线-多agent工具管理dashboard.json",
@@ -1842,6 +1842,33 @@
         "task_graph": "project/spec-arena-4-plus-1",
         "task_graph_version": "9"
       },
+      "metadata_error": null,
+      "metadata_warnings": []
+    },
+    {
+      "name": "000094-blackboard-cloud-dual-track-sidecar-server.json",
+      "path": "tickets/000094-blackboard-cloud-dual-track-sidecar-server.json",
+      "id": "000094",
+      "lane": "bbp",
+      "title": "Blackboard Cloud 双轨 Sidecar/Server 架构",
+      "status": "todo",
+      "created_at": "2026-07-03",
+      "updated_at": "2026-07-03",
+      "attachments": [
+        {
+          "kind": "wiki",
+          "target": "proposal/blackboard-cloud-dual-track-architecture.md",
+          "label": "双轨架构原型说明",
+          "description": "包含 imagegen 生成的 Blackboard Cloud 双轨架构原型图和产品边界说明。"
+        },
+        {
+          "kind": "image",
+          "target": "proposal/assets/blackboard-cloud-dual-track-prototype.png",
+          "label": "Blackboard 双轨架构原型图",
+          "description": "个人单机 sidecar 与高级多端 + server 的 16:9 原型示意图。"
+        }
+      ],
+      "extra": {},
       "metadata_error": null,
       "metadata_warnings": []
     }

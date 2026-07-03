@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "id": "000094",
+  "lane": "bbp",
+  "title": "Blackboard Cloud 双轨 Sidecar/Server 架构",
+  "summary": "Blackboard 需要在同一套协作事实模型与 daemon/graph 协议上支持双轨产品形态：个人用户以单机 sidecar 零配置使用，本地保存 wiki、tickets、inbox 与 graph run；高级用户把 project 提升为 cloud/server project repo，多台 client daemon 注册为 worker，由 server 管理 graph 调度、工具更新、运行记录与多端同步。Personal Sidecar 是 Server 模式的单节点形态，而不是分叉产品。",
+  "stories": [
+    {
+      "id": "29242f78-929e-47d9-8833-3c4d336d57f4",
+      "given": "用户在一台个人电脑上首次安装 Blackboard，尚未配置任何 server 或账号。",
+      "when": "用户启动 Blackboard client/sidecar。",
+      "then": "系统应自动启动本地 bb daemon，并创建或打开本地 project repo；wiki、tickets、inbox、graph definitions、run records 都可在本机完成读写，用户无需理解云端或多机概念。"
+    },
+    {
+      "id": "4c815f2d-b848-42ff-b839-cd017302a21a",
+      "given": "个人用户在 local-only mode 中使用 Blackboard 管理 project。",
+      "when": "用户或 agent 创建 ticket、写 inbox handoff、更新 wiki、运行 graph。",
+      "then": "所有协作事实应通过同一套 Fact Store 接口写入本地落盘，并保留 project id、device id、agent id、revision、attachment 等元数据，使该 project 未来可以无迁移损失地发布到 server。"
+    },
+    {
+      "id": "6151881b-5a8f-4f9d-8714-f6da11d0e7c2",
+      "given": "个人用户拥有一个已经 work 的本地 Blackboard project。",
+      "when": "用户选择 publish/promote to cloud project。",
+      "then": "系统应把本地 wiki、tickets、inbox、graph definitions 和必要索引导入 Cloud Project Repo，建立云端 project identity 和 revision cursor，并把当前电脑的 daemon 重新绑定为该 cloud project 的第一个 registered client。"
+    },
+    {
+      "id": "e1997f4a-5d1f-4081-b182-1a680a7ef894",
+      "given": "高级用户已经部署 Blackboard Server 或登录 Blackboard Cloud。",
+      "when": "第二台或更多电脑上的 bb daemon 启动并连接 server。",
+      "then": "daemon 应注册 device identity、hostname/alias、workspace roots、agent/tool capabilities、labels、平台信息、当前负载和 heartbeat；server 应在 fleet manager 中展示这些 client，并允许按 device、pool 或 label 选择执行目标。"
+    },
+    {
+      "id": "ace3a572-ef87-4ecb-ac74-55ae89dd2f38",
+      "given": "cloud/server project 中存在一个待执行 graph run。",
+      "when": "server 将 run 分配给指定 client、pool 或 label。",
+      "then": "本地 daemon 应通过 outbound pull/lease 领取任务，按指定 project revision 同步事实，执行 graph node，并持续回写 node status、logs、artifacts、run records、handoff 和必要的 ticket progress；lease 过期或 client 断线时 server 可安全重试或重新派发。"
+    },
+    {
+      "id": "6d1393ca-cf6a-4944-aad6-2fd9b0968f71",
+      "given": "server 维护 Codex、Claude、OpenCode、MCP、插件或 skill 的 tool channel manifest。",
+      "when": "daemon heartbeat、领取 graph run 或用户触发工具更新。",
+      "then": "daemon 应根据 channel、platform、version、hash 和 policy 下载或更新 AI 工具；secrets 默认留在本机，server 只下发 manifest、权限和执行意图，不直接拿到本机密钥。"
+    },
+    {
+      "id": "6e0f0dfe-d1d7-4954-b0de-40edc0cedcf8",
+      "given": "同一个 cloud project 被多台 client 和多个 agent 同时使用。",
+      "when": "两个写入尝试修改同一份 ticket 或 wiki revision。",
+      "then": "系统应使用 revision/cursor 检测冲突，要求落后写入方重新读取后合并；inbox note、ticket progress_record、run log 等过程记录应优先采用 append-only 模型，降低协作冲突。"
+    },
+    {
+      "id": "c9d9c5c0-5c19-4579-8fc9-02818e2e1770",
+      "given": "用户从个人 sidecar 升级到多 client + server。",
+      "when": "用户打开 Blackboard Web/Client。",
+      "then": "主要 project、ticket、wiki、inbox 体验应保持一致；UI 可通过 mode badge、device/fleet panel、run queue、tool channel 设置逐步暴露高级能力，避免个人用户被 server 概念打断。"
+    },
+    {
+      "id": "8bfbb97e-528d-431f-8a3d-5a04c5e9e134",
+      "given": "server 要求 client daemon 执行可能影响本机 workspace、工具安装或高权限命令的任务。",
+      "when": "daemon 准备执行该任务。",
+      "then": "daemon 应在本地执行 policy 校验，必要时要求本机确认，并记录 audit log；cloud/server 发送的是 graph/task 意图，最终本机动作由 daemon 在本地权限边界内决定。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "remote_control_surface",
+      "description": "server 能调度本地 daemon 后，本质上引入远程控制攻击面。",
+      "mitigation": "使用 per-device token、可吊销设备、project 级权限、本地 policy、敏感动作确认和完整 audit log；server 下发意图，daemon 本地裁决动作。",
+      "status": "open"
+    },
+    {
+      "id": "mode_drift",
+      "description": "Personal Sidecar 与 Server 模式如果实现分叉，会造成协议、UI、数据模型和用户心智漂移。",
+      "mitigation": "抽象共享的 Fact Store、Daemon Agent、Graph Runner、Projection Layer 与 Identity Layer；local mode 是 server mode 的单节点拓扑。",
+      "status": "open"
+    },
+    {
+      "id": "sync_conflict",
+      "description": "多 client 同时写 wiki/ticket 可能产生冲突或覆盖。",
+      "mitigation": "ticket/wiki 使用 revision guard；inbox、progress_record、run logs 使用 append-only；冲突返回给 agent 重新读取合并。",
+      "status": "open"
+    },
+    {
+      "id": "tool_update_breakage",
+      "description": "cloud 管理 AI 工具下载与更新可能导致本地 agent/runtime 版本不兼容。",
+      "mitigation": "使用 stable/beta/dev channel、manifest hash 校验、灰度 rollout、回滚版本和 per-device pinning。",
+      "status": "open"
+    },
+    {
+      "id": "cloud_repo_authority",
+      "description": "cloud project repo 成为事实源后，离线写入、本地投影和云端索引之间的权威边界需要清晰。",
+      "mitigation": "明确 authoritative store、sync cursor、projection rebuild 和 offline queue 规则；离线冲突必须显式解决而不是静默覆盖。",
+      "status": "open"
+    }
+  ],
+  "progress_record": [],
+  "attachments": [
+    {
+      "kind": "wiki",
+      "target": "proposal/blackboard-cloud-dual-track-architecture.md",
+      "label": "双轨架构原型说明",
+      "description": "包含 imagegen 生成的 Blackboard Cloud 双轨架构原型图和产品边界说明。"
+    },
+    {
+      "kind": "image",
+      "target": "proposal/assets/blackboard-cloud-dual-track-prototype.png",
+      "label": "Blackboard 双轨架构原型图",
+      "description": "个人单机 sidecar 与高级多端 + server 的 16:9 原型示意图。"
+    }
+  ],
+  "status": "todo",
+  "created_at": "2026-07-03",
+  "updated_at": "2026-07-03",
+  "extra": {}
+}
